@@ -16,6 +16,7 @@
 #include "cppl/kernel/proposition.hpp"
 #include "cppl/kernel/term.hpp"
 #include "cppl/kernel/types.hpp"
+#include "cppl/testing/parallel.hpp"
 #include "cppl/testing/test.hpp"
 
 #include <algorithm>
@@ -737,15 +738,21 @@ void binary_case(const k::IntType& type, Wide a, Wide b, std::uint64_t seed) {
 
 } // namespace
 
+// Every pair of both 8-bit types, numbered in the order a loop over the type,
+// then x, then y takes them. The pairs share nothing, so they are checked on
+// several threads at once (cppl/testing/parallel.hpp); a failure still names
+// the first pair that order reaches.
+//
 // SPEC: EQ-009, EQ-010, ARITH-006, ARITH-007, DEFINEDBEHAVIOR-001, DEFINEDBEHAVIOR-002, DEFINEDBEHAVIOR-003
 CPPL_TEST(every_machine_assignment_satisfies_what_the_kernel_states_of_8_bit_operations) {
-    for (const auto& type : {kI8, kU8}) {
-        for (Wide a = least(type); a <= most(type); ++a) {
-            for (Wide b = least(type); b <= most(type); ++b) {
-                binary_case(type, a, b, 0);
-            }
-        }
-    }
+    const std::array<k::IntType, 2> kTypes{kI8, kU8};
+    constexpr std::size_t kValues = 256; // of an 8-bit type
+    ::cppl::testing::for_each_index(kTypes.size() * kValues * kValues, [&](std::size_t index) {
+        const k::IntType& type = kTypes.at(index / (kValues * kValues));
+        const Wide a = least(type) + static_cast<Wide>(index / kValues % kValues);
+        const Wide b = least(type) + static_cast<Wide>(index % kValues);
+        binary_case(type, a, b, 0);
+    });
 }
 
 // SPEC: EQ-009, EQ-010, ARITH-006, ARITH-007, DEFINEDBEHAVIOR-001

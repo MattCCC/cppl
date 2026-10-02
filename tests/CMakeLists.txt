@@ -8,7 +8,8 @@
 #   e2e           source in, verified native executable out
 #   architecture  dependency direction
 
-add_library(cppl_testing STATIC support/src/test.cpp)
+# The harness, and the parallel loop exhaustive cases share (support/include).
+add_library(cppl_testing STATIC support/src/test.cpp support/src/parallel.cpp)
 target_include_directories(cppl_testing PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/support/include>)
 target_link_libraries(cppl_testing PRIVATE cppl_project_options)
