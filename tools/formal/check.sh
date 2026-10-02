@@ -7,7 +7,9 @@
 #   tools/formal/check.sh [build directory]
 #
 # The sources are compiled in a copy under the build directory, so the source
-# tree gains no Coq output.
+# tree gains no Coq output. Modules that do not import one another compile side
+# by side, and a module whose text, imports and coqc are what it last compiled
+# from there is not compiled again (see "compile" below).
 
 set -eu
 
@@ -25,10 +27,6 @@ cp "${root}"/formal/coq/*.v "${out}/"
 cd "${out}"
 
 "${coqc}" --version
-
-for module in Syntax Semantics Typing Checker Normalize Consistency Certificate Linear; do
-    "${coqc}" -Q . CppL "${module}.v"
-done
 
 # The kernel's normalization edge table (tests/kernel/normalization_edges.tsv),
 # which kernel_normalization_edges_test checks of the kernel, stated of the
@@ -67,7 +65,6 @@ awk -F '\t' '
     }
     END { if (rows < 140) { print "the edge table has " rows " rows" > "/dev/stderr"; exit 1 } }
 ' "${root}/tests/kernel/normalization_edges.tsv" > NormalizeEdges.v
-"${coqc}" -Q . CppL NormalizeEdges.v
 edges=$(grep -c '^Example ' NormalizeEdges.v)
 
 # The kernel's translation edge table (tests/kernel/translation_edges.tsv),
@@ -174,7 +171,6 @@ awk -F '\t' '
     }
     END { if (rows < 80) { print "the translation table has " rows " rows" > "/dev/stderr"; exit 1 } }
 ' "${root}/tests/kernel/translation_edges.tsv" > TranslationEdges.v
-"${coqc}" -Q . CppL TranslationEdges.v
 translations=$(grep -c '^Example ' TranslationEdges.v)
 
 # The kernel's rule table (tests/kernel/check_edges.tsv), which
@@ -282,10 +278,110 @@ awk -F '\t' '
         if (rows < 60 || accepted < 25) { print "the rule table has " rows " rows, " accepted " accepted" > "/dev/stderr"; exit 1 }
     }
 ' "${root}/tests/kernel/check_edges.tsv" > CheckEdges.v
-"${coqc}" -Q . CppL CheckEdges.v
 rules=$(grep -c '^Example ' CheckEdges.v)
 
-"${coqc}" -Q . CppL Audit.v > audit.txt
+# Every module of the model and the three generated from the edge tables, with
+# what each imports as coqdep reads its Require commands, so no list here can
+# fall behind one.
+modules=""
+for source in "${root}"/formal/coq/*.v; do
+    module=$(basename "${source}" .v)
+    modules="${modules} ${module}"
+done
+modules="${modules} NormalizeEdges TranslationEdges CheckEdges"
+coqdep="${COQDEP:-$(dirname "$(command -v "${coqc}")")/coqdep}"
+# shellcheck disable=SC2086
+"${coqdep}" -Q . CppL $(for module in ${modules}; do printf '%s.v ' "${module}"; done) > depends.txt
+
+# imports <module>: the modules of the model <module> imports, one a line.
+imports() {
+    sed -n "s/^$1\\.vo [^:]*: $1\\.v//p" depends.txt | tr ' ' '\n' | sed -n 's/^\([A-Za-z0-9_]*\)\.vo$/\1/p'
+}
+
+digest() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum | cut -d' ' -f1
+    else
+        shasum -a 256 | cut -d' ' -f1
+    fi
+}
+
+# A module is compiled again unless everything its compiled form follows from
+# is what it was compiled from: its own text, the key of each module it imports,
+# and this coqc. That content's digest is its key, written beside the .vo only
+# once coqc has accepted the module, with what coqc printed for it. An
+# unchanged model is checked by its keys alone, and a change recompiles what
+# depends on it and nothing else. No time is read: an edit that keeps a file's
+# time still changes its key.
+version=$("${coqc}" --version; command -v "${coqc}"; printf '%s\n' "-Q . CppL" "${COQPATH:-}" "${COQLIB:-}")
+
+# compile <module>: <module>.out and <module>.err hold what coqc printed.
+compile() {
+    for imported in $(imports "$1"); do
+        [ -s "${imported}.key" ] || { echo "error: $1 imports ${imported}, which did not compile" >&2; return 1; }
+    done
+    key=$({
+        printf '%s\n' "${version}"
+        cat "$1.v"
+        for imported in $(imports "$1"); do
+            printf '%s %s\n' "${imported}" "$(cat "${imported}.key")"
+        done
+    } | digest)
+    if [ -f "$1.vo" ] && [ -f "$1.key" ] && [ "$(cat "$1.key")" = "${key}" ]; then
+        return 0
+    fi
+    rm -f "$1.key"
+    "${coqc}" -Q . CppL "$1.v" > "$1.out" 2> "$1.err" || return 1
+    printf '%s\n' "${key}" > "$1.key"
+}
+
+# Each round compiles, side by side, every module whose imports have all
+# compiled, then shows what coqc printed for each, in order. A round with a
+# failure ends the check.
+compiled=" "
+remaining="${modules}"
+while [ -n "${remaining# }" ]; do
+    ready=""
+    waiting=""
+    for module in ${remaining}; do
+        pending=""
+        for imported in $(imports "${module}"); do
+            case "${compiled}" in
+                *" ${imported} "*) ;;
+                *) pending=1 ;;
+            esac
+        done
+        if [ -n "${pending}" ]; then
+            waiting="${waiting} ${module}"
+        else
+            ready="${ready} ${module}"
+        fi
+    done
+    if [ -z "${ready}" ]; then
+        echo "error: no module of${waiting} can compile before another of them" >&2
+        exit 1
+    fi
+    pids=""
+    for module in ${ready}; do
+        compile "${module}" &
+        pids="${pids} $!"
+    done
+    failed=""
+    for pid in ${pids}; do
+        wait "${pid}" || failed=1
+    done
+    for module in ${ready}; do
+        if [ -f "${module}.out" ]; then cat "${module}.out"; fi
+        if [ -f "${module}.err" ]; then cat "${module}.err" >&2; fi
+    done
+    if [ -n "${failed}" ]; then
+        exit 1
+    fi
+    compiled="${compiled}${ready# } "
+    remaining="${waiting}"
+done
+
+cp Audit.out audit.txt
 cat audit.txt
 
 theorems=$(grep -c '^Print Assumptions' Audit.v)
