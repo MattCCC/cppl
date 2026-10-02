@@ -589,13 +589,88 @@ export GIT_CEILING_DIRECTORIES="$run"
 # A green control run establishes that a later test failure was introduced by
 # the mutation rather than being there all along. An LLVM_ROOT the caller
 # names is the LLVM it builds against, as the ci-* presets read it.
+#
+# The copy is compiled as RelWithDebInfo is, at -O2 with NDEBUG, without the
+# debug information: no test reads it, and writing it is over a third of the
+# time to compile a large translation unit and most of the time to link each
+# of the dozens of executables a one-file change relinks. Every entry rebuilds,
+# so that is most of what a run spends.
 cmake -S "$source_copy" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+      "-DCMAKE_C_FLAGS_RELWITHDEBINFO=-O2 -DNDEBUG" "-DCMAKE_CXX_FLAGS_RELWITHDEBINFO=-O2 -DNDEBUG" \
       -DCPPL_WARNINGS_AS_ERRORS=ON ${LLVM_ROOT:+"-DLibClang_ROOT=$LLVM_ROOT"} > "$run/configure.log" 2>&1 ||
     { echo "Control configure failed; see $run/configure.log" >&2; exit 1; }
 cmake --build "$build" -j "$jobs" > "$run/build.log" 2>&1 ||
     { echo "Control build failed; see $run/build.log" >&2; exit 1; }
-ctest --test-dir "$build" --output-on-failure -j "$jobs" > "$run/baseline.log" 2>&1 ||
-    { echo "Control baseline failed; see $run/baseline.log" >&2; exit 1; }
+
+if command -v sha256sum > /dev/null 2>&1; then
+    hasher=(sha256sum)
+else
+    hasher=(shasum -a 256)
+fi
+
+# Each file of a list, one path a line, that exists, with its size and time.
+described() {
+    local path
+    while IFS= read -r path; do
+        if [ -e "$path" ]; then
+            ls -lLn "$path"
+        fi
+    done
+}
+
+# Everything the control run's outcome depends on, written out to be digested:
+# every file of the copy; every file the build wrote under bin/ and lib/, the
+# binaries themselves, so none of them can be stale; the build's
+# configuration; the programs it found outside the tree, the headers its Clang
+# reads, the libraries the compiler loads; the tools running the experiment and
+# the environment the tests see. Fails when any of it cannot be read. It is
+# called where its status is tested, which turns errexit off inside it, so each
+# step returns its own failure.
+control_inputs() {
+    local clang
+    (cd "$source_copy" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 "${hasher[@]}") || return 1
+    (cd "$build" && find bin lib -type f -print0 | LC_ALL=C sort -z | xargs -0 "${hasher[@]}") || return 1
+    cat "$build/CMakeCache.txt" || return 1
+    sed -n 's/^[A-Za-z_][^:]*:FILEPATH=\(\/.*\)$/\1/p' "$build/CMakeCache.txt" | LC_ALL=C sort -u | described ||
+        return 1
+    clang=$(sed -n 's/^CPPL_DEFAULT_CLANG:FILEPATH=//p' "$build/CMakeCache.txt")
+    [ -x "$clang" ] || return 1
+    "$clang" -E -x c++ -v - < /dev/null 2>&1 > /dev/null |
+        sed -n '/^#include <\.\.\.> search starts here:$/,/^End of search list\.$/s/^ \(\/.*\)$/\1/p' |
+        while IFS= read -r directory; do
+            ls -lLnR "$directory" || exit 1
+        done || return 1
+    if command -v ldd > /dev/null 2>&1; then
+        ldd "$build/bin/cppl" | awk '{ for (i = 1; i <= NF; ++i) if ($i ~ /^\//) print $i }'
+    else
+        otool -L "$build/bin/cppl" | awk 'NR > 1 && $1 ~ /^\// { print $1 }'
+    fi | LC_ALL=C sort -u | described || return 1
+    command -v cmake ctest ninja || return 1
+    cmake --version || return 1
+    env | grep -E '^(PATH|LD_LIBRARY_PATH|DYLD_[A-Z_]*|LANG|LC_[A-Z]*|TZ|TMPDIR|HOME|CC|CXX|LLVM_ROOT|CPPL_[A-Z_]*)=' |
+        LC_ALL=C sort
+}
+
+# The control run is the same experiment whenever its inputs are. A reused copy
+# whose inputs are byte for byte those of a green control run, recorded by
+# their digest, does not repeat it. Any difference at all, or any input that
+# cannot be read, runs it again; it is recorded only once it is green.
+passed="$run/control.passed"
+fingerprint=""
+if inputs=$(control_inputs); then
+    fingerprint=$(printf '%s\n' "$inputs" | "${hasher[@]}" | cut -d' ' -f1)
+fi
+unset inputs
+if [ -n "$fingerprint" ] && [ -f "$passed" ] && [ "$(cat "$passed")" = "$fingerprint" ]; then
+    echo "Control run not repeated: its inputs are those of the green run recorded in $passed"
+else
+    rm -f "$passed"
+    ctest --test-dir "$build" --output-on-failure -j "$jobs" > "$run/baseline.log" 2>&1 ||
+        { echo "Control baseline failed; see $run/baseline.log" >&2; exit 1; }
+    if [ -n "$fingerprint" ]; then
+        printf '%s\n' "$fingerprint" > "$passed"
+    fi
+fi
 
 caught=0
 total=0
