@@ -1603,8 +1603,15 @@ bool try_explicit_instantiation(const TokenStream& stream, const std::vector<Tok
 // trailing return type's template arguments and an attribute list hold commas
 // of their own, so their brackets are tracked; a `<` there is never a
 // comparison, which could only stand inside parentheses.
+//
+// A `:` ends it too. It begins a constructor's mem-initializers, which belong to
+// the body: in `explicit S(int a) : expects(a) {}` the member `expects` is
+// initialized, and no clause is written. A trailing return type names its type
+// before anything else, so a clause word there before any type, as in
+// `auto f() -> ensures (&)[3]`, is that type. So is one that a `::` qualifies.
 std::size_t skip_ordinary_declarator_suffix(const std::vector<Token>& tokens, std::size_t cursor) {
     std::size_t nesting = 0;
+    bool awaiting_return_type = false;
     while (cursor < tokens.size()) {
         const Token& token = tokens[cursor];
         if (token.kind == TokenKind::EndOfFile || token.is_punctuator("{") || token.is_punctuator(";")) {
@@ -1613,9 +1620,19 @@ std::size_t skip_ordinary_declarator_suffix(const std::vector<Token>& tokens, st
         if (nesting == 0 && token.is_punctuator(",")) {
             break;
         }
-        if (nesting == 0 && is_specification_clause(token) && cursor + 1 < tokens.size() &&
-            tokens[cursor + 1].is_punctuator("(")) {
+        if (nesting == 0 && token.is_punctuator(":")) {
             break;
+        }
+        if (nesting == 0 && !awaiting_return_type && !tokens[cursor - 1].is_punctuator("::") &&
+            is_specification_clause(token) && cursor + 1 < tokens.size() && tokens[cursor + 1].is_punctuator("(")) {
+            break;
+        }
+        if (token.is_punctuator("->")) {
+            awaiting_return_type = true;
+        } else if (token.kind == TokenKind::Identifier &&
+                   !is_one_of(token, std::to_array<std::string_view>(
+                                         {"const", "volatile", "typename", "struct", "class", "enum", "union"}))) {
+            awaiting_return_type = false;
         }
         if (token.is_punctuator("(")) {
             cursor = matching_parenthesis(tokens, cursor) + 1;

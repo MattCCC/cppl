@@ -294,6 +294,13 @@ declaration it also spells: `while (n-- > 0) decreases (k) {n};` declares `k`, a
 in, any but `>`, `>>`, `*`, `&` and `&&`, the word is ordinary C++, so
 `type a = 5, where (6);` declares `a` and `where`.
 
+[WORD-017] A function's specification clauses stand between its ordinary declarator
+and its body, so nothing after a constructor's `:` is a clause: in
+`explicit S(int a) : expects(a) {}` a member named `expects` is initialized.
+A trailing return type names its type first, so a clause word that begins it,
+after any cv-qualifier, or that `::` qualifies, is that type:
+`auto pick() -> ensures (&)[3]` returns a reference to an array of `ensures`.
+
 [WORD-010] `omit` and `by` have special meaning only in a case omission, `omit label by
 contradiction evidence;`, written directly inside a `cases` statement (§20.2).
 `omit` begins one only where a case label followed by `by` comes after it; a

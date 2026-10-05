@@ -510,6 +510,9 @@ is part of the quantified specification context, never a runtime theorem object.
 Member contracts follow the complete declarator. `this` and unqualified members
 retain C++ meaning. A constructor has no `result`; its postcondition describes
 the initialized object. Entry snapshots cannot read uninitialized subobjects.
+A constructor's clauses precede its `:`; the mem-initializers after it belong to
+the body, so `explicit S(int a) : expects(a) {}` initializes a member
+(SPEC.md WORD-017).
 
 ## 39. Templates
 
@@ -534,7 +537,8 @@ Postconditions describe normal returns, not an invented exception model.
 ## 43. Trailing returns
 
 A trailing return type precedes specification clauses; C++L does not split the
-ordinary declarator.
+ordinary declarator. The type is named first: a clause word that begins it is
+the type, as in `auto pick() -> ensures (&)[3]` (SPEC.md WORD-017).
 
 ## 44. Member qualifiers
 

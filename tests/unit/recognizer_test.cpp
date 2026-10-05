@@ -185,6 +185,47 @@ CPPL_TEST(a_verified_constructor_or_conversion_after_ordinary_specifiers_is_refu
     }
 }
 
+// SPEC: WORD-008, WORD-017
+// A constructor's mem-initializers follow `:` and belong to its body, so a
+// member named `expects` initialized there is no clause, whatever specifier
+// leads the constructor. A trailing return type names its type first, so a
+// clause word that begins it, after cv-qualifiers or after `::`, is that type.
+CPPL_TEST(a_mem_initializer_or_a_trailing_return_type_named_like_a_clause_is_no_clause) {
+    for (const char* text : {
+             "struct S { int expects; explicit S(int a) : expects(a) {} };\n",
+             "struct S { int ensures; constexpr S() : ensures(1) {} };\n",
+             "struct S { int decreases; inline S(int a) : decreases(a) {} };\n",
+             "struct S { int ensures; explicit constexpr S(int v) noexcept : ensures(v) {} };\n",
+             "struct S { int a, expects; explicit S(int v) : a(v), expects(v) {} };\n",
+             "auto pick() -> ensures (&)[3] { return table; }\n",
+             "inline auto maker() -> ensures (*)(int) { return make; }\n",
+             "static auto none() -> expects (*)() { return nullptr; }\n",
+             "auto constant() -> const ensures (&)[3] { return table; }\n",
+             "auto qualified() -> ns::decreases (&)[2] { return measures; }\n",
+             "struct H { auto member() const -> ensures (&)[3] { return table; } };\n",
+         }) {
+        Recognized result;
+        recognize(text, result);
+        CPPL_CHECK(result.engine.diagnostics().empty());
+        CPPL_CHECK(result.syntax.empty());
+    }
+}
+
+// SPEC: WORD-017
+// A clause after a trailing return type that has named its type, or before a
+// constructor's `:`, is still a clause.
+CPPL_TEST(a_clause_after_a_named_trailing_return_type_or_before_mem_initializers_is_read) {
+    Recognized result;
+    recognize("verified auto f(unsigned x) -> unsigned ensures (result == x) { return x; }\n"
+              "struct S { int m; explicit S(int a) expects (a > 0) : m(a) {} };\n",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK_EQ(result.syntax.verified_functions.size(), std::size_t{1});
+    CPPL_CHECK_EQ(result.syntax.verified_functions[0].clauses.size(), std::size_t{1});
+    CPPL_CHECK_EQ(result.syntax.unchecked_clauses.size(), std::size_t{1});
+    CPPL_CHECK_EQ(result.syntax.unchecked_clauses[0].function_name, std::string("S"));
+}
+
 CPPL_TEST(the_pure_specifier_is_attached_to_its_function) {
     Recognized result;
     recognize("pure int identity(int x) {\n    return x;\n}\n", result);

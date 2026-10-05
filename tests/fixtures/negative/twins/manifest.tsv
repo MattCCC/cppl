@@ -113,9 +113,11 @@ exempt	hello.cpp	-	ordinary C++ with no C++L in it	-	-
 exempt	contextual_identifiers.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	words_as_cpp/declarator_lists.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	words_as_cpp/loop_bodies.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
+exempt	words_as_cpp/member_initializers.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	words_as_cpp/operator_spellings.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	words_as_cpp/qualified_declarators.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	words_as_cpp/qualified_names.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
+exempt	words_as_cpp/trailing_returns.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	words_as_cpp/type_names.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	equivalence/abi_client.cpp	-	the ordinary C++ client of abi_library.cpp; it states no claim	-	-
 exempt	cppl_with_cpp_type_error.cpp	-	a C++ type error for the editor tests, refused by Clang before any claim is read	-	-

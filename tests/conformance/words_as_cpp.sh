@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPEC: WORD-008, WORD-014, WORD-015, WORD-016
+# SPEC: WORD-008, WORD-014, WORD-015, WORD-016, WORD-017
 # Ordinary C++ spelled with C++L words, where C++ gives each word a meaning of
 # its own, is compiled as the ordinary C++ it is.
 #
