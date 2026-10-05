@@ -37,6 +37,10 @@ twin	formal_equality.cpp	negative/twins/formal_equality.cpp	error \[proof-failur
 twin	header_law_main.cpp	negative/twins/header_law_main.cpp	error \[kernel-rejection\]: law 'scale_preserves_amount' is not proven	-	-DVALUE=41
 twin	instantiated_proof.cpp	negative/twins/instantiated_proof.cpp	error \[proof-failure\]: 'identity_general' does not prove what proof 'identity_at_[0-9]+' claims	-	-
 twin	logical_composition.cpp	negative/twins/logical_composition.cpp	error \[kernel-rejection\]: law 'resolved_equivalence' is not proven	-	-
+twin	provenance_matrix.cpp	negative/twins/provenance_matrix.cpp	error \[proof-failure\]: verified function 'trusted_source' does not satisfy its contract	-	-
+twin	provenance_matrix_cross_tu/client.cpp	negative/twins/provenance_matrix_cross_tu_client.cpp	error \[kernel-rejection\]: return path 'through_trusted path [0-9]+' does not satisfy its contract	provenance_matrix_cross_tu/producer.cpp,provenance_matrix_cross_tu/middle.cpp	-
+twin	provenance_matrix_cross_tu/middle.cpp	negative/twins/provenance_matrix_cross_tu_middle.cpp	error \[kernel-rejection\]: return path 'middle_trusted path [0-9]+' does not satisfy its contract	provenance_matrix_cross_tu/producer.cpp	-
+twin	provenance_matrix_cross_tu/producer.cpp	negative/twins/provenance_matrix_cross_tu_producer.cpp	error \[proof-failure\]: verified function 'imported_trusted' does not satisfy its contract	-	-
 twin	quantified_propositions.cpp	negative/twins/quantified_propositions.cpp	error \[kernel-rejection\]: proof 'identity_everywhere_holds' does not establish law 'identity_everywh	-	-
 twin	refinement_types.cpp	negative/twins/refinement_types.cpp	error \[kernel-rejection\]: this value is not shown to satisfy refinement type 'Index'	-	-
 twin	rewritten_proof.cpp	negative/twins/rewritten_proof.cpp	error \[kernel-rejection\]: proof 'identity_at_zero_holds' does not establish law 'identity_at_zero'	-	-

@@ -13,6 +13,7 @@
 #include "cppl/source/location.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <fstream>
 #include <ios>
@@ -83,6 +84,14 @@ std::string hover_text(Server& server, const std::string& uri, const Position& p
 
 bool has(const std::string& text, const std::string& part) {
     return text.find(part) != std::string::npos;
+}
+
+std::size_t occurrences(const std::string& text, const std::string& part) {
+    std::size_t count = 0;
+    for (std::size_t at = text.find(part); at != std::string::npos; at = text.find(part, at + part.size())) {
+        ++count;
+    }
+    return count;
 }
 
 } // namespace
@@ -203,6 +212,89 @@ CPPL_TEST(a_proven_claim_names_what_it_rests_on_through_what_it_uses) {
                                         position_of(validation, "verified int through_validation", 13));
     CPPL_CHECK(has(through, "the runtime validation of Positive at "));
     CPPL_CHECK(!has(through, "RUNTIME-CHECKED"));
+}
+
+// TRUST.md 36.3, TCB-REPORT-002, TCB-REPORT-004, TCB-REPORT-005: the editor
+// names the closure `e2e/provenance_matrix.sh` pins in both reports, for every
+// claim of the matrix: each dependency once however many paths reach it, and
+// none that no path reaches.
+CPPL_TEST(every_claim_of_the_provenance_matrix_names_exactly_its_closure) {
+    Server server = make_server();
+    const std::string text = read_fixture("provenance_matrix.cpp");
+    open(server, "file:///provenance_matrix.cpp", text);
+    const std::vector<CodeLens> found = lenses(server, "file:///provenance_matrix.cpp");
+    const std::string first_law = "broken_counter";
+    const std::string second_law = "broken_again";
+    const std::string block = "the unsafe block at /provenance_matrix.cpp:76";
+    const std::string vector = "the std::vector model";
+    const std::string string = "the std::basic_string<char> model";
+    const std::string validation = "the runtime validation of Positive at /provenance_matrix.cpp:99";
+    struct Expected {
+        std::string declaration;
+        std::vector<std::string> closure;
+    };
+    const std::vector<Expected> table = {
+        {"verified unsigned trusted_source(", {first_law}},
+        {"verified unsigned trusted_source_again(", {second_law}},
+        {"verified unsigned unsafe_source(", {block}},
+        {"verified unsigned vector_source(", {vector}},
+        {"verified unsigned string_source(", {string}},
+        {"verified int validation_source(", {validation}},
+        {"verified unsigned trusted_hop_1(", {first_law}},
+        {"verified unsigned trusted_hop_2(", {first_law}},
+        {"verified unsigned trusted_hop_3(", {first_law}},
+        {"verified unsigned trusted_right(", {first_law}},
+        {"verified unsigned trusted_diamond(", {first_law}},
+        {"verified unsigned unsafe_hop_1(", {block}},
+        {"verified unsigned unsafe_hop_2(", {block}},
+        {"verified unsigned unsafe_hop_3(", {block}},
+        {"verified unsigned unsafe_right(", {block}},
+        {"verified unsigned unsafe_diamond(", {block}},
+        {"verified unsigned vector_hop_1(", {vector}},
+        {"verified unsigned vector_hop_2(", {vector}},
+        {"verified unsigned vector_hop_3(", {vector}},
+        {"verified unsigned vector_right(", {vector}},
+        {"verified unsigned vector_diamond(", {vector}},
+        {"verified int validation_hop_1(", {validation}},
+        {"verified int validation_hop_2(", {validation}},
+        {"verified int validation_hop_3(", {validation}},
+        {"verified int validation_right(", {validation}},
+        {"verified int validation_diamond(", {validation}},
+        {"verified unsigned trusted_even(", {first_law}},
+        {"verified unsigned trusted_odd(", {first_law}},
+        {"verified unsigned vector_even(", {vector}},
+        {"verified unsigned vector_odd(", {vector}},
+        {"verified unsigned two_laws(", {first_law, second_law}},
+        {"verified unsigned two_models(", {vector, string}},
+        {"verified unsigned everything(", {first_law, block, vector, string, validation}},
+        {"verified unsigned plain(", {}},
+        {"verified unsigned beside(", {}},
+    };
+    const std::vector<std::string> every = {first_law, second_law, block, vector, string, validation};
+    for (const Expected& row : table) {
+        const std::size_t name = row.declaration.find(' ', std::string("verified ").size()) + 1;
+        const std::string title = lens_at(found, position_of(text, row.declaration, name));
+        CPPL_CHECK(title.starts_with("PROVEN"));
+        CPPL_CHECK(!has(title, "RUNTIME-CHECKED"));
+        CPPL_CHECK(!has(title, "never_reached"));
+        CPPL_CHECK_EQ(has(title, "relative to"), !row.closure.empty());
+        for (const std::string& dependency : every) {
+            const bool expected = std::find(row.closure.begin(), row.closure.end(), dependency) != row.closure.end();
+            if (occurrences(title, dependency) != (expected ? 1u : 0u)) {
+                ::cppl::testing::fail(
+                    __FILE__, __LINE__,
+                    "the lens of '" + row.declaration + "' reads '" + title + "', which should " +
+                        (expected ? "name '" + dependency + "' once" : "not name '" + dependency + "'"));
+            }
+        }
+    }
+    // The hover of the claim that reaches every kind names every kind too.
+    const std::string shown =
+        hover_text(server, "file:///provenance_matrix.cpp", position_of(text, "verified unsigned everything(", 18));
+    for (const std::string& dependency : {first_law, block, vector, string, validation}) {
+        CPPL_CHECK(has(shown, dependency));
+    }
+    CPPL_CHECK(!has(shown, second_law));
 }
 
 CPPL_TEST(a_verified_function_sums_up_its_obligations) {
