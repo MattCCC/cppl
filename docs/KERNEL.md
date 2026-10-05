@@ -738,17 +738,17 @@ to rest on nothing but Coq's kernel: no axiom and no admitted proof
 | Milestone | State | Where |
 | --- | --- | --- |
 | M1 syntax and semantics | done | `Syntax.v`, `Semantics.v`: types, terms, propositions, evidence; machine integers, every primitive, `wrap` in range and exact on representable values, `rem` in range |
-| M2 term operations | substitution and shifting done; normalization not started | `Semantics.v` (`eval_shift`, `eval_inst`, `holds_pshift`, `holds_pinst`), `Typing.v` (typing preserved by both) |
+| M2 term operations | done | `Semantics.v` (`eval_shift`, `eval_inst`, `holds_pshift`, `holds_pinst`), `Typing.v` (typing preserved by both), `Normalize.v` (`nf_sound`: normalization keeps the type and the meaning of every typed term) |
 | M3 arithmetic | certificate checking done; translation not started | `Certificate.v` (`check_certificate_sound`) |
-| M4 the rules | done relative to M2 and M3 | `Checker.v` (`check_sound`, `check_consistent`), `Consistency.v` |
+| M4 the rules | done relative to M3 | `Checker.v` (`check_sound`, `check_consistent`), `Consistency.v`, `Normalize.v` (`check_sound_normalized`) |
 | M5 reference checker | not started | |
 | M6 re-checkable evidence | not started | |
 
 `check_sound` is the soundness theorem of M4: if `check` accepts evidence `e`
 for `P`, `P` holds in every interpretation and every environment. Its only
-premises are that normalization preserves the meaning of a typed term (M2) and
-that an accepted arithmetic step's facts entail its goal (M3), stated as
-hypotheses. Everything else the rules do is defined in the model and proven:
+premises are that normalization preserves the meaning of a typed term (M2,
+discharged by `Normalize.v` below) and that an accepted arithmetic step's facts
+entail its goal (M3), stated as hypotheses. Everything else the rules do is defined in the model and proven:
 typing and well-formedness, structural comparison, capture-safe substitution
 and shifting, the hypothesis context and its scope, the premises the kernel
 states for conditional elimination and for induction, and the goal staying well
@@ -759,6 +759,23 @@ evidence, well formed or not, establishes `False` in it, unconditionally.
 `check_certificate_sound` proves the certificate checker of section 13: an
 accepted certificate leaves the system with no integer solution. What remains
 of rule 9 is the translation of section 12.
+
+`Normalize.v` models the normalization of section 9 (`normalize_impl` in
+`kernel/src/context.cpp`, `normalize_primitive` and the polynomial reader in
+`kernel/src/arithmetic.cpp`): definitions unfolded into their bodies, operands
+normalized, arithmetic of one type read into a polynomial modulo `2^w` over its
+opaque subterms and rendered back, and comparisons, negation, selection,
+representability, division and conversion folded where the kernel folds them.
+`nf_sound` proves that it keeps the type and the meaning of every typed term,
+and `check_sound_normalized` is `check_sound` with reflexivity deciding equality
+by it, so the M2 premise is discharged. Its remaining conditions are on the
+interpretation, not the checker: it gives each admitted definition the meaning
+of its body, as it already gives each observation and call a value of its type.
+Termination is by construction: unfolding is bounded by fuel, where the kernel
+bounds it by the limits of section 14. The model's term order does not compare
+the domains of observations and elements, so its normal forms can differ in
+placement from the kernel's; that bears on which reflexivity steps the two
+accept, not on soundness, since placement never changes a value.
 
 The model omits the resource limits of section 14. They only reject, so the
 model accepts at least what the kernel accepts, and a bound on what it accepts
