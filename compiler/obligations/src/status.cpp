@@ -168,8 +168,40 @@ void reachable(const kernel::Proposition& premise, kernel::ProofTerm evidence,
     }
 }
 
+// An implication available here offers its conclusion wherever its premise is
+// available too, by implication elimination: the postcondition of a verified
+// call or of a validation relating a Boolean result to a proposition, used with
+// the path's fact about that result (SPEC.md RUNTIMECHECK-006,
+// RUNTIMECHECK-011). The premise must be available exactly as stated; nothing
+// is searched for. Each implication is used at most once, so this terminates,
+// and the conclusions are offered after everything the premises offered.
+void chain(std::vector<std::pair<kernel::Proposition, kernel::ProofTerm>>& available) {
+    std::vector<bool> used(available.size(), false);
+    for (bool progress = true; progress;) {
+        progress = false;
+        for (std::size_t index = 0; index < available.size(); ++index) {
+            used.resize(available.size(), false);
+            const auto* implication = std::get_if<kernel::Implies>(&available[index].first.node);
+            if (used[index] || implication == nullptr) {
+                continue;
+            }
+            const auto premise = std::ranges::find_if(
+                available, [&](const auto& entry) { return entry.first == *implication->premise; });
+            if (premise == available.end()) {
+                continue;
+            }
+            used[index] = true;
+            kernel::Proposition conclusion = *implication->conclusion;
+            kernel::ProofTerm evidence = kernel::ProofTerm::implication_elimination(
+                available[index].first, available[index].second, premise->second);
+            reachable(conclusion, std::move(evidence), available);
+            progress = true;
+        }
+    }
+}
+
 // Every proposition the supposed premises make available at this depth,
-// innermost premise first.
+// innermost premise first, then what their implications offer.
 std::vector<std::pair<kernel::Proposition, kernel::ProofTerm>> in_scope(const std::vector<Supposed>& supposed,
                                                                         std::size_t binders) {
     std::vector<std::pair<kernel::Proposition, kernel::ProofTerm>> available;
@@ -180,6 +212,7 @@ std::vector<std::pair<kernel::Proposition, kernel::ProofTerm>> in_scope(const st
                       kernel::HypothesisIndex{static_cast<std::uint32_t>(supposed.size() - position)}),
                   available);
     }
+    chain(available);
     return available;
 }
 

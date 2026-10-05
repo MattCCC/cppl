@@ -133,6 +133,13 @@ struct Call {
     // (SPEC.md STDMODEL-013, RFC 0020 §6). `callee_usr` then names the summary,
     // not a declaration Clang resolved: the library's own body is never read.
     std::optional<source::LibraryCall> library = std::nullopt;
+
+    // A validation expression, `validate<R>(e)` (SPEC.md RUNTIMECHECK-018): the
+    // identity of the refinement R whose predicate the program tests its one
+    // argument against at run time. `callee_usr` then names R's predicate probe,
+    // a declaration the projector generated, which is never a function of the
+    // program.
+    std::optional<std::string> validation = std::nullopt;
 };
 
 struct Binary {

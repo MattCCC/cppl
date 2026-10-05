@@ -4,10 +4,10 @@
 
 type Positive = int where (self > 0);
 
-// Proven because the value entered Positive only where a runtime check held.
+// Proven because the value entered Positive only where a validation held.
 verified int positive_or_one(int raw)
     ensures (result > 0);
 
-// Proven outright: no check establishes what it returns.
+// Proven outright, from path facts: no validation establishes what it returns.
 verified int always_two(int raw)
     ensures (result == 2);

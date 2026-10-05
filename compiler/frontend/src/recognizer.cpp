@@ -2492,7 +2492,6 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
         bool in_block = false;
     };
     std::vector<WrittenGhost> written_ghosts;
-
     // The name of each class scope, beside `scopes`: what a constructor or a
     // destructor of the innermost class is named. Empty for every other scope.
     std::vector<std::string_view> scope_names;
@@ -3256,6 +3255,140 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
             report(engine, split.statement.location, diagnostics::Category::UnsupportedSemantics,
                    "a case split inside an unsafe block would not be checked",
                    "an unsafe block's statements are not a path the verifier walks");
+        }
+    }
+
+    // A validation expression tests a value against a refinement's predicate at
+    // run time (SPEC.md 28.1). Every expression spelled `validate<...>(` is
+    // found here, over the whole unit, whatever statement or clause holds it:
+    // the template argument list closes at the `>` that balances the `<`,
+    // within the statement, and a `(` must follow it. C++ comes first: where
+    // the unit uses `validate` for anything but validations, every one of them
+    // is ordinary C++ (WORD-013). Otherwise each must stand in a verified body,
+    // outside every loop clause and unsafe block, and name exactly one
+    // refinement type the unit declares.
+    std::vector<Written> written_validations;
+    for (std::size_t at = 0; at + 1 < tokens.size(); ++at) {
+        if (!tokens[at].is_identifier("validate") || !tokens[at + 1].is_punctuator("<")) {
+            continue;
+        }
+        std::size_t depth = 0;
+        std::size_t close = at + 1;
+        for (; close < tokens.size(); ++close) {
+            if (tokens[close].is_punctuator("<")) {
+                ++depth;
+            } else if (tokens[close].is_punctuator(">")) {
+                if (--depth == 0) {
+                    break;
+                }
+            } else if (tokens[close].is_punctuator(">>")) {
+                depth = depth >= 2 ? depth - 2 : 0;
+                if (depth == 0) {
+                    break;
+                }
+            } else if (tokens[close].is_punctuator(";") || tokens[close].is_punctuator("{") ||
+                       tokens[close].is_punctuator("}") || tokens[close].kind == TokenKind::EndOfFile) {
+                close = tokens.size();
+                break;
+            }
+        }
+        if (close + 1 < tokens.size() && tokens[close + 1].is_punctuator("(")) {
+            written_validations.push_back(Written{at, close});
+        }
+    }
+    const auto in_loop_clause = [&syntax](std::size_t offset) {
+        return std::ranges::any_of(syntax.loops, [offset](const LoopSpecification& loop) {
+            return offset >= loop.clause_region.offset && offset < loop.clause_region.end();
+        });
+    };
+    if (!written_validations.empty()) {
+        std::optional<std::size_t> other;
+        for (std::size_t at = 0; at < tokens.size() && !other.has_value(); ++at) {
+            if (tokens[at].is_identifier("validate") && !in_proof(tokens[at]) &&
+                std::ranges::none_of(written_validations,
+                                     [at](const Written& written) { return written.keyword == at; })) {
+                other = at;
+            }
+        }
+        for (const Written& written : written_validations) {
+            const Token& keyword = tokens[written.keyword];
+            const auto body = std::ranges::find_if(verified_bodies, [&written](const VerifiedBody& candidate) {
+                return candidate.open < written.keyword && written.keyword < candidate.close;
+            });
+            if (other.has_value()) {
+                if (body != verified_bodies.end()) {
+                    diagnostics::Diagnostic diagnostic;
+                    diagnostic.severity = diagnostics::Severity::Warning;
+                    diagnostic.category = diagnostics::Category::CpplSyntax;
+                    diagnostic.message = "'validate' is also a name in this translation unit, so this expression is "
+                                         "ordinary C++, not a validation";
+                    diagnostic.location = stream.location_of(keyword);
+                    diagnostic.notes.push_back(
+                        diagnostics::Note{"the name is used here", stream.location_of(tokens[*other])});
+                    engine.report(std::move(diagnostic));
+                }
+                continue;
+            }
+            if (body == verified_bodies.end()) {
+                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                       "a validation expression is checked only in the body of a verified function",
+                       "a validation is runtime code: test the value in a verified body, not in a declaration, "
+                       "a contract or a function that is not verified (SPEC.md RUNTIMECHECK-019)");
+                continue;
+            }
+            if (in_loop_clause(keyword.span.offset)) {
+                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                       "a loop clause states a proposition, and a validation expression is runtime code",
+                       "test the value in the loop's condition or body (SPEC.md RUNTIMECHECK-019)");
+                continue;
+            }
+            if (inside_unsafe(keyword.span.offset)) {
+                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                       "a validation expression inside an unsafe block would not be checked",
+                       "an unsafe block's statements are not a path the verifier walks");
+                continue;
+            }
+            if (written.terminator != written.keyword + 3 ||
+                tokens[written.keyword + 2].kind != TokenKind::Identifier) {
+                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                       "a validation names the refinement type it tests by the name its declaration gives it",
+                       "write validate<R>(value) with R the refinement type's own name (SPEC.md RUNTIMECHECK-018)");
+                continue;
+            }
+            const std::string name{tokens[written.keyword + 2].text};
+            std::vector<std::size_t> named;
+            for (std::size_t refinement = 0; refinement < syntax.refinement_types.size(); ++refinement) {
+                if (syntax.refinement_types[refinement].name == name) {
+                    named.push_back(refinement);
+                }
+            }
+            if (named.empty()) {
+                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                       "'" + name + "' does not name a refinement type this translation unit declares",
+                       "a validation tests a value against a refinement's predicate (SPEC.md RUNTIMECHECK-018)");
+                continue;
+            }
+            if (named.size() > 1) {
+                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                       "this translation unit declares more than one refinement type named '" + name + "'",
+                       "a validation must name exactly one refinement type");
+                continue;
+            }
+            RefinementType& refinement = syntax.refinement_types[named.front()];
+            if (refinement.indexed) {
+                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                       "validating a value against the indexed refinement type '" + name + "' is not supported",
+                       "validate against a refinement type without indices (SPEC.md RUNTIMECHECK-020)");
+                continue;
+            }
+            refinement.validator = "__cppl_validate_" + std::to_string(named.front());
+            ValidationExpression validation;
+            validation.function_index = body->function;
+            validation.refinement_index = named.front();
+            validation.callee =
+                source::ByteSpan{keyword.span.offset, tokens[written.terminator].span.end() - keyword.span.offset};
+            validation.location = stream.location_of(keyword);
+            syntax.validations.push_back(validation);
         }
     }
 

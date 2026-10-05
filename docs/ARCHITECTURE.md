@@ -2381,47 +2381,53 @@ from diagnostic text.
 
 # 60. Runtime validation architecture
 
-C++L does not require a special validation runtime or a built-in `validate<T>()`
-API.
-
-Runtime validation is ordinary runtime C++ control flow.
-
-Example architecture:
+C++L does not require a special validation runtime or library. A value comes to
+satisfy a refinement in one of two ways (`SPEC.md` 28):
 
 ```text
 external runtime value
     ↓
-ordinary C++ check
-    ↓
-control-flow fact on success path
-    ↓
-refinement/contract reasoning
+ordinary C++ check                     validate<R>(value)
+    ↓                                      ↓
+path fact on the success path          validation fact on the true path,
+    ↓                                  RUNTIME-CHECKED at the site
+static refinement proof: PROVEN            ↓
+                                       refinement proof resting on the site
 ```
 
-The verifier observes and proves the path condition using the normal CFG and
-refinement machinery.
+The verifier proves a crossing from a path fact using the normal CFG and
+refinement machinery; that proof is static and adds no runtime code. A
+validation expression is the program's explicit request to test the value, and
+only it is a runtime validation site. A crossing the kernel does not accept is
+refused; it is never turned into a site (RUNTIMECHECK-013).
 
 **[ARCH-RUNTIME-CHECK-001]** Runtime validation MUST remain in the runtime
 projection; erasure must not remove it merely because a later proof uses the
 resulting fact.
 
-Which crossings a runtime check establishes is decided after verification and
-used only for reporting (`SPEC.md` RUNTIMECHECK-010 to RUNTIMECHECK-015, RFC
-0021):
+A validation passes through the pipeline as a call of a function whose
+postcondition is the refinement's test (`SPEC.md` RUNTIMECHECK-011 to
+RUNTIMECHECK-021, RFC 0021):
 
 ```text
-obligations (contracts.cpp)
-    both body walkers: each refinement crossing on a path a runtime condition
-    selects -> RefinementCrossing{refinement, predicate, location,
-    membership closed over the path without its runtime conditions}
-    kept on the ContractVerification whose body holds it
+recognizer (recognizer.cpp)
+    every validate<R>(e) in the unit; refused outside a verified body, in a
+    loop clause or unsafe block, or naming anything but one refinement without
+    indices -> ValidationExpression; RefinementType::validator named
         ↓
-automation (evidence.cpp) classify_crossings
-    the strategies propose evidence for each unguarded membership;
-    kernel::check accepts it -> established statically
-    otherwise -> runtime validation site (CrossingVerdict)
+projection (projection.cpp)
+    analysis text: the refinement's probe __cppl_refinement_N in its place
+    runtime text:  __cppl_validate_N(e), the validator lowered beside the alias
+    erasure check (erase.cpp) recomputes both lowerings
         ↓
-obligations (trust.cpp) close_trust(program, results, verdicts)
+bridge (bridge.cpp) -> vir::Call{validation = probe}
+        ↓
+obligations (contracts.cpp) conditions walk
+    suppose, of a fresh result r, r -> P(e) where the path makes the call;
+    record ValidationSite{refinement, predicate, location} on the
+    ContractVerification whose body holds it
+        ↓
+obligations (trust.cpp) close_trust(program, results)
     sites attributed to their contract, then to every caller to a fixed
     point, and to path/case claims of those bodies; TrustClosure::runtime_sites
         ↓
@@ -2430,8 +2436,8 @@ driver (driver.cpp) trust report: per-kind counts, Runtime-check-dependent
     claims, Runtime validation sites
 ```
 
-The classification never feeds an obligation: the crossing's own obligation,
-closed over its whole path, has already decided whether the program verifies.
+Recording a site never feeds an obligation: each crossing's obligation, closed
+over its whole path, decides whether the program verifies.
 
 ---
 

@@ -421,7 +421,7 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
     // that lost a claim on the way, would show fewer assumptions than the build
     // rests on, so either is an internal error rather than a shorter report
     // (TRUST.md 2.10, TCB-REPORT-002, TCB-REPORT-006).
-    outcome.counters.closure = obligations::close_trust(program, results, automation::classify_crossings(program));
+    outcome.counters.closure = obligations::close_trust(program, results);
     const auto claims = [&outcome](obligations::ClaimKind kind) {
         return static_cast<std::size_t>(
             std::ranges::count(outcome.counters.closure.claims, kind, &obligations::ClaimClosure::kind));

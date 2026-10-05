@@ -311,7 +311,7 @@ void print_depends(const obligations::ImportedDependency& imported) {
         std::cout << "      whose proof rests on the " << artifact::displayed(model.name) << "\n";
     }
     for (const artifact::RuntimeCheck& check : imported.runtime) {
-        std::cout << "      whose proof rests on the runtime check of " << artifact::displayed(check.refinement) << " ("
+        std::cout << "      whose proof rests on the validation of " << artifact::displayed(check.refinement) << " ("
                   << artifact::displayed(check.file) << ":" << check.line << ":" << check.column << ")\n";
     }
     for (const artifact::Dependency& dependency : imported.depends) {
@@ -520,13 +520,15 @@ void print_trust_report(const Options& options, const TrustSummary& summary) {
         std::cout << "Interface provenance:        unauthenticated; " << summary.imports.size()
                   << " imported contracts are believed on the build's word (TRUST.md TCB-XTU-010)\n";
     }
-    // Each claim proven with a value's refinement established by a runtime
-    // check on its path, with every such site, its own or a verified callee's.
-    // The claim is PROVEN of every execution; what it rests on is that the
-    // check runs as written, and the value's membership at the site is
-    // RUNTIME-CHECKED, never a universal proof (SPEC.md RUNTIMECHECK-014,
-    // TRUST.md TCB-REPORT-004). A runtime check is not an assumption, so such a
-    // claim may also be assumption-free (SPEC.md INTERACT-023).
+    // Each claim about a body holding a validation expression, or proven
+    // through the contract of one, with every such site, its own or a verified
+    // callee's. The claim is PROVEN; what it rests on is that the program
+    // performs each validation as its lowering states, and what a validation
+    // establishes at its site is RUNTIME-CHECKED, never a universal proof
+    // (SPEC.md RUNTIMECHECK-012, RUNTIMECHECK-014, TRUST.md TCB-REPORT-004). A
+    // validation is not an assumption, so such a claim may also be
+    // assumption-free (SPEC.md INTERACT-023). A refinement crossing proven from
+    // path facts is proven statically and is no site (RUNTIMECHECK-010).
     const auto checked = std::ranges::count_if(summary.claims, obligations::rests_on_runtime_checks);
     std::cout << "Runtime-check-dependent claims: " << checked << "\n";
     for (const obligations::ClaimClosure& claim : summary.claims) {
@@ -535,7 +537,7 @@ void print_trust_report(const Options& options, const TrustSummary& summary) {
         }
         std::cout << "  " << claim_name(claim) << ", identity " << claim.identity.text() << "\n";
         for (const obligations::RuntimeCheck& check : claim.runtime) {
-            std::cout << "    rests on the runtime check of " << check.refinement << " (" << written_at(check.location)
+            std::cout << "    rests on the validation of " << check.refinement << " (" << written_at(check.location)
                       << "), "
                       << (check.direct ? "in its own body"
                                        : "in " + check.function + ", through a verified call it makes")
@@ -543,7 +545,7 @@ void print_trust_report(const Options& options, const TrustSummary& summary) {
         }
         for (const obligations::ImportedDependency& imported : claim.imported) {
             for (const artifact::RuntimeCheck& check : imported.runtime) {
-                std::cout << "    rests on the runtime check of " << artifact::displayed(check.refinement) << " ("
+                std::cout << "    rests on the validation of " << artifact::displayed(check.refinement) << " ("
                           << artifact::displayed(check.file) << ":" << check.line << ":" << check.column
                           << "), through the imported " << imported_from(imported) << "\n";
             }
@@ -563,14 +565,13 @@ void print_trust_report(const Options& options, const TrustSummary& summary) {
             std::cout << "  unsafe block:            " << written_at(boundary.location) << "\n";
         }
     }
-    // Every place a verified body of this unit moves a value into a
-    // refinement type because the runtime conditions of its path held: each
-    // value's membership there is RUNTIME-CHECKED, established for that value
-    // by executing the check, never proven of every value (SPEC.md
-    // RUNTIMECHECK-008, RUNTIMECHECK-013, TRUST.md TCB-REPORT-004).
+    // Every validation expression of a verified body of this unit: what each
+    // establishes of the value it tests is RUNTIME-CHECKED, established for
+    // that value by executing the test, never proven of every value (SPEC.md
+    // RUNTIMECHECK-008, RUNTIMECHECK-014, TRUST.md TCB-REPORT-004).
     std::cout << "Runtime validation sites:    " << summary.runtime_sites.size() << "\n";
     for (const obligations::RuntimeCheck& check : summary.runtime_sites) {
-        std::cout << "  RUNTIME-CHECKED:           " << written_at(check.location) << ", a value enters "
+        std::cout << "  RUNTIME-CHECKED:           " << written_at(check.location) << ", validates a value against "
                   << check.refinement << ", where " << check.predicate << ", in verified function " << check.function
                   << "\n";
     }

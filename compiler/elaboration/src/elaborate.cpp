@@ -549,6 +549,7 @@ class ExpressionElaborator {
             converted.callee = vir::SymbolId{call->callee_usr};
             converted.callee_name = call->callee_name;
             converted.library = call->library;
+            converted.validation = call->validation;
             for (const clangbridge::Expr& argument : call->arguments) {
                 std::optional<vir::Expr> converted_argument = convert(argument);
                 if (!converted_argument.has_value()) {
@@ -944,7 +945,11 @@ class ExpressionElaborator {
 void collect_callees(const vir::Expr& expr, std::vector<vir::SymbolId>& callees) {
     // A library summary is no function of this unit: what it states is a
     // trusted model assumption, recorded apart (RFC 0020 §6).
-    if (const auto* call = std::get_if<vir::Call>(&expr.node); call != nullptr && !call->library.has_value()) {
+    // Nor is a validation's predicate probe: the program tests the value, and
+    // what that establishes is RUNTIME-CHECKED, never a contract (SPEC.md
+    // RUNTIMECHECK-011).
+    if (const auto* call = std::get_if<vir::Call>(&expr.node);
+        call != nullptr && !call->library.has_value() && !call->validation.has_value()) {
         callees.push_back(call->callee);
     }
     std::visit(

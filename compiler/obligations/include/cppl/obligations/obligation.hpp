@@ -201,8 +201,12 @@ struct RefinementPredicate {
     kernel::Proposition predicate;
     std::string identity = {};
     // The predicate as the declaration states it, for a report naming what a
-    // runtime check established (SPEC.md RUNTIMECHECK-013). Never read back.
+    // runtime validation tested (SPEC.md RUNTIMECHECK-014). Never read back.
     std::string statement = {};
+    // Why a validation expression cannot test a value against this refinement
+    // at run time, or nothing when it can: its predicate must have defined
+    // behavior on every value of the base type (SPEC.md RUNTIMECHECK-020).
+    std::optional<std::string> unvalidatable = std::nullopt;
 };
 
 // A trusted law whose conclusion is a memory proposition (SPEC.md TRUSTED-003).

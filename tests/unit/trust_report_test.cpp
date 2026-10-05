@@ -56,7 +56,7 @@ d::BuildRecord build() {
     record.source_tag = "none";
     record.source_tree = "clean";
     record.compiler_build = cppl::source::hash_bytes("executable").to_hex();
-    record.verification_semantics = "cppl-verification-2";
+    record.verification_semantics = "cppl-verification-3";
     record.verifier_semantics_digest = cppl::source::hash_bytes("semantics").to_hex();
     record.kernel = "cppl-kernel-0.9.0";
     record.formal_core = "cppl-core-0.9.0";

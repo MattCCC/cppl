@@ -135,29 +135,62 @@ class Prover {
     }
 
   private:
-    // Only equality leaves enter arithmetic. Every projection from a
-    // conjunctive premise carries evidence the kernel checks independently.
-    static void append_facts(const k::Proposition& proposition, k::ProofTerm evidence,
-                             std::vector<k::ArithmeticFact>& result) {
+    // A premise and, by conjunction elimination, each side of it, each with the
+    // evidence that reaches it.
+    static void offer(const k::Proposition& proposition, k::ProofTerm evidence,
+                      std::vector<std::pair<k::Proposition, k::ProofTerm>>& available) {
+        available.emplace_back(proposition, evidence);
         if (const auto* conjunction = std::get_if<k::And>(&proposition.node)) {
-            append_facts(*conjunction->left, k::ProofTerm::conjunction_elimination(proposition, evidence, false),
-                         result);
-            append_facts(*conjunction->right,
-                         k::ProofTerm::conjunction_elimination(proposition, std::move(evidence), true), result);
-        } else if (std::holds_alternative<k::Eq>(proposition.node)) {
-            result.push_back(k::ArithmeticFact{proposition, k::Box<k::ProofTerm>{std::move(evidence)}});
+            offer(*conjunction->left, k::ProofTerm::conjunction_elimination(proposition, evidence, false), available);
+            offer(*conjunction->right, k::ProofTerm::conjunction_elimination(proposition, std::move(evidence), true),
+                  available);
         }
     }
 
-    // The premises in scope, restated at the leaf, each with its hypothesis.
+    // The premises in scope, restated at the leaf, each with its hypothesis,
+    // and the conclusion of every implication among them whose premise is
+    // available exactly as stated, by implication elimination: a postcondition
+    // relating a Boolean result to a proposition, with the path's fact about
+    // that result (SPEC.md RUNTIMECHECK-006, RUNTIMECHECK-011). Each
+    // implication is used at most once. Only equality leaves enter arithmetic.
     std::vector<k::ArithmeticFact> facts() const {
-        std::vector<k::ArithmeticFact> result;
+        std::vector<std::pair<k::Proposition, k::ProofTerm>> available;
         for (std::size_t index = 0; index < premises_.size(); ++index) {
             const Premise& premise = premises_[index];
-            append_facts(
+            offer(
                 k::shift(premise.proposition, static_cast<std::uint32_t>(binders_.size() - premise.binders)),
                 k::ProofTerm::hypothesis(k::HypothesisIndex{static_cast<std::uint32_t>(premises_.size() - 1 - index)}),
-                result);
+                available);
+        }
+        std::vector<bool> used(available.size(), false);
+        for (bool progress = true; progress;) {
+            progress = false;
+            for (std::size_t index = 0; index < available.size(); ++index) {
+                used.resize(available.size(), false);
+                const auto* implication = std::get_if<k::Implies>(&available[index].first.node);
+                if (used[index] || implication == nullptr) {
+                    continue;
+                }
+                const auto premise = std::ranges::find_if(
+                    available, [&](const auto& entry) { return entry.first == *implication->premise; });
+                if (premise == available.end()) {
+                    continue;
+                }
+                used[index] = true;
+                k::Proposition conclusion = *implication->conclusion;
+                k::ProofTerm evidence = k::ProofTerm::implication_elimination(available[index].first,
+                                                                              available[index].second, premise->second);
+                offer(conclusion, std::move(evidence), available);
+                progress = true;
+            }
+        }
+        std::vector<k::ArithmeticFact> result;
+        for (auto& [proposition, evidence] : available) {
+            if (std::holds_alternative<k::Eq>(proposition.node) &&
+                std::ranges::none_of(
+                    result, [&](const k::ArithmeticFact& known) { return known.proposition == proposition; })) {
+                result.push_back(k::ArithmeticFact{proposition, k::Box<k::ProofTerm>{std::move(evidence)}});
+            }
         }
         return result;
     }

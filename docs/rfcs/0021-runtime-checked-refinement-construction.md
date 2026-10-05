@@ -4,112 +4,136 @@
 
 Accepted. Implemented as described in `docs/STATUS.md` ("Runtime checked
 refinement construction", "Runtime refinement validation"). Normative text:
-`docs/SPEC.md` §28.5, RUNTIMECHECK-010 to RUNTIMECHECK-017; trust impact:
-`docs/TRUST.md` §26.3 and §31.1.
+`docs/SPEC.md` §28, RUNTIMECHECK-001 to RUNTIMECHECK-021, and WORD-013; syntax:
+`docs/GRAMMAR.md` 16.1; trust impact: `docs/TRUST.md` §26.3 and §31.1.
+
+Revised before release. The first design classified refinement crossings: a
+crossing on a path an ordinary condition selected was re-proven without that
+condition, and reported a runtime validation site when the kernel did not
+accept the result. That made a static proof from path facts, such as
+`if (x > 0) { Positive p = x; }`, look like a runtime check, and made what a
+report listed as runtime-checked depend on what the automation happened to
+find. It was withdrawn in favor of the explicit validation below, and no
+release shipped it.
 
 ## Summary
 
 A value C++L cannot know at compile time -- read from a file, a socket, the
-command line or a foreign call -- enters a refined type through ordinary C++:
-the program checks the predicate and moves the value into the refined type only
-on the path where the check held. SPEC.md §28 already says this is how runtime
-validation works and that its facts are `RUNTIME-CHECKED`, not `PROVEN`. This
-RFC makes that distinction executable and visible: it defines which refinement
-crossings a runtime check establishes (runtime validation sites), how the
-implementation decides it without adding any proof power, how the trust report
-lists each site and every claim resting on one, and how a site crosses
-translation units.
+command line or a foreign call -- comes to satisfy a refinement in one of two
+ways, and this RFC keeps them apart:
 
-It adds no syntax, no library, no runtime code and no kernel rule.
+```text
+ordinary C++ condition     the verifier proves membership
+selects the path           from the path's facts             PROVEN
+
+validate<R>(e)             the program tests the value
+                           against R's predicate at run
+                           time, and its success
+                           establishes membership            RUNTIME-CHECKED
+
+anything else              refused
+```
+
+A path fact is a premise of static proof: a crossing proven from it is proven,
+and C++L adds no runtime code for it. A runtime validation site exists only
+where the program writes a validation expression, and the code it runs is the
+program's own request. The trust report lists each site and every claim
+resting on one, and a site crosses translation units in the verification
+interface.
+
+It adds one expression form, no library, no runtime code the program does not
+request, and no kernel rule.
 
 ## Motivation
 
-Before this RFC every refinement crossing was either proven or refused, and the
-trust report printed `Runtime validation sites: 0` as a constant. A program such
-as
+Reading a value from outside the program and moving it into a refined type is
+the ordinary way a refinement meets the world. When the program already tests
+the predicate with an `if`, the verifier can prove membership on the branch the
+`if` selects, and that is a proof like any other: every execution reaching the
+crossing satisfies the predicate. Nothing about it is runtime-checked in the
+sense of `TRUST.md` TCB-REPORT-004, because the verifier established the fact;
+it did not suppose it.
 
-```cpp
-type Percentage = int where (self >= 0 && self <= 100);
-
-verified int percentage_or_zero(int raw)
-    ensures (result >= 0 && result <= 100)
-{
-    if (raw >= 0 && raw <= 100) {
-        Percentage p = raw;
-        return p;
-    }
-    return 0;
-}
-```
-
-was reported with its contract assumption-free and nothing else, although the
-fact `raw satisfies Percentage` holds only because the `if` executed
-(RUNTIMECHECK-008, ORTHOCHECK-001). `TRUST.md` TCB-REPORT-004 forbids displaying
-such a fact as a universal static proof, and TRUST.md 36.1 asks every claim
-record to carry its runtime-check dependencies. Neither was possible.
+What was missing is the other case: a program that wants to *ask* whether a
+value satisfies a refinement, without restating its predicate, and to be told
+honestly that what follows rests on that test. Restating the predicate by hand
+duplicates it, and drifts from it when the declaration changes. A helper
+function returning `bool` needs a contract relating its result to the
+predicate, which the program then has to prove. A validation expression is the
+refinement's own test, whose meaning is fixed by the declaration; what a proof
+takes from it is reported as `RUNTIME-CHECKED`, not as proven.
 
 ## Goals
 
-- Identify every crossing whose membership is established by a runtime check,
-  in every form a crossing takes: locals, members, elements, content invariants
-  of vector locals, refined results, refined parameters of verified callees and
-  call post-states.
-- Decide it soundly: never report a crossing as established statically unless
-  the kernel accepted evidence for it without the check.
+- Keep a static proof from path facts `PROVEN`, with no site and no runtime
+  code (RUNTIMECHECK-010).
+- Give programs an explicit validation, `validate<R>(e)`, whose success makes
+  membership available and whose failure makes nothing available
+  (RUNTIMECHECK-011).
+- Never turn an unproven crossing into a site: failure to prove is refused
+  (RUNTIMECHECK-013).
 - List each site `RUNTIME-CHECKED` with its location, refinement, predicate and
   function, and every claim resting on it, directly or through verified calls,
-  in this unit and across units.
-- Keep the check ordinary runtime code, unchanged by erasure.
+  in this unit and across units (RUNTIMECHECK-014, RUNTIMECHECK-015).
+- Keep the validation ordinary runtime code, kept by erasure (RUNTIMECHECK-021).
 
 ## Non-goals
 
-- A `validate<T>()` construct or a runtime validation library
-  (RUNTIMECHECK-001, ERASE-013).
-- Any new proof power. The obligation every crossing owes is unchanged.
+- A runtime validation library, or runtime support code the program did not
+  request (RUNTIMECHECK-001, ERASE-013).
+- Validating indexed refinements, refinements whose base type is itself a
+  refinement, or refinements whose predicate is a formal proposition or
+  evaluates an operation C++ defines only under a condition on its operands
+  (RUNTIMECHECK-020).
 - Validation of unverified callers of a verified function. A refined parameter
   of a verified function is a precondition the caller owes (REFINE-026); an
   unverified caller is outside the verified region (CONTRACT-006).
-- Proof automation for Boolean helper functions. RUNTIMECHECK-006 allows a
-  checked helper whose postcondition relates its `bool` result to the predicate;
-  whether such a postcondition is provable is the automation's concern, and
-  today it is not proven for a `bool` result (see STATUS).
 
 ## Proposed syntax
 
-None. The surface is SPEC.md §28: an ordinary C++ condition and a crossing on
-the path where it held.
+```ebnf
+validation-expression ::= "validate" "<" identifier ">" "(" expression ")"
+```
+
+```cpp
+type Positive = int where (self > 0);
+
+verified int positive_or_one(int raw)
+    ensures (result > 0)
+{
+    if (validate<Positive>(raw)) {
+        Positive p = raw;
+        return p;
+    }
+    return 1;
+}
+```
+
+`validate` is a contextual word: where the translation unit declares or uses
+`validate` for anything else, the spelling is ordinary C++ and a warning says so
+(WORD-013). A validation stands only in the body of a verified function,
+outside every unsafe block: never in a contract clause, loop clause, Law, proof,
+refinement predicate, declaration or unverified function (RUNTIMECHECK-019).
 
 ## Static semantics
 
-A *refinement crossing* (RUNTIMECHECK-016) is any point where a value enters a
-refinement type. A *runtime condition* (RUNTIMECHECK-017) is the outcome of a
-condition C++ evaluates at run time to select the path: an `if`, a `?:`, the
-operands of `&&`, `||` and `!` in such a condition, a loop's condition. A case
-split (CASE-017) is not one: it evaluates nothing and its arms cover every
-state.
+The identifier names one refinement type without indices that the unit
+declares; the argument has its base type; the validation is a `bool`
+(RUNTIMECHECK-018). The body walker models it as a call of a function whose
+postcondition is `result -> P(argument)`, with `P` the refinement's predicate,
+supposed of a fresh result exactly as a verified callee's postcondition is. On
+the path where the result is `true`, membership of the value tested follows by
+ordinary kernel reasoning, for the logical version the value had where it was
+tested; a later write, a write through a possible alias, a call effect, a loop
+head or an unsafe block gives the storage a new version that no earlier fact
+describes (RUNTIMECHECK-012). On the path where it is `false`, nothing follows.
 
-A crossing selected by at least one runtime condition is a *checked crossing*
-(RUNTIMECHECK-010). It owes exactly what every crossing owes: its membership,
-closed over everything its path supposes, the runtime conditions included. That
-obligation decides whether the program verifies; this RFC does not touch it.
-
-In addition, the crossing's membership is stated a second time, closed over the
-same path without its runtime conditions: over the parameters, preconditions
-and refined parameters, the binders and postconditions of the calls the path
-made, loop invariants, the defined behavior established, case facts, and the
-values computed. Leaving out a supposition binds nothing, so every term keeps
-its meaning. If the kernel accepts evidence for that proposition, the crossing
-is *established statically*: the value satisfies the predicate on every
-execution that reaches it, check or no check. Otherwise it is a *runtime
-validation site* (RUNTIMECHECK-011): the value's membership there is
-`RUNTIME-CHECKED`.
-
-The decision (RUNTIMECHECK-012) is made by offering the unguarded proposition
-the same strategies an obligation is offered and submitting the candidate to the
-kernel. Failure to find evidence only ever reports a crossing weaker than it may
-be; nothing is owed or supposed because of it, and no obligation depends on it.
-A crossing reached on several paths -- a conditional initializer, a crossing
-before a split -- is a site when any path needs the check.
+Every refinement crossing owes its membership under its complete path context
+(RUNTIMECHECK-017): preconditions, refined parameters, every condition outcome
+selecting it, case facts, call postconditions, loop invariants, defined
+behavior, the values computed, and the facts of the validations it passed. The
+kernel's acceptance of that obligation decides whether the program verifies,
+and nothing else does. No crossing is classified and no condition is set aside.
 
 A claim rests on a site (RUNTIMECHECK-014) when the site is in its own body or
 in the body of a verified function whose contract it was proven through, to a
@@ -117,120 +141,155 @@ fixed point over the call graph, exactly as an unsafe block propagates
 (TRUST.md TCB-REPORT-005). A claim that a path or a case of a body cannot occur
 rests on its body's sites.
 
-The claim stays `PROVEN`: every execution reaching the site passed the check, so
-the contract holds of every execution. What it rests on is that the executable
-performs the check as written. That is ordinary runtime behavior, preserved by
-erasure (ERASE-012), not a trusted assumption (INTERACT-023), so such a claim
-may be assumption-free and is listed separately as runtime-check-dependent.
+The claim stays `PROVEN`: it is proven statically, relative to the specified
+semantics of each validation it rests on. What it rests on is that the
+executable performs each validation as its lowering states. That is runtime
+behavior preserved by erasure (ERASE-012), not a trusted assumption
+(INTERACT-023), so such a claim may be assumption-free and is listed separately
+as runtime-check-dependent.
 
 ## Runtime semantics
 
-Unchanged. The check is the program's own `if`, loop or conditional operator,
-and erasure keeps it byte for byte (RUNTIMECHECK-009, TCB-RUNTIMECHK-003). The
+`e` is evaluated once, and the validation yields `true` exactly when `R`'s
+predicate holds of its value. The refinement declaration lowers, beside its
+alias, to a function whose parameter is `self` of the base type and whose body
+returns the predicate as written; the validation lowers to a call of it. A
+refinement no validation of the unit names lowers exactly as before (REFINE-016).
+
+```cpp
+using Positive = int; [[maybe_unused]] static inline bool __cppl_validate_1(int self) { return static_cast<bool>(self > 0); }
+
+int positive_or_one(int raw) {
+    if (__cppl_validate_1(raw)) {
+        Positive p = raw;
+        return p;
+    }
+    return 1;
+}
+```
+
+Because the predicate must have defined behavior for every value of the base
+type (RUNTIMECHECK-020), the test itself cannot have undefined behavior. The
 failure path is ordinary C++ and cannot construct the refined value: a crossing
 on it owes the predicate like any other and is refused (RUNTIMECHECK-007).
 
 ## C++ interoperability
 
-No C++ construct changes meaning. Templates are checked per specialization as
-before; a site in a specialization is reported at its location. The standard
-library is involved only through the existing sequence model: an element pushed
-into a `std::vector<Refined>` local on a checked path is a site like a local.
+No C++ construct changes meaning: `validate` keeps any meaning the unit gives
+it. Templates are checked per specialization as before; a site in a
+specialization is reported at its location. The standard library is involved
+only through the existing sequence model: an element pushed into a
+`std::vector<Refined>` local after a validation is a crossing like a local.
 
 ## Safety
 
-Rejected, as before, and now pinned by `negative/runtime_validation.sh`: a
-crossing on the failure path, before the check, of another value than the one
-checked, after a write, verified call or unsafe block that gave the checked
-local a new version, through a disjunction's route or a failed conjunction's,
-after a loop's condition stopped holding, and with an off-by-one check.
-
-The new behavior can only report a crossing as a site that is not one (when
-automation cannot prove the unguarded membership). It cannot hide a site: a
-crossing is removed from the list only by kernel-accepted evidence.
+Refused, and pinned by `negative/runtime_validation.sh`: a crossing on a
+validation's failure path, after a write gave the validated local a new
+version, of another value than the one validated, into a stronger refinement
+than the one validated, or on a disjunction's route where the validation
+failed; a validation outside a verified body, in a contract or loop clause, in
+an unsafe block, naming no refinement, a qualified name or an indexed
+refinement, or of a refinement with a formal or partially defined predicate or a
+refined base type. The ordinary-condition twins -- a crossing on the failure path, before the
+check, of another value, under too weak a check, after a write, verified call
+or unsafe block, through a disjunction's route or a failed conjunction's, after
+a loop's condition stopped holding -- are refused as before.
 
 ## Trust impact
 
-No kernel rule, axiom or trusted assumption. The classification is reporting
-TCB (TRUST.md TCB-REPORT-006): its failure mode that matters is omitting a site,
-which requires the kernel to accept evidence for a proposition that is false or
-that differs from the crossing's membership. The unguarded proposition is built
-by the same correspondence-layer code that builds the crossing's obligation,
-leaving out the runtime conditions, so the correspondence TCB grows by that
-omission (`compiler/obligations/src/contracts.cpp`, `Conditions::close`,
-`Conditions::cross`, `crossing`), the attribution fixed point
-(`compiler/obligations/src/trust.cpp`) and the classifier
-(`compiler/automation/src/evidence.cpp` `classify_crossings`, whose own verdict
-is the kernel's). TRUST.md §26.3 records the delta.
+No kernel rule, axiom or trusted assumption. Correspondence TCB: the
+validator's lowering and the site's call of it, recomputed by the erasure
+checker (`compiler/frontend/src/projection.cpp` `canonical_lowering`,
+`lowered_validation`; `compiler/erasure/src/erase.cpp`), and the validation's
+postcondition, which states over the value tested the predicate the validator
+evaluates (`compiler/obligations/src/contracts.cpp` `validation_test`).
+Reporting TCB: the recognizer's record of every site
+(`compiler/frontend/src/recognizer.cpp`) and the attribution fixed point
+(`compiler/obligations/src/trust.cpp`). TRUST.md §26.3 records the delta
+(TCB-RUNTIMECHK-005, TCB-RUNTIMECHK-006).
 
-Across units, the verification interface gains a `runtime` dependency category
-(format version 3) that takes part in the entry's result identity, so a record
-with a site edited away no longer matches a record proven through it
-(TUBOUND-009). Interface provenance remains unauthenticated (TCB-XTU-010): an
-edit of a unit's own record with its checksum recomputed is not detected, as for
-every other category. The declared verification-semantics version is raised.
+Across units, the verification interface carries a `runtime` dependency
+category (format version 3) that takes part in the entry's result identity, so
+a record with a site edited away no longer matches a record proven through it
+(TUBOUND-009). Interface provenance remains unauthenticated (TCB-XTU-010). The
+declared verification-semantics version is `cppl-verification-3`, so an
+interface written under the classifying design is refused.
 
 ## Erasure
 
-Nothing new is erased and nothing new is kept. The fixture
-`tests/fixtures/runtime_validation.cpp` and its hand erasure compile to
-identical assembly at `-O0` and `-O2` in c++17, c++20 and c++23.
+The validation is kept, lowered to a call of the validator; nothing else new is
+kept or erased. The fixture `tests/fixtures/runtime_validation.cpp` and its hand
+erasure compile to identical assembly at `-O0` and `-O2` in c++17, c++20 and
+c++23.
 
 ## Diagnostics
 
 A refused crossing keeps its existing diagnostic ("this value is not shown to
 satisfy refinement type 'Positive'", or the call precondition or return path
-that owes it). The trust report adds:
+that owes it). A misplaced or malformed validation is refused by name ("a
+validation expression is checked only in the body of a verified function", "a
+loop clause states a proposition, and a validation expression is runtime
+code", "'Count' does not name a refinement type this translation unit
+declares"). The trust report adds:
 
 ```text
   relying on runtime checks: N               (per claim kind)
 Runtime-check-dependent claims: N
   contract of f (file:line), identity ...
-    rests on the runtime check of Positive (file:line:col), in its own body
+    rests on the validation of Positive (file:line:col), in its own body
 Runtime validation sites:    N
-  RUNTIME-CHECKED:           file:line:col, a value enters Positive, where (self > 0), in verified function f
+  RUNTIME-CHECKED:           file:line:col, validates a value against Positive, where (self > 0), in verified function f
 ```
 
 ## Alternatives considered
 
-- *Classify syntactically: every crossing under a condition is a site.* Simple
-  and conservative, but it reports literals and precondition-bounded values as
-  runtime-checked, which makes the list useless for audit.
-- *Try each condition separately to find the one the crossing needed.* More
-  informative, exponential in the worst case, and not needed for soundness.
-- *Report a claim resting on a site as not assumption-free.* Rejected: it would
-  conflate `RUNTIME-CHECKED` with `TRUSTED`, which INTERACT-023 keeps distinct.
-- *An explicit validation construct.* Rejected by RUNTIMECHECK-001 and
-  ERASE-013; C++ control flow already is the validation.
+- *Classify crossings: a crossing under a condition is a site unless it can be
+  re-proven without the condition.* The first design. Rejected: a proof from
+  path facts is static proof, and calling it runtime-checked misstates what was
+  established; the list depended on the automation; and the reporting TCB grew
+  by the classifier and the condition bookkeeping of both body walkers.
+- *Classify syntactically: every crossing under a condition is a site.*
+  Rejected for the same reason, and it reports literals and precondition-bounded
+  values as runtime-checked.
+- *Turn an unproven crossing into an inserted check.* Rejected by
+  RUNTIMECHECK-013: failure to prove is refused, never repaired at run time.
+- *A validation library.* Rejected by RUNTIMECHECK-001 and ERASE-013: the
+  validator is lowered from the declaration, per unit, and only when named.
 
 ## Drawbacks
 
-Each checked crossing costs one more automation attempt. A crossing established
-statically by reasoning the automation cannot reproduce without the check is
-reported as a site.
+`validate` is a new contextual word; a unit using it for anything else loses
+validations (with a warning), not its meaning. Each refinement a unit validates
+gains one inline function in the runtime text.
 
 ## Testing strategy
 
-- Positive and runtime: `tests/fixtures/runtime_validation.cpp`, run on valid,
-  invalid and extreme input (`e2e/runtime_validation.sh`).
-- Negative: 14 refused twins in `tests/fixtures/negative/runtime_check_*.cpp`
-  (`negative/runtime_validation.sh`).
-- Reporting: the full site list and claim list compared whole; static crossings
-  under a check pinned absent.
-- Erasure: identical assembly against the hand erasure.
+- Positive and runtime: `tests/fixtures/runtime_validation.cpp`, path-fact
+  crossings pinned as no sites, validations in conditions, `&&`, `!`, a `bool`
+  local, a loop condition and after a revalidation, run on valid, invalid and
+  extreme input (`e2e/runtime_validation.sh`).
+- Negative: the refused twins in `tests/fixtures/negative/runtime_check_*.cpp`
+  and `validation_*.cpp` (`negative/runtime_validation.sh`).
+- Reporting: the full site list and claim list compared whole.
+- Erasure: the validator and every call of it pinned in the runtime text, and
+  identical assembly against the hand erasure.
 - Cross-unit: `tests/fixtures/runtime_validation_cross_tu/`, three units, and a
   record with its site edited away refused beside one proven through it.
-- Unit: `tests/unit/trust_closure_test.cpp` (propagation, verdicts, faults),
+- Unit: `tests/unit/trust_closure_test.cpp` (propagation, faults),
   `tests/unit/interface_test.cpp` (format, identity, refusals).
-- Mutation: `scripts/test-mutations.sh` breaks the classifier, the guard
-  bookkeeping of both body walkers, the propagation and the interface identity.
+- Mutation: `scripts/test-mutations.sh` makes the validation fact
+  unconditional, flips its polarity, drops a site, lets a partially defined
+  predicate be validated, lets a validation stand in a loop clause, and breaks
+  the propagation and the interface identity.
 
 ## Compatibility
 
-Interfaces of format version 2 are refused and must be rebuilt. No C++L or C++
-source changes meaning.
+Interfaces of format version 2, and of version 3 under verification semantics
+`cppl-verification-2`, are refused and must be rebuilt. A unit declaring
+`validate` keeps its C++ meaning.
 
 ## Unresolved questions
 
-- A machine-readable report form (owned with the rest of the report machinery).
-- Naming the specific condition a site rested on, rather than the site alone.
+- Validating indexed refinements, whose validator would take the indices as
+  parameters, and layered refinements, whose validator would test the base's
+  predicate too.

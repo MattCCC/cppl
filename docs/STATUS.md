@@ -895,7 +895,7 @@ the function is refused (`SPEC.md` TU-003).
 | --------------------------------------- | ------------- |
 | Predicate refinements                   | `PROTOTYPE`   |
 | Static refinement construction          | `PROTOTYPE`   |
-| Runtime checked refinement construction | `PARTIAL`     |
+| Runtime checked refinement construction | `IMPLEMENTED` |
 | Refinement elimination                  | `PROTOTYPE`   |
 | Refinement subtyping                    | `PROTOTYPE`   |
 | Indexed refinements                     | `PROTOTYPE`   |
@@ -910,36 +910,43 @@ closed under the path conditions where the value enters, so a branch fact discha
 it. Subtyping is the implication between predicates and carries no runtime check in
 either direction (`SPEC.md` 17.4).
 
-Runtime-checked refinement construction is `PARTIAL` (`SPEC.md` 28,
-RUNTIMECHECK-001 to RUNTIMECHECK-017, RFC 0021). An unknown runtime value enters
-a refined type through ordinary C++: a condition the program evaluates and a
-crossing on the path where it held, in every crossing form a verified body has
--- a local, a member, an element, an element pushed into a refined `vector`
-local, a refined result, a verified callee's refined parameter, a call's
-post-state. The crossing owes its predicate under its whole path as before, so
-the failure path, a check made too late, too weak or of another value, and a
-check a write, call or unsafe block made stale are all refused
-(`negative_runtime_validation`, 14 refused twins). What is new is that each
-crossing a runtime condition selects is stated again without its path's runtime
-conditions, and only where the kernel accepts evidence for that is it
-established statically; every other is a runtime validation site, listed
-`RUNTIME-CHECKED` in the trust report with its location, refinement, predicate
-and function, and every claim resting on one -- in its own body, through verified
-calls to a fixed point, or through an imported contract -- names it. Such a
-claim stays `PROVEN` and is not reported as resting on an assumption: every
-execution reaching the site passed its check, which erasure keeps. A
-verification interface records sites as a category of their own (format 3),
-part of the record's result identity. `e2e_runtime_validation` pins the whole
-site and claim lists, the program's output on valid, invalid and extreme input,
-identical assembly against the program erased by hand at `-O0` and `-O2` in
-three standards, and three units carrying a site across two interfaces. It is
-`PARTIAL` because a checked helper returning `bool` (RUNTIMECHECK-006) is not
-proven by the current automation -- its contract relates a Boolean result to a
-predicate by a case on the result, which no strategy proposes -- so such a
-program is refused, never accepted; and because the classification may report
-a crossing the automation cannot establish without its check as a site, which
-errs only toward the weaker report. Both the text report and the JSON document
-list every site (Unsafe and trusted boundary status).
+Runtime-checked refinement construction is `IMPLEMENTED` (`SPEC.md` 28,
+RUNTIMECHECK-001 to RUNTIMECHECK-021, WORD-013, RFC 0021). An unknown runtime
+value comes to satisfy a refinement in one of two ways, kept apart. An ordinary
+C++ condition selects a path, and a crossing on it is proven from the path's
+facts: that is static proof, `PROVEN`, with no site and no runtime code of
+C++L's (RUNTIMECHECK-010) -- in every crossing form a verified body has, a
+local, a member, an element, an element pushed into a refined `vector` local, a
+refined result, a verified callee's refined parameter, a call's post-state, and
+through a checked helper returning `bool` whose contract relates its result to
+the predicate (RUNTIMECHECK-006; a verified call a condition makes has its
+postcondition supposed where it is made). A validation expression,
+`validate<R>(e)`, asks the program to test the value against `R`'s predicate:
+it lowers to a validator the refinement's declaration lowers to beside its
+alias, erasure keeps it, and what its success establishes is `RUNTIME-CHECKED`
+at that site (RUNTIMECHECK-011 to RUNTIMECHECK-021). Every crossing owes its
+predicate under its whole path, validations passed included, and one the kernel
+does not accept is refused, never made a site (RUNTIMECHECK-013): the failure
+path, a check or validation too late, too weak or of another value, one a
+write, call or unsafe block made stale, a disjunction's route, and a validation
+outside a verified body, in a contract or loop clause, in an unsafe block, of an
+unknown, indexed or layered refinement or of a predicate that is formal or only
+partially defined (`negative_runtime_validation`). The trust report lists each
+site with its location, refinement, predicate and function, and every claim
+resting on one -- in its own body, through verified calls to a fixed point, or
+through an imported contract -- names it. Such a claim stays `PROVEN` and is not
+reported as resting on an assumption; that the executable performs each
+validation as its lowering states is correspondence TCB (`TRUST.md`
+TCB-RUNTIMECHK-006). A verification interface records sites as a category of
+their own (format 3), part of the record's result identity, under verification
+semantics `cppl-verification-3`. `e2e_runtime_validation` pins the whole site
+and claim lists, that no path-fact crossing is a site, the program's output on
+valid, invalid and extreme input, the validator and each call of it in the
+runtime text, identical assembly against the program erased by hand at `-O0`
+and `-O2` in three standards, and three units carrying a site across two
+interfaces. Validating an indexed refinement, or one whose base type is itself
+a refinement, is refused, not supported (RFC 0021, unresolved questions). Both the text report and the JSON document list every site (Unsafe
+and trusted boundary status).
 
 Scalar reference parameters (`T&`, `const T&`, `T&&`), local references to modeled
 parameters, and verified void functions now use storage versions and post-state
@@ -1893,18 +1900,20 @@ C++L does not intend to introduce a mandatory theorem runtime.
 | Runtime theorem checker          | `NOT PLANNED` |
 | Mandatory C++L garbage collector | `NOT PLANNED` |
 | Mandatory alternate runtime      | `NOT PLANNED` |
-| Runtime refinement validation    | `PARTIAL`     |
+| Runtime refinement validation    | `IMPLEMENTED` |
 | Ordinary C++ execution           | `SPECIFIED`   |
 | Clang/LLVM native output         | `SPECIFIED`   |
 
 Proofs should normally disappear before runtime.
 
-Runtime refinement validation is ordinary C++ and nothing else: the program's
-own `if`, loop condition or conditional operator is the check, erasure keeps it
-byte for byte, and no validator, library or hidden check is added
-(`SPEC.md` RUNTIMECHECK-001, RUNTIMECHECK-009, ERASE-012, ERASE-013). Which
-crossings rest on a check is reported (Refinement status); it is `PARTIAL` for
-the reasons given there.
+Runtime refinement validation is ordinary C++ and nothing else. A condition the
+program writes is kept byte for byte, and a crossing it selects is proven, not
+checked. A validation expression the program writes lowers to a call of a
+validator its refinement's declaration lowers to, in the same translation unit,
+and is kept; no library, runtime support or check the program did not request
+is added (`SPEC.md` RUNTIMECHECK-001, RUNTIMECHECK-009, RUNTIMECHECK-021,
+ERASE-012, ERASE-013). Which claims rest on a validation is reported (Refinement
+status).
 
 ---
 
