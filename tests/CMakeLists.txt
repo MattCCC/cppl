@@ -506,6 +506,8 @@ cppl_add_script_test(negative_broken_implementation negative/broken_implementati
 cppl_add_script_test(negative_unproven_dependencies negative/unproven_dependencies.sh)
 cppl_add_script_test(negative_written_proofs negative/written_proofs.sh)
 cppl_add_script_test(negative_refused_declarations negative/refused_declarations.sh)
+# Every accepted fixture has a refused twin, the same program with one thing false.
+cppl_add_script_test(negative_refused_twins negative/refused_twins.sh)
 cppl_add_script_test(negative_verified_functions negative/verified_functions.sh)
 cppl_add_script_test(negative_verified_calls negative/verified_calls.sh)
 cppl_add_script_test(negative_verified_paths negative/verified_paths.sh)

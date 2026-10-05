@@ -1644,6 +1644,15 @@ specification adds is refused until it is classified. `PARTIAL` above is the
 share of Annex X verified, not a weakness of the matrix: widening it is a later
 RFC.
 
+The rest of the test fixtures are held to the same standard. Every fixture the
+compiler accepts has a refused twin, the same program with one thing false,
+listed in `tests/fixtures/negative/twins/manifest.tsv` and checked by
+`negative_refused_twins`: 51 are written out there and compiled beside their
+fixture, units they import included; 45 are refused fixtures written out before
+and run by the negative script that owns them; eight fixtures are exempt, each
+with its reason, because they state no claim (ordinary C++ clients, tampered
+erasures, a C++ type error). A fixture added without a row fails the test.
+
 ---
 
 # Unsafe and trusted boundary status

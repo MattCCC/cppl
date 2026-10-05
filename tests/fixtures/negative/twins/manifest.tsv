@@ -1,0 +1,106 @@
+# A refused twin for every accepted fixture (tests/negative/refused_twins.sh).
+# kind	fixture	refused counterpart	diagnostic, script or reason	imports	flags
+twin	case_split_as_cpp_name.cpp	negative/twins/case_split_as_cpp_name.cpp	error \[proof-failure\]: verified function 'as_cpp' does not satisfy its contract	-	-
+twin	conditional_proof.cpp	negative/twins/conditional_proof.cpp	error \[proof-failure\]: 'premise' has no matching premise to stand for	-	-
+twin	contextual_omission_words.cpp	negative/twins/contextual_omission_words.cpp	error \[kernel-rejection\]: proof 'named_like_the_words_holds' does not establish law 'named_like_the_	-	-
+twin	contradiction_as_a_cpp_name.cpp	negative/twins/contradiction_as_a_cpp_name.cpp	error \[proof-failure\]: verified function 'keeps' does not satisfy its contract	-	-
+twin	contradiction_named_by_a_header.cpp	negative/twins/contradiction_named_by_a_header.cpp	error \[proof-failure\]: verified function 'keeps' does not satisfy its contract	-	-
+twin	cross_feature/client.cpp	negative/twins/cross_feature_client.cpp	error \[kernel-rejection\]: return path 'moved_twice path [0-9]+' does not satisfy its contract	cross_feature/buffers.cpp	-
+twin	cross_feature/effects.cpp	negative/twins/cross_feature_effects.cpp	error \[kernel-rejection\]: this value is not shown to satisfy refinement type 'Small'	-	-
+twin	cross_feature/effects_client.cpp	negative/twins/cross_feature_effects_client.cpp	error \[kernel-rejection\]: return path 'through_reference path [0-9]+' does not satisfy its contract	cross_feature/effects.cpp	-
+twin	cross_tu/closure_client.cpp	negative/twins/cross_tu_closure_client.cpp	error \[kernel-rejection\]: return path 'through_plain path [0-9]+' does not satisfy its contract	cross_tu/closure.cpp,cross_tu/closure_middle.cpp	-
+twin	cross_tu/closure_middle.cpp	negative/twins/cross_tu_closure_middle.cpp	error \[kernel-rejection\]: return path 'relayed_plain path [0-9]+' does not satisfy its contract	cross_tu/closure.cpp	-
+twin	cross_tu/rival.cpp	negative/twins/cross_tu_rival.cpp	error \[proof-failure\]: return path 'clamp[0-9]+ path [0-9]+' does not satisfy its contract	-	-
+twin	cross_tu/sequences.cpp	negative/twins/cross_tu_sequences.cpp	error \[kernel-rejection\]: return path 'grown_copy path [0-9]+' does not satisfy its contract	-	-
+twin	cross_tu/sequences_client.cpp	negative/twins/cross_tu_sequences_client.cpp	error \[kernel-rejection\]: return path 'through_listed path [0-9]+' does not satisfy its contract	cross_tu/sequences.cpp,cross_tu/sequences_middle.cpp	-
+twin	cross_tu/sequences_middle.cpp	negative/twins/cross_tu_sequences_middle.cpp	error \[kernel-rejection\]: return path 'listed_in_the_middle path [0-9]+' does not satisfy its contract	cross_tu/sequences.cpp	-
+twin	disjunction.cpp	negative/twins/disjunction.cpp	error \[kernel-rejection\]: law 'bounded_by_cases' is not proven	-	-
+twin	equivalence/abi_library.cpp	negative/twins/equivalence_abi_library.cpp	error \[kernel-rejection\]: law 'twice_is_a_sum' is not proven	-	-
+twin	equivalence/conditional_proof.cpp	negative/twins/equivalence_conditional_proof.cpp	error \[proof-failure\]: 'premise' has no matching premise to stand for	-	-
+twin	equivalence/contextual_words.cpp	negative/twins/equivalence_contextual_words.cpp	error \[kernel-rejection\]: proof 'identity_holds_proof' does not establish law 'identity_holds'	-	-
+twin	equivalence/contracts.cpp	negative/twins/equivalence_contracts.cpp	error \[proof-failure\]: verified function 'successor' does not satisfy its contract	-	-
+twin	equivalence/disjunction.cpp	negative/twins/equivalence_disjunction.cpp	error \[kernel-rejection\]: proof 'from_the_left_holds' does not establish law 'from_the_left'	-	-
+twin	equivalence/formal_equality.cpp	negative/twins/equivalence_formal_equality.cpp	error \[kernel-rejection\]: proof 'explicit_identity_holds' does not establish law 'explicit_identity'	-	-
+twin	equivalence/ghost_state.cpp	negative/twins/equivalence_ghost_state.cpp	error \[kernel-rejection\]: return path 'count path [0-9]+' does not satisfy its contract	-	-
+twin	equivalence/instantiated_proof.cpp	negative/twins/equivalence_instantiated_proof.cpp	error \[proof-failure\]: 'identity_general' does not prove what proof 'identity_at_[0-9]+' claims	-	-
+twin	equivalence/logical_composition.cpp	negative/twins/equivalence_logical_composition.cpp	error \[kernel-rejection\]: proof 'formal_pair' does not establish what it claims	-	-
+twin	equivalence/path_splits.cpp	negative/twins/equivalence_path_splits.cpp	error \[kernel-rejection\]: return path 'settled path [0-9]+' does not satisfy its contract	-	-
+twin	equivalence/proofs.cpp	negative/twins/equivalence_proofs.cpp	error \[proof-failure\]: 'identity_returns_input_holds' does not prove what proof 'identity_of_seven_h	-	-
+twin	equivalence/providers.cpp	negative/twins/equivalence_providers.cpp	error \[kernel-rejection\]: proof 'variant_alternatives' does not establish what it claims	-	-
+twin	equivalence/quantified_propositions.cpp	negative/twins/equivalence_quantified_propositions.cpp	error \[kernel-rejection\]: proof 'identity_everywhere_holds' does not establish law 'identity_everywh	-	-
+twin	equivalence/refinements.cpp	negative/twins/equivalence_refinements.cpp	error \[proof-failure\]: verified function 'fifty' does not satisfy its contract	-	-
+twin	equivalence/rewritten_proof.cpp	negative/twins/equivalence_rewritten_proof.cpp	error \[kernel-rejection\]: proof 'identity_at_zero_holds' does not establish law 'identity_at_zero'	-	-
+twin	equivalence/termination.cpp	negative/twins/equivalence_termination.cpp	error \[kernel-rejection\]: return path 'even_steps path [0-9]+' does not satisfy its contract	-	-
+twin	equivalence/unsafe_boundaries.cpp	negative/twins/equivalence_unsafe_boundaries.cpp	error \[kernel-rejection\]: return path 'clamped_reading path [0-9]+' does not satisfy its contract	-	-
+twin	erasure_lines.cpp	negative/twins/erasure_lines.cpp	error \[kernel-rejection\]: law 'identity_holds' is not proven	-	-
+twin	formal_equality.cpp	negative/twins/formal_equality.cpp	error \[proof-failure\]: verified function 'keep' does not satisfy its contract	-	-
+twin	header_law_main.cpp	negative/twins/header_law_main.cpp	error \[kernel-rejection\]: law 'scale_preserves_amount' is not proven	-	-DVALUE=41
+twin	instantiated_proof.cpp	negative/twins/instantiated_proof.cpp	error \[proof-failure\]: 'identity_general' does not prove what proof 'identity_at_[0-9]+' claims	-	-
+twin	logical_composition.cpp	negative/twins/logical_composition.cpp	error \[kernel-rejection\]: law 'resolved_equivalence' is not proven	-	-
+twin	quantified_propositions.cpp	negative/twins/quantified_propositions.cpp	error \[kernel-rejection\]: proof 'identity_everywhere_holds' does not establish law 'identity_everywh	-	-
+twin	refinement_types.cpp	negative/twins/refinement_types.cpp	error \[kernel-rejection\]: this value is not shown to satisfy refinement type 'Index'	-	-
+twin	rewritten_proof.cpp	negative/twins/rewritten_proof.cpp	error \[kernel-rejection\]: proof 'identity_at_zero_holds' does not establish law 'identity_at_zero'	-	-
+twin	runtime_validation_cross_tu/consume.cpp	negative/twins/runtime_validation_cross_tu_consume.cpp	error \[kernel-rejection\]: return path 'through_interface path [0-9]+' does not satisfy its contract	runtime_validation_cross_tu/validate.cpp	-
+twin	runtime_validation_cross_tu/relay.cpp	negative/twins/runtime_validation_cross_tu_relay.cpp	error \[kernel-rejection\]: return path 'relayed path [0-9]+' does not satisfy its contract	runtime_validation_cross_tu/validate.cpp,runtime_validation_cross_tu/consume.cpp	-
+twin	runtime_validation_cross_tu/validate.cpp	negative/twins/runtime_validation_cross_tu_validate.cpp	error \[kernel-rejection\]: this value is not shown to satisfy refinement type 'Positive'	-	-
+twin	verified_arithmetic.cpp	negative/twins/verified_arithmetic.cpp	error \[proof-failure\]: return path 'bounded_difference path [0-9]+' does not satisfy its contract	-	-
+twin	verified_calls.cpp	negative/twins/verified_calls.cpp	error \[proof-failure\]: call-site precondition for 'two_from_zero -> bump_one' is not proven	-	-
+twin	verified_functions.cpp	negative/twins/verified_functions.cpp	error \[proof-failure\]: verified function 'equal_inputs' does not satisfy its contract	-	-
+twin	verified_locals.cpp	negative/twins/verified_locals.cpp	error \[proof-failure\]: return path 'clamped_guard path [0-9]+' does not satisfy its contract	-	-
+twin	verified_loops.cpp	negative/twins/verified_loops.cpp	error \[kernel-rejection\]: call-site precondition for 'walk_to_ten -> bounded_step' is not proven	-	-
+twin	verified_paths.cpp	negative/twins/verified_paths.cpp	error \[proof-failure\]: call-site precondition for 'false_guard_evidence -> above' is not proven	-	-
+twin	verified_storage.cpp	negative/twins/verified_storage.cpp	error \[kernel-rejection\]: return path 'by_value_does_not_mutate path [0-9]+' does not satisfy its contrac	-	-
+twin	written_proof.cpp	negative/twins/written_proof.cpp	error \[kernel-rejection\]: proof 'identity_is_its_own_inverse_holds' does not establish law 'identity	-	-
+covered	case_split.cpp	negative/split_after_call.cpp	negative/case_splits.sh	-	-
+covered	container_crossings.cpp	negative/capability_non_null.cpp	negative/containers.sh	-	-
+covered	containers.cpp	negative/container_array_out_of_bounds.cpp	negative/containers.sh	-	-
+covered	contradiction.cpp	negative/contradiction_structured_goal_satisfiable.cpp	negative/contradictions.sh	-	-
+covered	cross_feature/buffers.cpp	negative/cross_feature_container_member.cpp	negative/cross_feature.sh	-	-
+covered	cross_feature/views.cpp	negative/cross_feature_alias_view_after_call.cpp	negative/cross_feature.sh	-	-
+covered	cross_tu/closure.cpp	negative/memory_law_untrusted.cpp	negative/trusted_dependencies.sh	-	-
+covered	cross_tu/identity.cpp	negative/xtu_measure_unrequested.cpp	negative/cross_tu.sh	-	-
+covered	cross_tu/library.cpp	negative/xtu_conflicting_redeclaration.cpp	negative/cross_tu.sh	-	-
+covered	cross_tu/ranked.cpp	negative/xtu_changed_pure_definition.cpp	negative/cross_tu.sh	-	-
+covered	enum_cases.cpp	negative/enum_label_of_another_instantiation.cpp	negative/case_providers.sh	-	-
+covered	equivalence/containers.cpp	negative/container_array_out_of_bounds.cpp	negative/containers.sh	-	-
+covered	equivalence/contradiction.cpp	negative/contradiction_structured_goal_satisfiable.cpp	negative/contradictions.sh	-	-
+covered	equivalence/induction.cpp	negative/cyclic_proofs.cpp	negative/written_proofs.sh	-	-
+covered	equivalence/methods.cpp	negative/methods_call_through_alias_member.cpp	negative/verified_methods.sh	-	-
+covered	equivalence/omitted_case.cpp	negative/rejected_omissions.cpp	negative/contradictions.sh	-	-
+covered	impossible_path.cpp	negative/impossible_path_reachable.cpp	negative/impossible_paths.sh	-	-
+covered	induction.cpp	negative/cyclic_proofs.cpp	negative/written_proofs.sh	-	-
+covered	integration/ledger.cpp	negative/integration_debit_omitted.cpp	negative/integration_ledger.sh	-	-
+covered	integration/text.cpp	negative/integration_text_changed.cpp	negative/integration_ledger.sh	-	-
+covered	memory_capabilities.cpp	negative/memory_capability_empty_region.cpp	negative/memory_capabilities.sh	-	-
+covered	omitted_case.cpp	negative/rejected_omissions.cpp	negative/contradictions.sh	-	-
+covered	post_state_calls.cpp	negative/post_state_after_returned_call.cpp	negative/verified_storage.sh	-	-
+covered	runtime_validation.cpp	negative/runtime_check_failure_path.cpp	negative/runtime_validation.sh	-	-
+covered	signed_arithmetic.cpp	negative/arith_call_site_precondition.cpp	negative/signed_arithmetic.sh	-	-
+covered	structural_cases.cpp	negative/cases_on_product.cpp	negative/case_providers.sh	-	-
+covered	trust_closure.cpp	negative/memory_law_untrusted.cpp	negative/trusted_dependencies.sh	-	-
+covered	untracked_members.cpp	negative/member_numbering_gap.cpp	negative/verified_storage.sh	-	-
+covered	verified_methods.cpp	negative/methods_call_through_alias_member.cpp	negative/verified_methods.sh	-	-
+covered	termination.cpp	negative/termination_false_base_case.cpp	negative/termination.sh	-	-
+covered	unsafe_boundary.cpp	negative/unsafe_false_postcondition.cpp	negative/unsafe_boundary.sh	-	-
+covered	ghost_state.cpp	negative/ghost_false_postcondition.cpp	negative/ghost_state.sh	-	-
+covered	methods_scalar_disjoint.cpp	negative/methods_overlapping_members.cpp	negative/verified_methods.sh	-	-
+covered	methods_cross_tu/counter.cpp	negative/methods_cross_tu_precondition.cpp	negative/verified_methods.sh	-	-
+covered	methods_cross_tu/client.cpp	negative/methods_cross_tu_stale.cpp	negative/verified_methods.sh	-	-
+covered	identity_law.cpp	broken_identity.cpp	negative/broken_implementation.sh	-	-
+covered	true_arithmetic_law.cpp	false_law.cpp	e2e/invalid_law.sh	-	-
+covered	cross_tu/client.cpp	negative/xtu_false_postcondition.cpp	negative/cross_tu.sh	-	-
+covered	cross_tu/middle.cpp	negative/xtu_middle_only.cpp	negative/cross_tu.sh	-	-
+covered	cross_tu/identity_client.cpp	negative/xtu_transitive_differs.cpp	negative/cross_tu.sh	-	-
+covered	integration/statement.cpp	negative/integration_false_room.cpp	negative/integration_ledger.sh	-	-
+covered	expected_cases.cpp	negative/expected_error_bound_as_value.cpp	negative/case_providers.sh	-	-
+refused	broken_identity.cpp	identity_law.cpp	negative/broken_implementation.sh	-	-
+refused	unmarked_law.cpp	identity_law.cpp	negative/unproven_dependencies.sh	-	-
+refused	false_law.cpp	true_arithmetic_law.cpp	e2e/invalid_law.sh	-	-
+exempt	hello.cpp	-	ordinary C++ with no C++L in it	-	-
+exempt	contextual_identifiers.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
+exempt	equivalence/abi_client.cpp	-	the ordinary C++ client of abi_library.cpp; it states no claim	-	-
+exempt	cppl_with_cpp_type_error.cpp	-	a C++ type error for the editor tests, refused by Clang before any claim is read	-	-
+exempt	equivalence/tampered/checked.cpp	-	an erasure altered to check at run time, which the erasure harness must tell apart; it states no claim	-	-
+exempt	equivalence/tampered/declared.cpp	-	an erasure altered in a declaration, which the erasure harness must tell apart; it states no claim	-	-
+exempt	equivalence/tampered/erased.cpp	-	the hand erasure the tampered variants are compared with; it states no claim	-	-
+exempt	equivalence/tampered/tagged.cpp	-	an erasure altered with a runtime tag, which the erasure harness must tell apart; it states no claim	-	-
