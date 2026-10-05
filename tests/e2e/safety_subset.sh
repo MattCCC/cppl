@@ -25,6 +25,9 @@ FIXTURES="$2"
 WORK="$3"
 SPEC="$FIXTURES/../../docs/SPEC.md"
 MANIFEST="$FIXTURES/subset/manifest.tsv"
+# shellcheck source=../support/parallel.sh
+source "$(dirname "$0")/../support/parallel.sh"
+
 
 mkdir -p "$WORK"
 run=$(mktemp -d "$WORK/safety-subset.XXXXXX")
@@ -65,10 +68,12 @@ compile() {
     "$CPPL" -std=c++23 -c "$1" -o "$run/$2.o" --cppl-trust-report > "$run/$2.report" 2> "$run/$2.err"
 }
 
-verified=0
-refused=0
-while IFS=$'\t' read -r id construct verdict fixture diagnostic; do
-    stem="${fixture%.cpp}"
+# row <id> <construct> <verdict> <fixture> <diagnostic>: the row's fixtures, as
+# the manifest classifies them. Each row is a case of its own, in files of its
+# own, so the rows are checked side by side (support/parallel.sh).
+row() {
+    local id="$1" construct="$2" verdict="$3" fixture="$4" diagnostic="$5"
+    local stem="${fixture%.cpp}"
     case "$verdict" in
         verified)
             if ! compile "$FIXTURES/subset/$fixture" "$stem"; then
@@ -80,10 +85,9 @@ while IFS=$'\t' read -r id construct verdict fixture diagnostic; do
             "$CPPL" -std=c++23 "$FIXTURES/subset/$fixture" -o "$run/$stem" 2> "$run/$stem.link.err" ||
                 fail "$id ($construct): subset/$fixture does not link"
             "$run/$stem" || fail "$id ($construct): subset/$fixture does not run as its main expects"
-            verified=$((verified + 1))
             ;;
         refused)
-            refused=$((refused + 1))
+            # Only its refused twin, below.
             ;;
         *)
             fail "$id ($construct): unknown verdict '$verdict'"
@@ -97,6 +101,18 @@ while IFS=$'\t' read -r id construct verdict fixture diagnostic; do
         cat "$run/$stem.refused.err" >&2
         fail "$id ($construct): negative/subset/$fixture is refused, but not with '$diagnostic'"
     fi
+}
+
+cases_begin "$run/cases"
+verified=0
+refused=0
+while IFS=$'\t' read -r id construct verdict fixture diagnostic; do
+    case "$verdict" in
+        verified) verified=$((verified + 1)) ;;
+        refused) refused=$((refused + 1)) ;;
+    esac
+    case_run row "$id" "$construct" "$verdict" "$fixture" "$diagnostic"
 done < <(rows)
+cases_end
 
 echo "safety subset: $verified constructs verified, $refused refused"
