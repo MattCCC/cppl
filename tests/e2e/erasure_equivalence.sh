@@ -43,9 +43,12 @@ group=core
 compared=0
 # shellcheck source=../support/equivalence.sh
 source "$(dirname "$0")/../support/equivalence.sh"
+# shellcheck source=../support/parallel.sh
+source "$(dirname "$0")/../support/parallel.sh"
 
 mkdir -p "$WORK"
 run=$(mktemp -d "$WORK/erasure-equivalence.XXXXXX")
+cases_begin "$run/cases"
 
 # The comparison is not vacuous. Programs that differ from an erased one only by
 # a hidden runtime check, or only by a hidden field, are told apart from it at
@@ -77,50 +80,61 @@ done
 # being recognized, and so stopped being erased at all, cannot pass unnoticed.
 # Each supported standard is compared, or those `standards` names for a fixture
 # that needs a later one.
+#
+# Each standard is compared as a case of its own, in files of its own, so the
+# comparisons run side by side (support/parallel.sh).
 standards='c++17 c++20 c++23'
 equivalent() {
     local fixture="$1" expected="$2"
     shift 2
-    local standard level line output
+    local standard
     [ "$group" = "$SELECTED" ] || return 0
     compared=$((compared + 1))
     for standard in $standards; do
-        local base="$run/$fixture-$standard"
-        "$CPPL" "-std=$standard" "$FIXTURES/$fixture.cpp" -o "$base.cppl" --cppl-trust-report \
-            "--cppl-emit-projection=$base.runtime.ii" > "$base.report"
-        for line in 'Unresolved obligations: +0' "$@"; do
-            if ! grep -Eq "^$line\$" "$base.report"; then
-                echo "$fixture ($standard) does not report '$line'" >&2
-                cat "$base.report" >&2
-                exit 1
-            fi
-        done
-        # Nothing generated for the analysis reaches the program.
-        if grep -q '__cppl_' "$base.runtime.ii"; then
-            echo "analysis scaffolding reached the runtime program of $fixture ($standard)" >&2
-            exit 1
-        fi
-        # The runtime program is the twin's text.
-        tokens "$base.runtime.tokens" "$CLANG" "$standard" "$base.runtime.ii"
-        tokens "$base.reference.tokens" "$CLANG" "$standard" "$FIXTURES/$fixture.reference.cpp"
-        same_text "$fixture ($standard)" "$base.runtime.tokens" "$base.reference.tokens"
+        case_run equivalent_in "$fixture" "$standard" "$expected" "$@"
+    done
+}
 
-        "$CLANG" "-std=$standard" "$FIXTURES/$fixture.reference.cpp" -o "$base.reference"
-        output=$("$base.cppl")
-        if [ "$output" != "$expected" ]; then
-            printf '%s (%s) printed\n%s\nexpected\n%s\n' "$fixture" "$standard" "$output" "$expected" >&2
+# equivalent_in <fixture> <standard> <expected output> <trust-report line>...
+equivalent_in() {
+    local fixture="$1" standard="$2" expected="$3"
+    shift 3
+    local level line output
+    local base="$run/$fixture-$standard"
+    "$CPPL" "-std=$standard" "$FIXTURES/$fixture.cpp" -o "$base.cppl" --cppl-trust-report \
+        "--cppl-emit-projection=$base.runtime.ii" > "$base.report"
+    for line in 'Unresolved obligations: +0' "$@"; do
+        if ! grep -Eq "^$line\$" "$base.report"; then
+            echo "$fixture ($standard) does not report '$line'" >&2
+            cat "$base.report" >&2
             exit 1
         fi
-        if [ "$("$base.reference")" != "$output" ]; then
-            echo "$fixture ($standard) and its reference behave differently" >&2
-            exit 1
-        fi
+    done
+    # Nothing generated for the analysis reaches the program.
+    if grep -q '__cppl_' "$base.runtime.ii"; then
+        echo "analysis scaffolding reached the runtime program of $fixture ($standard)" >&2
+        exit 1
+    fi
+    # The runtime program is the twin's text.
+    tokens "$base.runtime.tokens" "$CLANG" "$standard" "$base.runtime.ii"
+    tokens "$base.reference.tokens" "$CLANG" "$standard" "$FIXTURES/$fixture.reference.cpp"
+    same_text "$fixture ($standard)" "$base.runtime.tokens" "$base.reference.tokens"
 
-        for level in -O0 -O2; do
-            assembly "$base$level.cppl" "$CPPL" "-std=$standard" "$level" "$FIXTURES/$fixture.cpp"
-            assembly "$base$level.reference" "$CLANG" "-std=$standard" "$level" "$FIXTURES/$fixture.reference.cpp"
-            same_code "$fixture ($standard, $level)" "$base$level.cppl" "$base$level.reference"
-        done
+    "$CLANG" "-std=$standard" "$FIXTURES/$fixture.reference.cpp" -o "$base.reference"
+    output=$("$base.cppl")
+    if [ "$output" != "$expected" ]; then
+        printf '%s (%s) printed\n%s\nexpected\n%s\n' "$fixture" "$standard" "$output" "$expected" >&2
+        exit 1
+    fi
+    if [ "$("$base.reference")" != "$output" ]; then
+        echo "$fixture ($standard) and its reference behave differently" >&2
+        exit 1
+    fi
+
+    for level in -O0 -O2; do
+        assembly "$base$level.cppl" "$CPPL" "-std=$standard" "$level" "$FIXTURES/$fixture.cpp"
+        assembly "$base$level.reference" "$CLANG" "-std=$standard" "$level" "$FIXTURES/$fixture.reference.cpp"
+        same_code "$fixture ($standard, $level)" "$base$level.cppl" "$base$level.reference"
     done
 }
 
@@ -179,6 +193,8 @@ equivalent methods $'6 6 7 8 5 2 9\n6 0' \
 # the program defines exactly the symbols its erasure by hand defines. A member
 # function defined in its class is inline, which ELF marks `.weak` and Mach-O
 # marks `.globl`.
+# The comparisons of `methods` have to have ended before their files are read.
+cases_end
 for level in -O0; do
     [ "$SELECTED" = core ] || break
     base="$run/methods-c++20$level"
@@ -226,6 +242,7 @@ equivalent omitted_case '0' 'Laws proven: +5' 'Omitted cases proven: +8'
 equivalent quantified_propositions '40 1 3 2' 'Laws proven: +18' 'Proof declarations proven: +5' \
     'Function contracts proven: +4' 'Call preconditions proven: +1'
 equivalent rewritten_proof '41' 'Laws proven: +5'
+cases_end
 
 if [ "$compared" -eq 0 ]; then
     echo "the group $SELECTED compares no fixture" >&2
