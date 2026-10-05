@@ -1111,7 +1111,14 @@ bool may_write_through(CXType written) {
         return true;
     }
     const auto canonical = clang_getCanonicalType(written);
-    return canonical.kind == CXType_Pointer && clang_isConstQualifiedType(clang_getPointeeType(canonical)) == 0U;
+    if (canonical.kind == CXType_Pointer) {
+        return clang_isConstQualifiedType(clang_getPointeeType(canonical)) == 0U;
+    }
+    // A span of non-const elements designates storage the callee may write,
+    // as a pointer to non-const does, and nothing keeps that storage apart
+    // from what the caller reads by another name (STDMODEL-017).
+    return convert_type(canonical).representation.kind == source::RepresentationKind::Span &&
+           clang_isConstQualifiedType(clang_Type_getTemplateArgumentAsType(canonical, 0)) == 0U;
 }
 
 // Whether an element place of a sequence is still the place its subscript

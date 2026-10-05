@@ -565,6 +565,17 @@ verified unsigned x_span_param_passed_with_other_container(std::span<unsigned> s
 }
 
 CPP
+accepted x_view_write_keeps_local <<'CPP'
+verified unsigned x_view_write_keeps_local(std::span<unsigned> a)
+    expects (writable(a))
+    ensures (result == 3u)
+{
+    const unsigned kept = 3u;
+    fill(a);
+    return kept;
+}
+
+CPP
 check
 
 # --- Content invariants of a refined element type (STDMODEL-020, STDMODEL-027)

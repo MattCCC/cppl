@@ -1443,6 +1443,12 @@ Refusals left as they are, each fail-closed and each a completeness limit rather
 
 **What stays trusted.** This audit checks the layers between the kernel and the reports. It does not verify them: the Clang bridge, elaboration and obligation construction remain correspondence TCB (7 to 17), and only the kernel's checking judgment is mechanized (41).
 
+## 36.4 V1 closure audit
+
+Adversarial audits of the verified subset, run against the release candidate's compiler, each looking for a claim reported PROVEN that is false at runtime. Every defect below was reproduced by a program whose contract was reported PROVEN and whose run computed something else, and each is fixed with permanent regressions and a mutation entry that restores it and must be caught. None was in the kernel: each was in the correspondence layer, where the program's meaning is stated to the kernel (7 to 17).
+
+- **A call that may write through a span left other caller storage stale.** Only places formed from the span's own container or span parameter were made unknown after the call, although a span parameter, or a span over a container a reference designates, may view any storage the caller reads by another name: another span parameter, a reference parameter, a member of the object, a vector held by `const` reference. A contract stating the old value was PROVEN and false. A span of non-const elements handed to a call now makes unknown every place a pointer to non-const would (STDMODEL-017, VERIFIED-040). Regressions: `x_view_write_*` in `negative_sequence_boundaries`, accepted twin `x_view_write_keeps_local`; mutation entry `call-writable-span-havocs-pointees`.
+
 ---
 
 # 37. Strict assurance policies

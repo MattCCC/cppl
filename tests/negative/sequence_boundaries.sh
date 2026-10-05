@@ -947,6 +947,64 @@ verified unsigned x_span_param_passed_on(std::span<unsigned> s)
 }
 
 CPP
+# A callee that may write through a span it is handed may write any storage
+# that span views, and nothing keeps that storage apart from what the caller
+# reads by another name: another span parameter, a reference parameter, a
+# member of its object, a vector it holds by const reference (STDMODEL-017).
+# Accepted twin: `x_view_write_keeps_local`.
+refused x_view_write_other_span "return path 'x_view_write_other_span path" <<'CPP'
+verified unsigned x_view_write_other_span(std::span<unsigned> a, std::span<const unsigned> b)
+    expects (writable(a) && readable(b) && 0ul < b.size())
+    ensures (result == 0u)
+{
+    const unsigned before = b[0];
+    fill(a);
+    const unsigned after = b[0];
+    return after - before;
+}
+
+CPP
+refused x_view_write_reference_param "return path 'x_view_write_reference_param path" <<'CPP'
+verified unsigned x_view_write_reference_param(std::span<unsigned> a, const unsigned& x)
+    expects (writable(a))
+    ensures (result == 0u)
+{
+    const unsigned before = x;
+    fill(a);
+    const unsigned after = x;
+    return after - before;
+}
+
+CPP
+refused x_view_write_vector_reference "return path 'x_view_write_vector_reference path" <<'CPP'
+verified unsigned x_view_write_vector_reference(std::vector<unsigned>& wv, const std::vector<unsigned>& w)
+    ensures (result == 0u)
+{
+    if (0ul < w.size()) {
+        const unsigned before = w[0];
+        fill(wv);
+        const unsigned after = w[0];
+        return after - before;
+    }
+    return 0u;
+}
+
+CPP
+refused x_view_write_span_local_of_reference "return path 'x_view_write_span_local_of_reference path" <<'CPP'
+verified unsigned x_view_write_span_local_of_reference(std::vector<unsigned>& wv, const std::vector<unsigned>& w)
+    ensures (result == 0u)
+{
+    std::span<unsigned> s(wv);
+    if (0ul < w.size()) {
+        const unsigned before = w[0];
+        fill(s);
+        const unsigned after = w[0];
+        return after - before;
+    }
+    return 0u;
+}
+
+CPP
 check
 
 # --- Whatever the model leaves out is refused by name, never approximated (STDMODEL-010, STDMODEL-014, STDMODEL-019)

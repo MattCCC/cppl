@@ -6729,7 +6729,10 @@ write. A capability over zero elements designates no object: it neither requires
 establishes that its pointer is non-null, so the data pointer of an empty container is a valid
 argument for `n == 0`, and a callee learns nothing about its pointer from such a capability. A
 call that may write through a span or data pointer it is handed leaves every element of the
-container unknown afterwards, and its length unchanged. A call handed, besides such a span or
+container unknown afterwards, and its length unchanged; a span of non-const elements it is
+handed also leaves unknown every place a pointer to non-const it was handed could designate
+(VERIFIED-040), since nothing keeps the storage a span views apart from storage the caller reads
+by another name. A call handed, besides such a span or
 data pointer, an element of the same container by mutable reference is refused where it is
 made: the callee could write that element through either argument, and one storage written
 through two arguments of one call has no single post-state. For the same reason, a call handed
