@@ -5,6 +5,10 @@
 //
 // This header is a private implementation detail of cppl_driver.
 
+#include "cppl/artifact/interface.hpp"
+#include "cppl/driver/trust_report.hpp"
+
+#include <expected>
 #include <string>
 #include <vector>
 
@@ -24,5 +28,14 @@ namespace cppl::driver::detail {
 // which case the lines it would have answered say so.
 [[nodiscard]] int print_version(const std::string& clang, const std::vector<std::string>& arguments,
                                 const std::string& standard);
+
+// What a machine-readable trust report records of the build (TRUST.md Annex
+// C.1): the configuration a verification interface would be bound to, the
+// source this compiler was built from, and the first line the Clang driver
+// `clang` prints for `--version`, which compiled the runtime program. Fails
+// when that driver cannot be asked, rather than record a build it could not
+// identify.
+[[nodiscard]] std::expected<BuildRecord, std::string> build_record(const artifact::Configuration& configuration,
+                                                                   const std::string& clang);
 
 } // namespace cppl::driver::detail

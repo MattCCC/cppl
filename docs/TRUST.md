@@ -1362,6 +1362,8 @@ verification metadata identity
 
 A build-level report MUST aggregate without losing per-claim provenance. Counts alone are insufficient when trusted assumptions exist; each assumption must be enumerable.
 
+In this implementation one summary of a compile is rendered twice: as the text `--cppl-trust-report` prints, and as the JSON document `--cppl-emit-trust-report=<file>` writes for tools (`compiler/driver/src/trust_report.cpp`, `DEVELOPER_GUIDE.md` 12.2). One predicate decides in both whether a claim is assumption-free, so they cannot disagree, and `e2e_trust_report_json` checks every count and both claim lists of one against the other. The document records the build its claims were established by (Annex C.1), states of each claim whether its trusted closure is empty (Annex C.5) and what it rests on, each category apart, lists every trusted law, unsafe region and runtime validation site with its status, names no trusted solver or automation because there is none (Annex C.4), and says what is not analysed rather than counting it zero. It is written only once a compile has verified and produced its output, and a compile that does not verify removes one an earlier compile left at its path. Both renderers are reporting TCB (TCB-REPORT-006). Neither lists the proofs a claim uses, only the trusted laws, models, unsafe code, runtime checks and imported records they bring, and neither prints evidence identities (36.1).
+
 ---
 
 # 37. Strict assurance policies

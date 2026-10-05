@@ -99,6 +99,8 @@ implementation:
     - compiler/driver/src/pipeline.hpp
     - compiler/driver/src/pipeline.cpp
     - compiler/driver/src/driver.cpp
+    - compiler/driver/include/cppl/driver/trust_report.hpp
+    - compiler/driver/src/trust_report.cpp
 
 interactions:
   - written proofs using proofs that rest on trusted laws
@@ -129,9 +131,11 @@ tests:
     - tests/fixtures/negative/memory_proposition_proof.cpp
   unit:
     - tests/unit/trust_closure_test.cpp
+    - tests/unit/trust_report_test.cpp
     - tests/unit/verdict_test.cpp
   end_to_end:
     - tests/e2e/trust_closure.sh
+    - tests/e2e/trust_report_json.sh
     - tests/e2e/trusted_assumptions.sh
     - tests/e2e/omitted_case.sh
 
@@ -153,6 +157,9 @@ required_test_categories:
   - every fault in attribution fails closed
   - zero-trust report unchanged
   - deterministic report
+  - the JSON report agrees with the text report, count for count and claim for claim
+  - the JSON report survives any byte in a name and stays ASCII
+  - a compile that does not verify leaves no JSON report and withdraws a stale one
   - one assumption included into two translation units has one identity
   - a trusted law reached through another law's written proof
   - one trusted law named twice, or directly and through a proof, is one dependency
@@ -170,3 +177,4 @@ completion_requires:
   - omitted cases and impossible paths are never reported as each other
   - a unit with no trusted law reports none
   - trusted laws erase completely
+  - the JSON report states whether each claim's trusted closure is empty

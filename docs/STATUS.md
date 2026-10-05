@@ -926,9 +926,10 @@ three standards, and three units carrying a site across two interfaces. It is
 `PARTIAL` because a checked helper returning `bool` (RUNTIMECHECK-006) is not
 proven by the current automation -- its contract relates a Boolean result to a
 predicate by a case on the result, which no strategy proposes -- so such a
-program is refused, never accepted; because the classification may report a
-crossing the automation cannot establish without its check as a site, which
-errs only toward the weaker report; and because the report is text only.
+program is refused, never accepted; and because the classification may report
+a crossing the automation cannot establish without its check as a site, which
+errs only toward the weaker report. Both the text report and the JSON document
+list every site (Unsafe and trusted boundary status).
 
 Scalar reference parameters (`T&`, `const T&`, `T&&`), local references to modeled
 parameters, and verified void functions now use storage versions and post-state
@@ -1628,7 +1629,7 @@ same as C++ unsigned arithmetic.
 | Trust propagation                   | `IMPLEMENTED` |
 | Assumption closure                  | `IMPLEMENTED` |
 | Trust reporting (closures, categories) | `PARTIAL`  |
-| Trust report output (text only)     | `PARTIAL`     |
+| Trust report output (text and JSON) | `PARTIAL`     |
 
 The intended verification statuses are:
 
@@ -1682,8 +1683,18 @@ interface is not imported is refused, so no claim rests on an assumption this
 unit cannot list.
 
 Both trust-report rows are `PARTIAL` for the same reasons: unverified foreign
-boundaries are not analysed and are reported as such, and the report is text
-only, with no machine-readable form. Runtime validation sites are reported, each
+boundaries are not analysed and are reported as such, and neither form lists
+the proofs a claim uses or the identity of its evidence, only the trusted laws,
+library models, unsafe code, runtime checks and imported records they bring
+(`TRUST.md` 36.1, Annex C.2). The report is written as text by
+`--cppl-trust-report` and as a JSON document for tools by
+`--cppl-emit-trust-report=<file>` (`DEVELOPER_GUIDE.md` 12.2): one summary
+rendered twice, each claim classified by one predicate in both, and every count
+and claim list of one checked against the other (`e2e_trust_report_json`,
+`unit_trust_report_test`). The document states of each claim whether its trusted
+closure is empty (`TRUST.md` Annex C.5), records the build, and is written only
+once a compile has verified; a compile that does not verify removes one an
+earlier compile left at its path. Runtime validation sites are reported, each
 `RUNTIME-CHECKED` with the claims resting on it (`SPEC.md` RUNTIMECHECK-013,
 RUNTIMECHECK-014), and cross units in their own interface category.
 
@@ -1946,9 +1957,9 @@ subcommand forms above are not implemented. The report counts partial-
 correctness contracts and loop-invariant obligations separately, lists every
 proven claim with the content identity of what it states, apart by whether it
 rests on trusted laws and, if so, with each law it rests on, and lists every
-trusted law with its identity and the ones nothing rests on. It is text only:
-there is no machine-readable form yet, and it prints no evidence hashes
-(`TRUST.md` 36.1).
+trusted law with its identity and the ones nothing rests on.
+`--cppl-emit-trust-report=<file>` writes the same report as a JSON document
+(`DEVELOPER_GUIDE.md` 12.2). Neither prints evidence hashes (`TRUST.md` 36.1).
 
 `cppl-lsp` implements `initialize`, `shutdown`, `exit`, incrementally synced
 `textDocument/didOpen`, `didChange` and `didClose`, and

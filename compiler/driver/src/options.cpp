@@ -71,6 +71,15 @@ Options parse(int argc, const char* const* argv) {
                 } else {
                     options.emit_interface = path;
                 }
+            } else if (argument.starts_with("--cppl-emit-trust-report=")) {
+                const std::string path = argument.substr(std::string_view("--cppl-emit-trust-report=").size());
+                if (path.empty()) {
+                    options.errors.emplace_back("'--cppl-emit-trust-report=' names no file");
+                } else if (!options.emit_trust_report.empty()) {
+                    options.errors.emplace_back("'--cppl-emit-trust-report' is given more than once");
+                } else {
+                    options.emit_trust_report = path;
+                }
             } else if (argument.starts_with("--cppl-import-interface=")) {
                 const std::string path = argument.substr(std::string_view("--cppl-import-interface=").size());
                 if (path.empty()) {

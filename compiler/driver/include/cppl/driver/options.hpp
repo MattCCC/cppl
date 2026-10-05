@@ -23,6 +23,9 @@ struct Options {
     std::vector<Input> inputs;
     std::string clang;
     bool trust_report = false;
+    // Where to write the trust report as a JSON document, for tools rather
+    // than people (TRUST.md 36, Annex C). Empty means none.
+    std::string emit_trust_report;
     // Where to write the runtime program for inspection. Observability only:
     // it changes nothing about what is compiled.
     std::string emit_projection;

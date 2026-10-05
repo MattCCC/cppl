@@ -168,6 +168,11 @@ target_link_libraries(unit_verdict_test PRIVATE cppl_kernel cppl_obligations)
 cppl_add_unit_test(unit_trust_closure_test unit/trust_closure_test.cpp)
 target_link_libraries(unit_trust_closure_test PRIVATE cppl_kernel cppl_obligations)
 
+# The JSON trust report, read back by the language server's independent JSON
+# reader.
+cppl_add_unit_test(unit_trust_report_test unit/trust_report_test.cpp)
+target_link_libraries(unit_trust_report_test PRIVATE cppl_driver cppl_lsp)
+
 cppl_add_unit_test(unit_contracts_test unit/contracts_test.cpp)
 target_link_libraries(unit_contracts_test PRIVATE cppl_automation)
 # Composition's search budget carries its own contract, so the test states it
@@ -419,6 +424,7 @@ cppl_add_script_test(e2e_conditional_proof e2e/conditional_proof.sh)
 cppl_add_script_test(e2e_contradiction e2e/contradiction.sh)
 cppl_add_script_test(e2e_omitted_case e2e/omitted_case.sh)
 cppl_add_script_test(e2e_trust_closure e2e/trust_closure.sh)
+cppl_add_script_test(e2e_trust_report_json e2e/trust_report_json.sh)
 cppl_add_script_test(e2e_unsafe_boundary e2e/unsafe_boundary.sh)
 cppl_add_script_test(e2e_ghost_state e2e/ghost_state.sh)
 cppl_add_script_test(e2e_termination e2e/termination.sh)
