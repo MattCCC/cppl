@@ -107,6 +107,13 @@ target_link_libraries(kernel_paths_test PRIVATE cppl_kernel)
 cppl_add_unit_test(kernel_arithmetic_test kernel/arithmetic_test.cpp)
 target_link_libraries(kernel_arithmetic_test PRIVATE cppl_kernel)
 
+# The edge table of the kernel's normalization, which tools/formal/check.sh
+# also proves of the Coq model (docs/KERNEL.md 17).
+cppl_add_unit_test(kernel_normalization_edges_test kernel/normalization_edges_test.cpp)
+target_link_libraries(kernel_normalization_edges_test PRIVATE cppl_kernel)
+target_compile_definitions(kernel_normalization_edges_test PRIVATE
+    CPPL_NORMALIZATION_EDGES="${CMAKE_CURRENT_SOURCE_DIR}/kernel/normalization_edges.tsv")
+
 cppl_add_unit_test(kernel_definedness_test kernel/definedness_test.cpp)
 target_link_libraries(kernel_definedness_test PRIVATE cppl_kernel)
 
