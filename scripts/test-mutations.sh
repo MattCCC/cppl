@@ -619,12 +619,33 @@ else
     hasher=(shasum -a 256)
 fi
 
-# Each file of a list, one path a line, that exists, with its size and time.
+# Each file of a list, one path a line, that exists, by the digest of its
+# content: a size and a time could stay the same across a change.
 described() {
     local path
     while IFS= read -r path; do
         if [ -e "$path" ]; then
-            ls -lLn "$path"
+            "${hasher[@]}" "$path" || return 1
+        fi
+    done
+}
+
+# Every file under a directory, by the digest of its content.
+described_tree() {
+    (cd "$1" && find -L . -type f -print0 | LC_ALL=C sort -z | xargs -0 "${hasher[@]}")
+}
+
+# The programs the test scripts run through PATH, each by where it is found and
+# the digest of its content, and a tool not found by its absence.
+test_tools() {
+    local tool path
+    for tool in bash sh sed awk grep diff cmp find sort xargs mktemp cat head tail tr cut wc env perl \
+        timeout tee od printf ls cp mv mkdir touch dirname basename realpath readlink nm objdump; do
+        if path=$(command -v "$tool" 2>/dev/null) && [ -f "$path" ]; then
+            printf '%s ' "$tool"
+            "${hasher[@]}" "$path" || return 1
+        else
+            printf '%s absent\n' "$tool"
         fi
     done
 }
@@ -649,7 +670,7 @@ control_inputs() {
     "$clang" -E -x c++ -v - < /dev/null 2>&1 > /dev/null |
         sed -n '/^#include <\.\.\.> search starts here:$/,/^End of search list\.$/s/^ \(\/.*\)$/\1/p' |
         while IFS= read -r directory; do
-            ls -lLnR "$directory" || exit 1
+            described_tree "$directory" || exit 1
         done || return 1
     if command -v ldd > /dev/null 2>&1; then
         ldd "$build/bin/cppl" | awk '{ for (i = 1; i <= NF; ++i) if ($i ~ /^\//) print $i }'
@@ -657,7 +678,9 @@ control_inputs() {
         otool -L "$build/bin/cppl" | awk 'NR > 1 && $1 ~ /^\// { print $1 }'
     fi | LC_ALL=C sort -u | described || return 1
     command -v cmake ctest ninja || return 1
+    command -v cmake ctest ninja | described || return 1
     cmake --version || return 1
+    test_tools || return 1
     env | grep -E '^(PATH|LD_LIBRARY_PATH|DYLD_[A-Z_]*|LANG|LC_[A-Z]*|TZ|TMPDIR|HOME|CC|CXX|LLVM_ROOT|CPPL_[A-Z_]*)=' |
         LC_ALL=C sort
 }

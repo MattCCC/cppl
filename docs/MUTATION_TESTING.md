@@ -196,7 +196,9 @@ the runner digests every file of the copy, every file the build wrote under
 `bin/` and `lib/` (the binaries themselves, so none of them can be stale), the
 build's configuration, the programs it found outside the tree, the headers its
 Clang reads, the libraries the compiler loads, the tools running the
-experiment and the environment the tests see. A green control run records that
+experiment, the programs the test scripts run through `PATH` and the
+environment the tests see. Every file outside the copy is digested by its
+content, never by its size and time. A green control run records that
 digest in `control.passed`; a later invocation whose digest is the same does
 not run the suite again, and says so. Any difference, or any input that cannot
 be read, runs it again, and the digest is recorded only once it is green. A
