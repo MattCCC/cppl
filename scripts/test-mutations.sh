@@ -560,12 +560,19 @@ copied() {
 # tar restores the checkout's times, which can be older than an object the
 # reused build made from the copy's earlier content, such as a mutation an
 # interrupted run left applied. Every file whose content changes is touched
-# after the copy, so the build cannot keep that object.
+# after the copy, so the build cannot keep that object. So is every file whose
+# time differs from the checkout's although its content does not: a run
+# interrupted after restoring a mutated file leaves the original content with
+# the restore's time, and the object built from the mutation in between is
+# older than that time but newer than the checkout's.
 changed="$run/changed-files"
 : > "$changed"
 if [ -n "$reuse" ]; then
     (cd "$root" && copied -type f -print0) | while IFS= read -r -d '' file; do
-        cmp -s "$root/$file" "$source_copy/$file" || printf '%s\0' "$file" >> "$changed"
+        if ! cmp -s "$root/$file" "$source_copy/$file" ||
+            [ "$root/$file" -nt "$source_copy/$file" ] || [ "$source_copy/$file" -nt "$root/$file" ]; then
+            printf '%s\0' "$file" >> "$changed"
+        fi
     done
 fi
 (cd "$root" && copied -print0 | tar --null --no-recursion -T - -cf -) |
