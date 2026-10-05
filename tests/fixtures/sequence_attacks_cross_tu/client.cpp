@@ -1,10 +1,10 @@
 // The accepted twins of the cross-unit attacks in `tests/negative/
 // sequence_attacks.sh`: each uses an imported contract only as far as it states.
+#include "storage.hpp"
+
 #include <cstddef>
 #include <cstdio>
 #include <span>
-
-#include "storage.hpp"
 
 // SPEC: STDMODEL-025, TUBOUND-004
 // The span is read before the imported call that may reallocate its storage.
