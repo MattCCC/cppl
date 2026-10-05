@@ -770,6 +770,10 @@ tests/fixtures/equivalence/containers.cpp      erasure against a hand-erased twi
 tests/fixtures/sequence_attacks.cpp            the accepted twin of every storage, bounds and aliasing attack
 tests/e2e/sequence_attacks.sh                  those twins proven and run, alone and across translation units
 tests/negative/sequence_attacks.sh             the attacks, in tests/fixtures/negative/sequence_attack_*.cpp
+tests/negative/sequence_generations.sh         every storage event against every view kind, and where the event stands
+tests/e2e/sequence_generations.sh              every view kept by what leaves its storage, each computing its value
+tests/negative/sequence_boundaries.sh          every bound, alias, call, unmodeled member and content-invariant edge
+tests/e2e/sequence_boundaries.sh               the accepted twin of each edge, proven and run
 ```
 
 Not built: iterators, range-based `for`, `at`, `front`, `back`, `insert`,

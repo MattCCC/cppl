@@ -730,7 +730,7 @@ registers passes on the release candidate built from a clean tree.
 | G7 | termination | `e2e_termination` and `negative_termination` are green. | "V1 closure: termination" |
 | G8 | contracts | The `e2e_verified_*`, `negative_verified_*`, `e2e_cross_tu` and `negative_cross_tu` tests are green. | "V1 closure: contracts" |
 | G9 | explicit unsafe/trusted boundaries | `e2e_unsafe_boundary`, `negative_unsafe_boundary` and `e2e_trust_closure` are green. | "V1 closure: unsafe and trusted boundaries" |
-| G10 | C++ safety semantics | Every Annex X construct is classified. `e2e_safety_subset`, `negative_refused_twins` and `negative_sequence_attacks` are green. | "V1 closure: C++ safety semantics" |
+| G10 | C++ safety semantics | Every Annex X construct is classified. `e2e_safety_subset`, `negative_refused_twins`, `negative_sequence_attacks`, `negative_sequence_generations` and `negative_sequence_boundaries` are green. | "V1 closure: C++ safety semantics" |
 | G11 | proof erasure, native output | The erasure and ABI equivalence tests are green in every standard mode they name. | "V1 closure: proof erasure and native output" |
 | G12 | trust reporting | The text report, the JSON report and the editor name every category of every claim's closure, and `TRUST.md` 36.3 is current. | "V1 closure: trust reporting" |
 | G13 | kernel assurance | `check_sound` holds with no hypothesis, audited closed by `tools/formal/check.sh`. | "V1 closure: kernel assurance, mechanized model" |

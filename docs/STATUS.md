@@ -2767,7 +2767,9 @@ Evidence:
 - defined behavior of arithmetic (RFC 0019);
 - memory capabilities, aliasing and lifetime of scalars and the sequence subset
   (RFC 0014, RFC 0020), including the adversarial storage and bounds attacks
-  of `negative_sequence_attacks`;
+  of `negative_sequence_attacks`, and the exhaustive matrices of
+  `negative_sequence_generations` and `negative_sequence_boundaries` (316
+  refusals) with their 328 accepted twins, each run to its stated value;
 - a refused twin for every accepted fixture (`negative_refused_twins`).
 
 ## V1 closure: proof erasure and native output (G11)
@@ -2829,7 +2831,7 @@ Pass condition: `check_sound` with no hypothesis, audited closed by
 ## V1 closure: adversarial testing (G14)
 
 `PARTIAL`. Every kernel rule, primitive and verifier check named in
-`TRUST.md` 36.3 has adversarial tests and a mutation entry; there are 228
+`TRUST.md` 36.3 has adversarial tests and a mutation entry; there are 229
 entries (`MUTATION_TESTING.md`). Persistent fuzz targets exist for kernel
 proofs, terms, certificates and arithmetic, and for the recognizer, the
 verification-interface decoder and the language server.

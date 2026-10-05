@@ -172,6 +172,8 @@ tests:
     - tests/fixtures/negative/capability_conjoined_law_premise.cpp
     - tests/negative/verified_storage.sh
     - tests/negative/sequence_attacks.sh
+    - tests/negative/sequence_generations.sh
+    - tests/negative/sequence_boundaries.sh
     - tests/fixtures/negative/sequence_attack_first_of_empty.cpp
     - tests/fixtures/negative/sequence_attack_iterator.cpp
     - tests/fixtures/negative/sequence_attack_last_of_empty.cpp
@@ -193,6 +195,8 @@ tests:
   end_to_end:
     - tests/e2e/containers.sh
     - tests/e2e/sequence_attacks.sh
+    - tests/e2e/sequence_generations.sh
+    - tests/e2e/sequence_boundaries.sh
     - tests/e2e/trust_closure.sh
 
 required_test_categories:
