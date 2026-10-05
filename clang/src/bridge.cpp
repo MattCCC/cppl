@@ -8147,9 +8147,25 @@ std::optional<CXCursor> specialized_template(CXCursor cursor) {
     return primary;
 }
 
+struct RefinedTemplateArgument {
+    std::string refinement;
+    std::string template_name;
+};
+
+std::optional<RefinedTemplateArgument> refined_template_argument(CXCursor cursor, const Selection& selection,
+                                                                 unsigned depth = 0);
+
+std::string refined_template_argument_refusal(const RefinedTemplateArgument& refined) {
+    return "refinement '" + refined.refinement + "' is written as a template argument of '" + refined.template_name +
+           "', whose instantiation holds it as its base type, where nothing charges its predicate; a refinement is a "
+           "template argument only where the sequence model states its elements (SPEC.md STDMODEL-020)";
+}
+
 struct Collector {
     const Selection* selection = nullptr;
     std::vector<CXCursor> selected;
+    // Uses of a verified template's specialization at a refined argument.
+    std::vector<std::pair<std::string, CXCursor>> refused_arguments;
     // Specializations of verified function templates this unit instantiated,
     // deduplicated by USR.
     std::vector<CXCursor> specializations;
@@ -8241,6 +8257,9 @@ CXChildVisitResult collect_specializations(CXCursor cursor, CXCursor, CXClientDa
     if (!generated && std::ranges::find(collector.selection->offsets, offset) == collector.selection->offsets.end()) {
         return CXChildVisit_Recurse;
     }
+    if (const auto refined = refined_template_argument(cursor, *collector.selection)) {
+        collector.refused_arguments.emplace_back(refined_template_argument_refusal(*refined), cursor);
+    }
     const auto usr = take(clang_getCursorUSR(referenced));
     const bool known = std::ranges::any_of(
         collector.specializations, [&](CXCursor candidate) { return take(clang_getCursorUSR(candidate)) == usr; });
@@ -8315,6 +8334,66 @@ std::optional<std::string> refinement_use(CXCursor declaration, const Selection&
                     if (auto use = refinement_use(field, selection, depth + 1, visited))
                         return use;
                 }
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+bool in_namespace_std(CXCursor cursor) {
+    for (CXCursor scope = clang_getCursorSemanticParent(cursor);
+         clang_Cursor_isNull(scope) == 0 && clang_getCursorKind(scope) != CXCursor_TranslationUnit;
+         scope = clang_getCursorSemanticParent(scope)) {
+        if (clang_getCursorKind(scope) == CXCursor_Namespace && take(clang_getCursorSpelling(scope)) == "std") {
+            return true;
+        }
+    }
+    return false;
+}
+
+// A refinement written as a template argument of a template outside the
+// standard library, among the references `cursor` holds directly: a
+// declaration whose type names such a template, or a reference to a
+// specialization of such a function template. The instantiation holds the
+// refinement as its base type, so nothing there charges the predicate while
+// the refinement is still written (SPEC.md STDMODEL-020). A standard template
+// with a refined argument is governed by the sequence model or refused by it.
+std::optional<RefinedTemplateArgument> refined_template_argument(CXCursor cursor, const Selection& selection,
+                                                                 unsigned depth) {
+    if (selection.refinements.empty() || depth > kMaxExpressionDepth) {
+        return std::nullopt;
+    }
+    std::optional<std::string> user_template;
+    const CXCursor referenced = clang_getCursorReferenced(cursor);
+    if (clang_isExpression(clang_getCursorKind(cursor)) != 0 && clang_Cursor_isNull(referenced) == 0) {
+        const CXCursor primary = clang_getSpecializedCursorTemplate(referenced);
+        if (clang_Cursor_isNull(primary) == 0 && !in_namespace_std(primary)) {
+            user_template = qualified_name_of(primary);
+        }
+    }
+    for (const CXCursor child : children_of(cursor)) {
+        const CXCursorKind kind = clang_getCursorKind(child);
+        if (kind == CXCursor_TemplateRef) {
+            const CXCursor named = clang_getCursorReferenced(child);
+            if (!user_template.has_value() && !in_namespace_std(named)) {
+                user_template = qualified_name_of(named);
+            }
+            continue;
+        }
+        if (kind != CXCursor_TypeRef) {
+            continue;
+        }
+        const CXCursor named = clang_getCursorReferenced(child);
+        if (user_template.has_value()) {
+            if (auto refinement = refinement_use(named, selection)) {
+                return RefinedTemplateArgument{std::move(*refinement), *user_template};
+            }
+        }
+        // An alias of such a specialization hides it from the declaration.
+        const CXCursorKind named_kind = clang_getCursorKind(named);
+        if (named_kind == CXCursor_TypeAliasDecl || named_kind == CXCursor_TypedefDecl) {
+            if (auto hidden = refined_template_argument(named, selection, depth + 1)) {
+                return hidden;
             }
         }
     }
@@ -8893,6 +8972,38 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
     // A second pass for template specializations, which are reached from their
     // uses rather than from the declaration list (SPEC.md 42).
     clang_visitChildren(clang_getTranslationUnitCursor(unit), collect_specializations, &collector);
+    // In a verified declaration or body, every declaration and reference that
+    // names a template outside the standard library at a refined argument
+    // (SPEC.md STDMODEL-020).
+    for (const CXCursor& function : collector.selected) {
+        if (const auto refined = refined_template_argument(function, request.selection)) {
+            collector.refused_arguments.emplace_back(refined_template_argument_refusal(*refined), function);
+        }
+        clang_visitChildren(
+            function,
+            [](CXCursor cursor, CXCursor, CXClientData data) {
+                auto& found = *static_cast<Collector*>(data);
+                const CXCursorKind kind = clang_getCursorKind(cursor);
+                if (kind == CXCursor_VarDecl || kind == CXCursor_ParmDecl || kind == CXCursor_DeclRefExpr ||
+                    kind == CXCursor_TypeAliasDecl || kind == CXCursor_TypedefDecl) {
+                    if (const auto refined = refined_template_argument(cursor, *found.selection)) {
+                        found.refused_arguments.emplace_back(refined_template_argument_refusal(*refined), cursor);
+                    }
+                }
+                return CXChildVisit_Recurse;
+            },
+            &collector);
+    }
+    std::vector<std::pair<std::string, source::SourceLocation>> reported;
+    for (const auto& [message, at] : collector.refused_arguments) {
+        std::pair<std::string, source::SourceLocation> refusal{message, presumed_location(clang_getCursorLocation(at))};
+        if (std::ranges::find(reported, refusal) != reported.end()) {
+            continue;
+        }
+        reported.push_back(refusal);
+        result.has_errors = true;
+        result.diagnostics.push_back({Severity::Error, refusal.first, refusal.second});
+    }
     for (const CXCursor& specialization : collector.specializations) {
         collector.selected.push_back(specialization);
     }

@@ -734,4 +734,54 @@ verified int read_it(Box<Positive> b) ensures (result > 0) {
 }
 CPP
 
+# SPEC: STDMODEL-020
+# Nor may a refinement be written where it would be read as its base type while
+# it is still written: a verified function template's explicit argument, even
+# from an unverified caller, whose instantiation would hold -5 in a `Positive`
+# local, and a user class template's argument in a verified body, directly or
+# through an alias. Each is refused, naming the refinement and the template.
+refined_argument() {
+    reject "$1"
+    grep -qF "refinement 'Positive' is written as a template argument of '$2'" "$run/$1.log" ||
+        { cat "$run/$1.log" >&2; echo "$1 was not refused for its refined template argument" >&2; exit 1; }
+}
+refined_argument a_function_template_at_a_refinement hold <<'CPP'
+type Positive = int where (self > 0);
+template <class R>
+verified int hold(int raw) ensures (result == raw) {
+    R p = raw;
+    return p;
+}
+int caller() { return hold<Positive>(-5); }
+CPP
+
+refined_argument a_class_template_local_at_a_refinement Box <<'CPP'
+type Positive = int where (self > 0);
+template <class T> struct Box { T value; };
+verified int boxed(int raw) ensures (result == raw) {
+    Box<Positive> box{raw};
+    return box.value;
+}
+CPP
+
+refined_argument a_class_template_alias_at_a_refinement Box <<'CPP'
+type Positive = int where (self > 0);
+template <class T> struct Box { T value; };
+using PositiveBox = Box<Positive>;
+verified int boxed(int raw) ensures (result == raw) {
+    PositiveBox box{raw};
+    return box.value;
+}
+CPP
+
+# The twin at the base type states nothing to charge, and is proven.
+accept a_class_template_local_at_the_base_type <<'CPP'
+template <class T> struct Box { T value; };
+verified int boxed(int raw) ensures (result == raw) {
+    Box<int> box{raw};
+    return box.value;
+}
+int main() { return boxed(0); }
+CPP
+
 echo "refinement membership is proven or refused; contextual words keep their C++ meaning"

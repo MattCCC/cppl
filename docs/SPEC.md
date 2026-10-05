@@ -6763,7 +6763,12 @@ invariant** of that local's storage: every element of it satisfies the predicate
 invariant belongs to that declaration and its storage, never to the specialization, and has
 no runtime representation. It is admitted only there: a parameter, a result, a `span` or a
 `std::array` whose element type is written as a refinement states no invariant and is
-refused, rather than read as the base type while the refinement is still written.
+refused, rather than read as the base type while the refinement is still written. For the same
+reason a refinement written as a template argument of a template outside the standard library is
+refused: in a verified declaration or body, as a type such as `Box<Positive>` or an alias of
+one, and wherever a specialization of a verified function template is named at a refined
+argument, from a verified caller or an unverified one, since that instantiation is verified at
+the base type.
 
 [STDMODEL-027] Every value entering an element place of such a local is a refinement crossing into the
 predicate (17.2): a listed element, a fill value, the value-initialized element of a sized
