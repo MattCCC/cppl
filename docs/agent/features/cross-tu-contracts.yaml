@@ -203,7 +203,7 @@ required_test_categories:
   - chains need every interface; conflicting records refused
   - repeated verified declarations compared by meaning
   - erasure and ABI against hand erasures, mixed links
-  - the editor imports the interfaces the compile command names, refuses missing, stale and other-mode ones as the CLI does, compares the last `-std=`, and names the imported contract beside a verdict resting on it
+  - the editor imports the interfaces the compile command names, refuses missing, stale and other-mode ones as the CLI does, compares the last `-std=`, `--std=` or `--std`, and names the imported contract beside a verdict resting on it
 
 completion_requires:
   - no declaration alone establishes a contract

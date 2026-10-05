@@ -105,6 +105,9 @@ CPPL_TEST(only_what_changes_how_the_text_reads_is_kept) {
            __LINE__);
     // What follows `--` is input.
     expect(reading_flags({"cl", "-DA", "--", "-DB"}, "/"), {"-DA"}, __LINE__);
+    // Every spelling of the language standard Clang accepts.
+    expect(reading_flags({"clang++", "--std=c++20", "--std", "c++17", "-c", "a.cpp"}, "/"),
+           {"--std=c++20", "--std", "c++17"}, __LINE__);
     // A database is the project's, not the server's: nothing in it loads code
     // into Clang or points it at other programs, and its compiler is never run.
     expect(reading_flags({"/tmp/evil-cc", "-fplugin=evil.so", "-Xclang", "-load", "-Xclang", "evil.so", "-B/tmp/evil",

@@ -2,6 +2,7 @@
 
 #include "cppl/artifact/interface.hpp"
 #include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/driver/options.hpp"
 #include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
 #include "cppl/obligations/interface.hpp"
@@ -34,19 +35,6 @@ void report(diagnostics::Engine& engine, diagnostics::Category category, std::st
 
 void report_internal(diagnostics::Engine& engine, std::string message) {
     report(engine, diagnostics::Category::Internal, std::move(message));
-}
-
-// The language mode the unit is compiled in, taken as the CLI takes it: from
-// the last `-std=`, the one Clang obeys. An interface records the mode it was
-// verified in, and one verified in another is refused (SPEC.md TUBOUND-005).
-std::string language_standard(const std::vector<std::string>& arguments) {
-    std::string standard;
-    for (const std::string& argument : arguments) {
-        if (argument.starts_with("-std=")) {
-            standard = argument.substr(std::string_view("-std=").size());
-        }
-    }
-    return standard;
 }
 
 std::optional<std::string> read_scratch_file(const std::filesystem::path& path) {
@@ -175,8 +163,11 @@ BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnos
     // them, so a compile that stops after elaboration reads none.
     obligations::Imports imports;
     if (!request.import_interfaces.empty() && !stop_after_elaboration) {
+        // The language mode is taken as the CLI takes it, so an interface
+        // verified in another is refused here as it is there (SPEC.md
+        // TUBOUND-005).
         const std::expected<artifact::Configuration, std::string> configuration =
-            detail::compared_configuration(clang, request.clang_arguments, language_standard(request.clang_arguments));
+            detail::compared_configuration(clang, request.clang_arguments, selected_standard(request.clang_arguments));
         if (configuration) {
             imports = detail::read_imports(request.import_interfaces, *configuration, engine);
         } else {

@@ -168,6 +168,22 @@ language_mode_case() {
 }
 case_run language_mode_case
 
+# SPEC: TUBOUND-005 -- the language mode is the one Clang obeys, however it is
+# spelled: `--std=c++20` and `--std c++20` select it as `-std=c++20` does, and
+# an interface and a trust report name it, never the driver's default.
+spelled_language_mode_case() {
+    "$CPPL" --std=c++20 -c library.cpp -o library_joined.o --cppl-emit-interface=library_joined.cppli
+    grep -qx 'language c++20' library_joined.cppli || fail "'--std=c++20' is not recorded as language mode c++20"
+    "$CPPL" --std c++20 -c library.cpp -o library_separate.o --cppl-emit-interface=library_separate.cppli
+    grep -qx 'language c++20' library_separate.cppli || fail "'--std c++20' is not recorded as language mode c++20"
+    accept middle_joined middle.cpp --std=c++20 --cppl-import-interface=library_joined.cppli --cppl-trust-report
+    grep -q '^C++ mode: *c++20$' middle_joined.out || fail "the trust report does not name the mode '--std=c++20' selects"
+    accept middle_separate middle.cpp --std c++20 --cppl-import-interface=library_separate.cppli
+    refuse joined_other_mode "it was produced in another C\\+\\+ language mode: it records 'c\\+\\+20', and this compile uses 'c\\+\\+17'" \
+        middle.cpp --cppl-import-interface=library_joined.cppli
+}
+case_run spelled_language_mode_case
+
 # SPEC: TUBOUND-005 -- malformed, of another version, from another build: each
 # written out, and each refused before anything in it is read as a contract.
 case_run refuse truncated_fixture "it is truncated" client.cpp "--cppl-import-interface=$NEGATIVE/xtu_truncated.cppli"

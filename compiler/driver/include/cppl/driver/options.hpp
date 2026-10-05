@@ -38,7 +38,7 @@ struct Options {
     bool version = false;           // print what verification results are bound to, and stop
     bool passthrough = false;       // the command does not compile anything
     bool explicit_language = false; // -x was given
-    std::string standard;           // -std=..., for reporting
+    std::string standard;           // the selected standard (`selected_standard`)
     std::vector<std::string> errors;
 };
 
@@ -46,5 +46,11 @@ struct Options {
 
 [[nodiscard]] bool is_source_path(std::string_view path);
 [[nodiscard]] bool is_header_path(std::string_view path);
+
+// The C++ standard `arguments` select, as Clang reads them: the value of the
+// last `-std=`, `--std=` or `--std`, the one Clang obeys, or empty when none
+// does and the driver's default applies. An interface records it as the
+// language mode it was verified in (SPEC.md TUBOUND-005).
+[[nodiscard]] std::string selected_standard(const std::vector<std::string>& arguments);
 
 } // namespace cppl::driver

@@ -35,7 +35,7 @@ constexpr auto kValueFlags = std::to_array<std::string_view>({"-D", "-U"});
 // Flags whose value is joined by `=`, kept whole. Every machine option
 // (`-march=`, `-mabi=`, ...) is kept as well, by `machine_option`.
 constexpr auto kJoinedFlags =
-    std::to_array<std::string_view>({"-std=", "-stdlib=", "--target=", "--sysroot=", "--driver-mode=",
+    std::to_array<std::string_view>({"-std=", "--std=", "-stdlib=", "--target=", "--sysroot=", "--driver-mode=",
                                      "-fms-compatibility-version=", "-fpack-struct=", "-fclang-abi-compat="});
 
 // Switches kept as they are: each defines a macro, changes the language, or
@@ -93,8 +93,8 @@ constexpr auto kDroppedWithValue =
                                      "-Xpreprocessor", "-mllvm", "-mmlir"});
 
 // Flags followed by a separate value, kept with it: what the build compiles
-// for.
-constexpr auto kKeptWithValue = std::to_array<std::string_view>({"-target", "-arch", "-mthread-model"});
+// for, and the standard it compiles in.
+constexpr auto kKeptWithValue = std::to_array<std::string_view>({"-target", "-arch", "-mthread-model", "--std"});
 
 // Whether `argument` is a machine option: the class of options (`-m32`, `-mx32`,
 // `-mabi=`, `-mbig-endian`, `-mlong-double-64`, `-march=`, ...) that select the

@@ -1633,8 +1633,8 @@ does not have, or is stale because a file its unit was produced from has changed
 since, is reported at the top of the document with the
 `cppl.verification.interface` code, and none of its contracts is used; neither
 is one another interface contradicts or one proven through a record that is not
-imported as it was. The language mode compared is the last `-std=` the document
-is read with, the one Clang obeys. A call that no usable interface records is
+imported as it was. The language mode compared is the last `-std=`, `--std=` or
+`--std` the document is read with, the one Clang obeys. A call that no usable interface records is
 shown refused, as the CLI refuses it.
 
 A claim proven through another unit's contract is `PROVEN` relative to that

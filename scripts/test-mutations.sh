@@ -185,7 +185,10 @@ xtu-refusal-escapes-source	compiler/driver/src/interface_io.cpp	const std::strin
 xtu-refusal-escapes-unit	compiler/driver/src/interface_io.cpp	"rebuild '" + artifact::displayed(recorded->unit) +	"rebuild '" + recorded->unit +	^negative_cross_tu$
 xtu-refusal-escapes-conflict	compiler/driver/src/interface_io.cpp	artifact::displayed(entry.name)	entry.name	^negative_cross_tu$
 xtu-refusal-escapes-dependency	compiler/driver/src/interface_io.cpp	artifact::displayed(broken->symbol)	broken->symbol	^negative_cross_tu$
-lsp-interface-language-mode	compiler/driver/src/buffer_compile.cpp	            standard = argument.substr(std::string_view("-std=").size());	            (void)argument;	^lsp_interfaces_test$
+lsp-interface-language-mode	compiler/driver/src/buffer_compile.cpp	selected_standard(request.clang_arguments)	std::string{}	^lsp_interfaces_test$
+language-mode-joined	compiler/driver/src/options.cpp	standard = std::move(*joined);	(void)joined;	^negative_cross_tu$|^lsp_interfaces_test$
+language-mode-double-dash	compiler/driver/src/options.cpp	{std::string_view("-std="), std::string_view("--std=")}	{std::string_view("-std=")}	^negative_cross_tu$|^lsp_interfaces_test$
+language-mode-separate	compiler/driver/src/options.cpp	if (argument == "--std") {	if (false) {	^negative_cross_tu$|^lsp_interfaces_test$
 lsp-imported-contract-recorded	compiler/driver/src/pipeline.cpp	                record.imported.push_back(ImportedRecord{imported.name, imported.origin});	                (void)imported;	^lsp_interfaces_test$
 lsp-lens-names-imported-contract	src/lsp/src/verification.cpp	part(rests.imported, "the imported contract of ", "the imported contracts of ");	(void)rests.imported;	^lsp_interfaces_test$
 lsp-lens-names-trusted-laws	src/lsp/src/verification.cpp	part(rests.premises, "trusted ", "trusted ");	(void)rests.premises;	^lsp_verification_test$
@@ -268,7 +271,7 @@ analysis-target-named	compiler/driver/src/target.cpp	given.push_back("--target="
 analysis-configuration-read	compiler/driver/src/target.cpp	given.push_back("--config=" + file);	(void)file;	^negative_analysis_target$
 analysis-default-configuration-unread	compiler/driver/src/target.cpp	given.emplace_back("--no-default-config");	(void)given;	^negative_analysis_target$
 lsp-machine-options-kept	src/lsp/src/compile_commands.cpp	one_of(argument, kSwitches) || machine_option(argument) ||	one_of(argument, kSwitches) || (false && machine_option(argument)) ||	^lsp_compile_commands_test$|^lsp_interfaces_test$
-lsp-architecture-kept	src/lsp/src/compile_commands.cpp	({"-target", "-arch", "-mthread-model"});	({"-target", "-mthread-model"});	^lsp_compile_commands_test$
+lsp-architecture-kept	src/lsp/src/compile_commands.cpp	({"-target", "-arch", "-mthread-model", "--std"});	({"-target", "-mthread-model", "--std"});	^lsp_compile_commands_test$
 lsp-unpassed-frontend-options	src/lsp/src/compile_commands.cpp	if (argument == "-Xclang" || argument.starts_with("-Xarch_")) {	if (false && (argument == "-Xclang" || argument.starts_with("-Xarch_"))) {	^lsp_compile_commands_test$|^lsp_interfaces_test$
 lsp-unpassed-response-file	src/lsp/src/compile_commands.cpp	if (argument.starts_with("@")) {	if (false && argument.starts_with("@")) {	^lsp_compile_commands_test$
 lsp-unpassed-configuration	src/lsp/src/compile_commands.cpp	if (argument == "--config" || argument.starts_with("--config=") || argument.starts_with("--config-user-dir=") ||	if (false &&	^lsp_compile_commands_test$

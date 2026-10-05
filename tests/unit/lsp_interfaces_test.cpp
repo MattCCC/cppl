@@ -216,6 +216,15 @@ CPPL_TEST(the_editor_compares_the_language_mode_its_build_compiles_in) {
     CPPL_CHECK(open_client(later).lens.starts_with("PROVEN"));
     later.compiled_with("-std=c++20 -std=c++17 --cppl-import-interface=counter.cppli");
     CPPL_CHECK(has_interface_error(open_client(later), "another C++ language mode"));
+
+    // `--std=` and `--std`, which Clang takes as it takes `-std=`, select the
+    // mode as well, and are read with it.
+    later.compiled_with("-std=c++17 --std=c++20 --cppl-import-interface=counter.cppli");
+    CPPL_CHECK(open_client(later).lens.starts_with("PROVEN"));
+    later.compiled_with("-std=c++17 --std c++20 --cppl-import-interface=counter.cppli");
+    CPPL_CHECK(open_client(later).lens.starts_with("PROVEN"));
+    later.compiled_with("--std=c++20 --std c++17 --cppl-import-interface=counter.cppli");
+    CPPL_CHECK(has_interface_error(open_client(later), "another C++ language mode"));
 }
 
 // SPEC: ARITH-014 -- the editor verifies a document for the target its build

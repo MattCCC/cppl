@@ -2,7 +2,12 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <optional>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace cppl::driver {
 
@@ -10,10 +15,42 @@ namespace {
 
 // Options whose value is a separate argument. Their value must never be
 // mistaken for an input file.
-constexpr std::array<std::string_view, 24> kValueOptions = {
-    "-o",      "-I",    "-isystem",  "-iquote",  "-idirafter", "-include", "-imacros",       "-F",  "-framework", "-L",
-    "-l",      "-D",    "-U",        "-x",       "-Xclang",    "-Xlinker", "-Xpreprocessor", "-MF", "-MT",        "-MQ",
-    "-target", "-arch", "-isysroot", "--sysroot"};
+constexpr std::array<std::string_view, 25> kValueOptions = {"-o",
+                                                            "-I",
+                                                            "-isystem",
+                                                            "-iquote",
+                                                            "-idirafter",
+                                                            "-include",
+                                                            "-imacros",
+                                                            "-F",
+                                                            "-framework",
+                                                            "-L",
+                                                            "-l",
+                                                            "-D",
+                                                            "-U",
+                                                            "-x",
+                                                            "-Xclang",
+                                                            "-Xlinker",
+                                                            "-Xpreprocessor",
+                                                            "-MF",
+                                                            "-MT",
+                                                            "-MQ",
+                                                            "-target",
+                                                            "-arch",
+                                                            "-isysroot",
+                                                            "--sysroot",
+                                                            "--std"};
+
+// The language standard one argument selects with its value joined, as Clang
+// accepts it: `-std=c++20` or `--std=c++20`.
+std::optional<std::string> joined_standard(std::string_view argument) {
+    for (const std::string_view option : {std::string_view("-std="), std::string_view("--std=")}) {
+        if (argument.starts_with(option)) {
+            return std::string(argument.substr(option.size()));
+        }
+    }
+    return std::nullopt;
+}
 
 // Commands that do not produce a compilation C++L could verify.
 constexpr std::array<std::string_view, 12> kPassthroughOptions = {"-E",
@@ -43,6 +80,29 @@ bool is_source_path(std::string_view path) {
 bool is_header_path(std::string_view path) {
     return has_extension(path, ".h") || has_extension(path, ".hpp") || has_extension(path, ".hh") ||
            has_extension(path, ".hxx");
+}
+
+std::string selected_standard(const std::vector<std::string>& arguments) {
+    std::string standard;
+    for (std::size_t index = 0; index < arguments.size(); ++index) {
+        const std::string& argument = arguments[index];
+        if (argument == "--std") {
+            if (index + 1 < arguments.size()) {
+                standard = arguments[index + 1];
+            }
+            ++index;
+            continue;
+        }
+        // Another option's value is never read as an option of its own.
+        if (std::ranges::find(kValueOptions, argument) != kValueOptions.end()) {
+            ++index;
+            continue;
+        }
+        if (std::optional<std::string> joined = joined_standard(argument)) {
+            standard = std::move(*joined);
+        }
+    }
+    return standard;
 }
 
 Options parse(int argc, const char* const* argv) {
@@ -107,9 +167,6 @@ Options parse(int argc, const char* const* argv) {
             if (std::ranges::find(kPassthroughOptions, argument) != kPassthroughOptions.end()) {
                 options.passthrough = true;
             }
-            if (argument.starts_with("-std=")) {
-                options.standard = argument.substr(std::string_view("-std=").size());
-            }
             if (argument == "-x") {
                 options.explicit_language = true;
             }
@@ -121,6 +178,9 @@ Options parse(int argc, const char* const* argv) {
         }
     }
 
+    // The mode an interface is bound to and a trust report names, whichever
+    // spelling Clang was given it in (SPEC.md TUBOUND-005).
+    options.standard = selected_standard(options.arguments);
     return options;
 }
 
