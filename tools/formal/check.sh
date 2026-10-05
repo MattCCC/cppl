@@ -391,8 +391,9 @@ if [ "${closed}" != "${theorems}" ]; then
     exit 1
 fi
 
-# No proof may be left unfinished.
-if grep -nE '\b(Admitted|admit|Axiom|Parameter|Conjecture)\b' "${root}"/formal/coq/*.v; then
+# No proof may be left unfinished, the edge tables' generated examples included.
+if grep -nE '\b(Admitted|admit|Axiom|Parameter|Conjecture)\b' "${root}"/formal/coq/*.v NormalizeEdges.v \
+    TranslationEdges.v CheckEdges.v; then
     echo "error: the model contains an axiom or an unfinished proof" >&2
     exit 1
 fi
