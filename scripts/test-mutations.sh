@@ -288,22 +288,10 @@ multiline_tests() {
 # crashes, has observably different behavior and is killed, not equivalent.
 #
 # Each entry names the tests that state the invariant directly, so removing
-# every enforcement of it is still caught.
+# every enforcement of it is still caught. There is no entry today
+# (docs/MUTATION_TESTING.md 5).
 equivalent_justification() {
     case "$1" in
-        # `Composition::spend` is charged against the dependency whose evidence
-        # is read on the next line, and refuses an unproven one there. The gate
-        # refuses the same stage earlier. With both present, removing the gate
-        # changes when the search stops, never whether it stops or what it
-        # concludes: it refuses, terminates, and builds no proof either way.
-        #
-        # Stated directly in tests/unit/contracts_test.cpp by
-        # an_unproven_dependency_is_refused_before_its_evidence_is_read, so
-        # removing spend's check -- the enforcement that remains -- fails that
-        # test rather than going unnoticed.
-        call-precondition-gate)
-            echo "Composition::spend refuses the same unproven dependency before reading its evidence;" \
-                 "that enforcement is itself mutated as 'spend-dependency-proven', which is caught" ;;
         *) return 1 ;;
     esac
 }

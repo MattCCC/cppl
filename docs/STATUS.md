@@ -2912,8 +2912,11 @@ The matrices found one soundness defect, fixed with permanent regressions and a
 mutation entry (`TRUST.md` 36.3: a span passed by value was not followed to the
 storage it views).
 
-Open: the full mutation suite, and the ASan, UBSan and fuzz profiles, have to
-be recorded green on the release candidate (G18 lists the runs).
+The full mutation suite catches all 229 entries, and none is equivalent (G18
+records the run).
+
+Open: the ASan, UBSan and fuzz profiles have to be recorded green on the
+release candidate (G18 lists the runs).
 
 ## V1 closure: correspondence TCB (G15)
 
@@ -2991,7 +2994,7 @@ What has been built and tested, and nothing else, is supported (`INSTALL.md`).
 | `ci-linux-gcc` | recorded below when run on the candidate |
 | `ci-quality` | recorded below when run on the candidate |
 | `ci-asan`, `ci-ubsan`, `ci-fuzz` | recorded below when run on the candidate |
-| Full mutation suite | recorded below when run on the candidate |
+| Full mutation suite | all 229 entries caught, none equivalent. Run in chunks from `0994f65` to `6b88b38`, each chunk on the tree as it stood when the chunk started. `call-precondition-gate` was reported equivalent; it is now caught by its pinned diagnostic (`MUTATION_TESTING.md` 5) and was rerun on the commit that pins it |
 
 ### ABI
 

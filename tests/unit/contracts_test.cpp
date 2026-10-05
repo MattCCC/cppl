@@ -527,6 +527,33 @@ CPPL_TEST(an_unproven_dependency_is_refused_before_its_evidence_is_read) {
     CPPL_CHECK(composition.spend().has_value());
 }
 
+// The gate above that boundary. A stage composed after a call whose
+// precondition is unproven is refused for that reason, naming the callee,
+// before it proposes reasoning or spends a transition. Without the gate,
+// spend's refusal would name an obligation number instead, and the diagnostic
+// is part of the gate's contract (docs/MUTATION_TESTING.md 5).
+CPPL_TEST(a_stage_after_a_call_with_an_unproven_precondition_is_refused_naming_the_callee) {
+    auto program = composed();
+    CPPL_CHECK(program.obligations[1].origin == o::Origin::CallPrecondition);
+    // Evidence for the call's precondition can no longer establish what the
+    // obligation states, so the caller's call reaches its stage unproven.
+    program.obligations[1].goal = k::Proposition::falsity();
+    const std::string callee = program.contracts.back().paths.front().calls.front().callee_name;
+    CPPL_CHECK(!callee.empty());
+    std::size_t transitions = 0;
+    cppl::diagnostics::Engine engine;
+    const auto results = cppl::automation::verify(program, engine, &transitions);
+    CPPL_CHECK_EQ(results.size(), std::size_t{3});
+    CPPL_CHECK(results[0].verdict.is_proven());
+    CPPL_CHECK(!results[1].verdict.is_proven());
+    CPPL_CHECK(!results[2].verdict.is_proven());
+    CPPL_CHECK(results[2].verdict.reason() == "call-site precondition for '" + callee + "' is not proven");
+    CPPL_CHECK(engine.has_errors());
+    // The callee's contract and the precondition compose no call's evidence,
+    // and the caller's stage is refused before its first transition.
+    CPPL_CHECK_EQ(transitions, std::size_t{0});
+}
+
 CPPL_TEST(caller_identity_includes_summary_changes_when_the_body_goal_is_unchanged) {
     const auto strong = composed();
     const auto repeat = composed();
