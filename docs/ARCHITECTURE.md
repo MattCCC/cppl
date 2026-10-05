@@ -3162,6 +3162,16 @@ runtime compiler invocation.
 **[ARCH-BUILD-001]** Verification MUST NOT silently use different defines,
 headers, target or C++ mode from native code generation.
 
+The Clang driver preprocesses each unit and compiles its runtime program, so
+defines and headers are its by construction. The analysis is made by libclang,
+which is given the same arguments, and the driver may select a target from
+more than those: the prefix of its own name, or a configuration file it reads.
+So before analysis the driver is asked which target and configuration files it
+selects for the unit's arguments, libclang is given exactly those, and the
+triple libclang reports is compared with the triple the driver's compile job
+runs with; a unit for which they differ is refused (`compiler/driver/src/target.cpp`,
+`TRUST.md` TCB-CLANG-006).
+
 ---
 
 # 81. Ordinary C++ fast path

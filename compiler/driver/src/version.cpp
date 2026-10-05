@@ -2,7 +2,6 @@
 
 #include "cppl/artifact/interface.hpp"
 #include "cppl/clang/bridge.hpp"
-#include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
 #include "cppl/driver/source_identity.hpp"
 #include "cppl/driver/trust_report.hpp"
@@ -10,12 +9,11 @@
 #include "cppl/obligations/interface.hpp"
 #include "cppl/source/digest.hpp"
 #include "cppl/verifier_semantics.hpp"
+#include "target.hpp"
 
 #include <cstddef>
 #include <expected>
 #include <filesystem>
-#include <fstream>
-#include <ios>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -25,39 +23,6 @@
 namespace cppl::driver::detail {
 
 namespace {
-
-// The most a Clang answer to one of the questions below is read of. A macro
-// dump of one standard header is a few hundred KiB; anything larger is not an
-// answer to the question asked.
-constexpr std::size_t kMaxAnswerBytes = std::size_t{4} << 20U;
-
-std::optional<std::string> read_bounded(const std::filesystem::path& path) {
-    std::ifstream stream(path, std::ios::binary);
-    if (!stream) {
-        return std::nullopt;
-    }
-    std::string text(kMaxAnswerBytes + 1, '\0');
-    stream.read(text.data(), static_cast<std::streamsize>(text.size()));
-    if (stream.bad()) {
-        return std::nullopt;
-    }
-    text.resize(static_cast<std::size_t>(stream.gcount()));
-    if (text.size() > kMaxAnswerBytes) {
-        return std::nullopt;
-    }
-    return text;
-}
-
-// What the Clang driver writes to its standard output for `arguments`, or
-// nothing when it could not be run or did not succeed.
-std::optional<std::string> ask(const std::string& clang, const std::vector<std::string>& arguments,
-                               const std::filesystem::path& answer) {
-    const ProcessResult result = run_capturing_stdout(clang, arguments, answer);
-    if (!result.started || result.signaled || result.exit_code != 0) {
-        return std::nullopt;
-    }
-    return read_bounded(answer);
-}
 
 std::string first_line(std::string_view text) {
     const std::size_t end = text.find_first_of("\r\n");
@@ -174,7 +139,7 @@ std::expected<BuildRecord, std::string> build_record(const artifact::Configurati
     if (scratch.path().empty()) {
         return std::unexpected("could not create a directory to ask the Clang driver its version");
     }
-    const std::optional<std::string> version = ask(clang, {"--version"}, scratch.path() / "version");
+    const std::optional<std::string> version = ask_driver(clang, {"--version"}, scratch.path() / "version");
     const std::string driver = version.has_value() ? first_line(*version) : std::string{};
     if (driver.empty()) {
         return std::unexpected("the Clang driver '" + clang + "' did not report its version");
@@ -232,13 +197,13 @@ int print_version(const std::string& clang, const std::vector<std::string>& argu
         return "unavailable: the Clang driver did not report " + std::string(what);
     };
 
-    const std::optional<std::string> version = ask(clang, {"--version"}, scratch.path() / "version");
+    const std::optional<std::string> version = ask_driver(clang, {"--version"}, scratch.path() / "version");
     const std::string driver = version.has_value() ? first_line(*version) : std::string{};
     line("Clang driver:", driver.empty() ? unavailable("its version") : driver);
 
     std::vector<std::string> query = arguments;
     query.emplace_back("-print-target-triple");
-    const std::optional<std::string> triple = ask(clang, query, scratch.path() / "target");
+    const std::optional<std::string> triple = ask_driver(clang, query, scratch.path() / "target");
     const std::string target = triple.has_value() ? first_line(*triple) : std::string{};
     line("Target:", target.empty() ? unavailable("its target") : target);
 
@@ -251,7 +216,7 @@ int print_version(const std::string& clang, const std::vector<std::string>& argu
     if (write_scratch_file(probe, "#if __has_include(<cstddef>)\n#include <cstddef>\n#endif\n")) {
         std::vector<std::string> dump = arguments;
         dump.insert(dump.end(), {"-x", "c++", "-E", "-dM", probe.string()});
-        macros = ask(clang, dump, scratch.path() / "probe.macros");
+        macros = ask_driver(clang, dump, scratch.path() / "probe.macros");
     }
     if (macros.has_value()) {
         line("C++ mode:", language_mode(*macros) +

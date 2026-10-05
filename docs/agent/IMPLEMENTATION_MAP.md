@@ -652,7 +652,7 @@ out-of-line member definition; each is refused.
 
 Manifest: `features/machine-arithmetic.yaml`
 
-Normative sources: `ARITH-001`–`ARITH-013` (SPEC §29), `EQ-002`, `EQ-009`
+Normative sources: `ARITH-001`–`ARITH-014` (SPEC §29), `EQ-002`, `EQ-009`
 (SPEC §7.1.1, §7.5), `UB-001`, `UB-002` (SPEC §31), `DEFINEDBEHAVIOR-001`–
 `DEFINEDBEHAVIOR-003` (Annex T), `ADMISSIBLE-005` (Annex U.5); FOUNDATIONS §33,
 §35–§37; `TRUST.md` §5.2, §17; RFC 0006, RFC 0019.
@@ -667,6 +667,7 @@ Normative sources: `ARITH-001`–`ARITH-013` (SPEC §29), `EQ-002`, `EQ-009`
 | elaboration, VIR | Carry `Minus`, `Conversion`, `Div` and `Rem`. | `compiler/elaboration/src/elaborate.cpp`, `vir/include/cppl/vir/expr.hpp`, `vir/src/vir.cpp` |
 | obligations | State each operation with its total primitive; find the operations an expression evaluates and the `?:` outcomes guarding each (`&&` and `||` are routes or connectives, never values there); owe each condition on the path, supposing only the postconditions of calls sequenced before it; conjoin a specification's conditions into what it states; refuse such operations in a pure definition and in a claimed law's arguments. | `compiler/obligations/src/definedness.cpp`, `compiler/obligations/src/generate.cpp` (`TermLowering`, `lower_proposition`), `compiler/obligations/src/contracts.cpp` (`Conditions::evaluate`, `owe_definedness`) |
 | automation, driver | Pass binder types to the constraint builder; name the operation, the condition and the types in a failed obligation; count defined operations. | `compiler/automation/src/arithmetic.cpp`, `compiler/automation/src/evidence.cpp`, `compiler/driver/src/pipeline.cpp`, `compiler/driver/src/driver.cpp` |
+| driver, bridge | Ask the Clang driver which target triple it selects, which its compile job runs with and which configuration files it reads; give libclang that target and exactly those files; refuse the unit unless libclang reports having resolved it for the driver's effective triple. | `compiler/driver/src/target.cpp` (`compile_target`, `analysis_arguments`), `compiler/driver/src/pipeline.cpp` (`run_pipeline`), `clang/src/bridge.cpp` (`parse`) |
 
 ### Required behavior
 

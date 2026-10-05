@@ -8968,6 +8968,13 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
 
     TranslationUnit result;
 
+    // What every type below was resolved for. The caller compares it with the
+    // target the program is compiled for (TRUST.md TCB-CLANG-006).
+    if (CXTargetInfo target = clang_getTranslationUnitTargetInfo(unit); target != nullptr) {
+        result.target = take(clang_TargetInfo_getTriple(target));
+        clang_TargetInfo_dispose(target);
+    }
+
     const unsigned diagnostic_count = clang_getNumDiagnostics(unit);
     for (unsigned index_of_diagnostic = 0; index_of_diagnostic < diagnostic_count; ++index_of_diagnostic) {
         CXDiagnostic diagnostic = clang_getDiagnostic(unit, index_of_diagnostic);

@@ -85,6 +85,10 @@ covered	runtime_validation.cpp	negative/runtime_check_failure_path.cpp	negative/
 covered	sequence_attacks.cpp	negative/sequence_attack_stale_after_reserve.cpp	negative/sequence_attacks.sh	-	-
 covered	sequence_attacks_cross_tu/client.cpp	negative/sequence_attack_xtu_stale.cpp	negative/sequence_attacks.sh	-	-
 covered	signed_arithmetic.cpp	negative/arith_call_site_precondition.cpp	negative/signed_arithmetic.sh	-	-
+covered	target/widened.cpp	target/wrapped.cpp	negative/analysis_target.sh	-	-
+covered	target/wrapped.cpp	target/widened.cpp	negative/analysis_target.sh	-	-
+covered	target/plain_char.cpp	target/plain_char_nonnegative.cpp	negative/analysis_target.sh	-	-
+covered	target/plain_char_nonnegative.cpp	target/plain_char.cpp	negative/analysis_target.sh	-	-
 covered	structural_cases.cpp	negative/cases_on_product.cpp	negative/case_providers.sh	-	-
 covered	trust_closure.cpp	negative/memory_law_untrusted.cpp	negative/trusted_dependencies.sh	-	-
 covered	untracked_members.cpp	negative/member_numbering_gap.cpp	negative/verified_storage.sh	-	-

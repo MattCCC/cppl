@@ -560,6 +560,9 @@ struct TranslationUnit {
     std::vector<Function> functions;
     std::vector<Diagnostic> diagnostics;
     bool has_errors = false;
+    // The target triple Clang resolved the unit for: the one whose integer
+    // widths, layout and ABI every type above has. Empty when Clang did not say.
+    std::string target;
 
     [[nodiscard]] const Function* find_by_usr(std::string_view usr) const;
     [[nodiscard]] const Function* find_by_name(std::string_view name) const;

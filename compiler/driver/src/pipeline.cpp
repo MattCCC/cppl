@@ -26,6 +26,7 @@
 #include "cppl/source/location.hpp"
 #include "cppl/source/representation.hpp"
 #include "cppl/vir/module.hpp"
+#include "target.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -222,6 +223,22 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
         return outcome;
     }
 
+    // The analysis is made for the target the program is compiled for, which
+    // the driver decides and may decide from more than the arguments say: the
+    // prefix of its own name or a configuration file. Every width, layout and
+    // conversion a proof rests on is that target's (TRUST.md TCB-CLANG-006,
+    // SPEC.md ARITH-014).
+    const std::expected<CompileTarget, std::string> target = compile_target(request.clang, request.clang_arguments);
+    if (!target.has_value()) {
+        report(engine, diagnostics::Category::UnsupportedSemantics,
+               "'" + request.original_path + "' is not verified: " + target.error(), {},
+               "a proof is made for the target the program is compiled for, and that target must be established");
+        outcome.tokens = std::make_unique<frontend::TokenStream>(stream);
+        outcome.syntax = std::make_unique<frontend::Syntax>(std::move(syntax));
+        outcome.failed = true;
+        return outcome;
+    }
+
     const std::filesystem::path analysis_path = request.scratch / (request.stem + ".analysis.cpp");
     if (!write_scratch_file(analysis_path, initial_projection.analysis)) {
         report(engine, diagnostics::Category::Internal,
@@ -234,7 +251,7 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
 
     clangbridge::ParseRequest parse_request;
     parse_request.path = analysis_path.string();
-    parse_request.arguments = request.clang_arguments;
+    parse_request.arguments = analysis_arguments(request.clang_arguments, *target);
     parse_request.arguments.emplace_back("-x");
     parse_request.arguments.emplace_back("c++-cpp-output");
     parse_request.arguments.emplace_back("-w");
@@ -245,6 +262,20 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
     outcome.syntax = std::make_unique<frontend::Syntax>(syntax);
     if (!analyzed.has_value()) {
         report(engine, diagnostics::Category::Internal, analyzed.error());
+        outcome.failed = true;
+        return outcome;
+    }
+    // Named explicitly, the target is still only what the analysis was asked
+    // for. What it was made for is what Clang reports, and nothing it resolved
+    // is read unless that is the triple the program is compiled for.
+    if (analyzed->unit.target != target->effective) {
+        report(engine, diagnostics::Category::UnsupportedSemantics,
+               "'" + request.original_path + "' is not verified: its C++ semantics were resolved for target '" +
+                   analyzed->unit.target + "', and the Clang driver '" + request.clang +
+                   "' compiles the program for '" + target->effective + "'",
+               {},
+               "a proof is made for the target the program is compiled for; a configuration the analysis cannot "
+               "be given exactly is refused rather than verified for another machine");
         outcome.failed = true;
         return outcome;
     }

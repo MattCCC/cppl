@@ -63,6 +63,7 @@ rules:
   - ARITH-011
   - ARITH-012
   - ARITH-013
+  - ARITH-014
   - EQ-002
   - EQ-003
   - EQ-009
@@ -119,6 +120,7 @@ implementation:
   driver:
     - compiler/driver/src/pipeline.cpp
     - compiler/driver/src/driver.cpp
+    - compiler/driver/src/target.cpp
 
 interactions:
   - guards, `?:` arms and the short-circuit routes of `&&` and `||`
@@ -138,6 +140,7 @@ tests:
     - tests/fixtures/verified_arithmetic.cpp
   negative:
     - tests/negative/signed_arithmetic.sh
+    - tests/negative/analysis_target.sh
     - tests/fixtures/negative/arith_int32_max_plus_one.cpp
     - tests/fixtures/negative/arith_int32_min_minus_one.cpp
     - tests/fixtures/negative/arith_int64_max_plus_one.cpp

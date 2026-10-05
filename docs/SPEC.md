@@ -3852,6 +3852,20 @@ computes it at the local's own type. Where the local's type is promoted, or `e`
 has a wider type, the computation is at a type the update does not show, and the
 update MUST be rejected until that computation is modeled.
 
+## 29.7 The target a claim is about
+
+The width, signedness and representation of each C++ type, and so every
+operation above, are fixed by the target the program is compiled for: `unsigned
+long` is 64 bits wide on one target and 32 on another, and plain `char` is signed
+on one and unsigned on another.
+
+[ARITH-014] A claim about runtime code MUST be proven under the C++ semantics of
+the target the program is compiled for, as the native compiler that compiles it
+selects them, whatever selects them: an option, the compiler's own name or a
+configuration it reads. Where the semantics the proof was made under cannot be
+established to be that target's, verification MUST fail closed. A claim proven
+for one target is not a claim about the program compiled for another.
+
 ---
 
 # 30. Floating-point semantics

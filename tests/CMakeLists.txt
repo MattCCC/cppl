@@ -483,6 +483,9 @@ cppl_add_script_test(e2e_verified_locals e2e/verified_locals.sh)
 cppl_add_script_test(e2e_verified_arithmetic e2e/verified_arithmetic.sh)
 cppl_add_script_test(e2e_signed_arithmetic e2e/signed_arithmetic.sh)
 cppl_add_script_test(negative_signed_arithmetic negative/signed_arithmetic.sh)
+# A unit is verified for the target its program is compiled for, whatever
+# selects it: an option, the driver's name or a configuration file.
+cppl_add_script_test(negative_analysis_target negative/analysis_target.sh)
 
 # The verifier's decision on each operation against an oracle built from the
 # host compiler's own arithmetic (RFC 0019). The oracle shares nothing with the
