@@ -2199,7 +2199,8 @@ CheckResult check(
 );
 ```
 
-Actual APIs may differ.
+Actual APIs may differ. The implemented entry point, and the exact calculus it
+decides for the current core version, are stated in `KERNEL.md`.
 
 The kernel should not depend on:
 
