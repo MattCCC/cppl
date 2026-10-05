@@ -507,10 +507,15 @@ build="$run/build"
 
 echo "Mutation artifacts: $run"
 
-# rsync keeps the copy cheap and leaves the checkout untouched.
-rsync -a --exclude .git --exclude 'build' --exclude 'build-*' --exclude tmp \
-      --exclude .code-review-graph --exclude .claude --exclude .codex \
-      "$root/" "$source_copy/"
+# The copy leaves the checkout untouched. find prunes what builds and tools
+# write, matching each name at any depth, and tar carries everything else with
+# its mode, times and links. Both are on every POSIX host; rsync, which this
+# once used, is not, and the Linux CI image does not install it.
+mkdir -p "$source_copy"
+(cd "$root" && find . \( -name .git -o -name build -o -name 'build-*' -o -name tmp \
+        -o -name .code-review-graph -o -name .claude -o -name .codex \) -prune \
+        -o ! -name . -print0 | tar --null --no-recursion -T - -cf -) |
+    (cd "$source_copy" && tar -xf -)
 
 # A green control run establishes that a later test failure was introduced by
 # the mutation rather than being there all along.
