@@ -50,6 +50,7 @@ refuse sequence_attack_reference_after_move_assign "'r' refers to an element of 
 refuse sequence_attack_string_reference_after_append \
     "'c' refers to an element of 's', which may have been reallocated or ended by 'std::basic_string<char>::operator+='"
 refuse sequence_attack_reference_across_unsafe "'r' refers to an element of 'v', which may have been reallocated or ended by the unsafe block"
+refuse sequence_attack_view_across_unsafe "return path 'through_view path 1' does not satisfy its contract"
 for name in sequence_attack_stale_after_reserve sequence_attack_reference_after_assign \
     sequence_attack_reference_after_move_assign sequence_attack_string_reference_after_append \
     sequence_attack_reference_across_unsafe; do

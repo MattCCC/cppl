@@ -6075,6 +6075,15 @@ struct BodyLowering {
                 reached[storage] = true;
             }
         }
+        // A view reached is a way to write the container it views, though the
+        // block never names that container (STDMODEL-014, TCB-UNSAFE-002).
+        for (std::size_t index = 0; index < locals.size(); ++index) {
+            const std::optional<Local::Sequence>& held = locals[index].sequence;
+            if (reached[index] && held.has_value() && held->views.has_value() && *held->views < reached.size() &&
+                !locals[*held->views].binder.has_value()) {
+                reached[*held->views] = true;
+            }
+        }
         std::vector<std::size_t> found;
         for (std::size_t index = 0; index < reached.size(); ++index) {
             if (reached[index] && !locals[index].referent.has_value()) {
