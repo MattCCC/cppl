@@ -1663,7 +1663,7 @@ RFC.
 The rest of the test fixtures are held to the same standard. Every fixture the
 compiler accepts has a refused twin, the same program with one thing false,
 listed in `tests/fixtures/negative/twins/manifest.tsv` and checked by
-`negative_refused_twins`: 52 are written out there and compiled beside their
+`negative_refused_twins`: 56 are written out there and compiled beside their
 fixture, units they import included; 47 are refused fixtures written out before
 and run by the negative script that owns them; eight fixtures are exempt, each
 with its reason, because they state no claim (ordinary C++ clients, tampered
@@ -2802,6 +2802,12 @@ Evidence:
 - `unit_trust_closure_test`, `unit_trust_report_test`,
   `e2e_trust_report_json`, `lsp_verification_test` and
   `lsp_interfaces_test`;
+- `e2e_provenance_matrix` and
+  `every_claim_of_the_provenance_matrix_names_exactly_its_closure`: the exact
+  closure of each of 52 claims, with every kind of dependency reached at its
+  source, through one call, a chain of three, a diamond, a recursion group, a
+  unit between and in combination, and not at all, agreeing across the text
+  report, the JSON report and the editor;
 - the `trust-*` and `lsp-*` mutation entries.
 
 The rows "Trust reporting (closures, categories)" and "Trust report output"
