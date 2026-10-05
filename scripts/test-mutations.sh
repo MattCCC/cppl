@@ -92,6 +92,7 @@ call-statement-temporaries-mutator-only	clang/src/bridge.cpp	if (clang_getCursor
 call-writable-span-havocs-pointees	clang/src/bridge.cpp	return convert_type(canonical).representation.kind == source::RepresentationKind::Span &&	return false && convert_type(canonical).representation.kind == source::RepresentationKind::Span &&	^negative_sequence_boundaries$
 unsafe-reaches-viewed-container	clang/src/bridge.cpp	reached[*held->views] = true;	(void)held;	^negative_sequence_attacks$
 call-element-beside-reallocatable-container	clang/src/bridge.cpp	(container.storage != owner && !may_alias(holder, state[owner]))) {	true || (container.storage != owner && !may_alias(holder, state[owner]))) {	^negative_sequence_boundaries$
+deref-symbolic-index-overlaps	clang/src/bridge.cpp	if (other.has_symbolic_step() || target.has_symbolic_step()) {	if (false && (other.has_symbolic_step() || target.has_symbolic_step())) {	^negative_memory_capabilities$
 unsafe-block-new-generation	clang/src/bridge.cpp	new_generation(state[index], "the unsafe block at " + at);	(void)state[index];	^negative_containers$|^negative_sequence_attacks$
 container-span-capability	clang/src/bridge.cpp	if (region->parameter.has_value() && !granted(*region->parameter, required)) {	if (false && region->parameter.has_value() && !granted(*region->parameter, required)) {	^negative_containers$
 container-call-disjointness	clang/src/bridge.cpp	if (other == root || may_alias(state[other], state[root])) {	if (false && (other == root || may_alias(state[other], state[root]))) {	^negative_containers$

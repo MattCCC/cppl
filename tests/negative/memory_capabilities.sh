@@ -72,4 +72,12 @@ refuse memory_capability_write_after_read \
 refuse memory_capability_read_after_write \
     "reading 'p' requires 'readable(p)', which was not established"
 
+# SPEC: VERIFIED-039
+# A symbolic index through a pointer may select the element a constant index
+# selected: the write reaches it, in either order.
+refuse memory_capability_constant_and_symbolic_index "return path 'constant_then_symbolic path 1' does not satisfy its contract"
+grep -qF "return path 'symbolic_then_constant path 1' does not satisfy its contract" \
+    "$run/memory_capability_constant_and_symbolic_index.log" ||
+    { cat "$run/memory_capability_constant_and_symbolic_index.log" >&2; exit 1; }
+
 echo 'no verified call passes on a memory capability its caller does not hold'

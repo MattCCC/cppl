@@ -5107,9 +5107,14 @@ struct BodyLowering {
         if (target.is_deref() || other.is_deref()) {
             if (target.is_deref() && other.is_deref()) {
                 // Same pointer and same pointer version: one place, so the
-                // path decides. Otherwise two unrelated pointees, which may
-                // overlap for all this implementation can prove.
+                // path decides, and a symbolic index may select any element,
+                // as for an array (RFC 0014 §4). Otherwise two unrelated
+                // pointees, which may overlap for all this implementation can
+                // prove.
                 if (target.pointer == other.pointer && target.pointer_version == other.pointer_version) {
+                    if (other.has_symbolic_step() || target.has_symbolic_step()) {
+                        return true;
+                    }
                     return target.covered_by(other) || other.covered_by(target);
                 }
                 return true;

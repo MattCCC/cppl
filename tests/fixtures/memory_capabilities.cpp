@@ -7,6 +7,7 @@
 // Where either side states an element count, the callee's may not exceed the
 // caller's, and that comparison is a value obligation the kernel decides. Each
 // refused counterpart is written out in `negative/memory_capability_*.cpp`.
+#include <cstddef>
 #include <cstdio>
 
 verified void touch(unsigned* p)
@@ -79,6 +80,22 @@ verified unsigned keeps_local(unsigned* q)
     return kept;
 }
 
+// SPEC: VERIFIED-039
+// Two constant indices through one pointer select distinct elements, so the
+// second write keeps the first. Twin of
+// `negative/memory_capability_constant_and_symbolic_index.cpp`.
+verified unsigned constant_index_kept(unsigned* p, std::size_t n)
+    expects (readable(p, n) && writable(p, n))
+    ensures (result == 1u)
+{
+    if (2ul < n) {
+        p[1] = 1u;
+        p[2] = 5u;
+        return p[1];
+    }
+    return 1u;
+}
+
 int main() {
     unsigned cells[4] = {0u, 0u, 0u, 0u};
     Cell cell{0u};
@@ -87,6 +104,10 @@ int main() {
         return 1;
     }
     if (keeps_local(&spare) != 3u) {
+        return 1;
+    }
+    unsigned row[3] = {0u, 0u, 0u};
+    if (constant_index_kept(&row[0], 3ul) != 1u) {
         return 1;
     }
     holds(&cells[0]);
