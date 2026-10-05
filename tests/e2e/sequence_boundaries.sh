@@ -81,6 +81,7 @@ verified void put(unsigned* p, std::size_t n) expects (writable(p, n)) ensures (
 verified void put_and_grow(unsigned* p, std::size_t n, std::vector<unsigned>& w) expects (writable(p, n)) ensures (true) { }
 verified void read_n(const unsigned* p, std::size_t n) expects (readable(p, n)) ensures (true) { }
 verified void look_and_grow(std::span<const unsigned> s, std::vector<unsigned>& w) expects (readable(s)) ensures (true) { }
+verified unsigned read_beside(const std::vector<unsigned>& w, const unsigned& x) ensures (result == x) { return x; }
 CPP
 }
 
@@ -562,6 +563,15 @@ verified unsigned x_span_param_passed_with_other_container(std::span<unsigned> s
 {
     fill_and_grow(s, w);
     return 0u;
+}
+
+CPP
+accepted x_element_beside_read_container 7 <<'CPP'
+verified unsigned x_element_beside_read_container()
+    ensures (result == 7u)
+{
+    std::vector<unsigned> v{7u};
+    return read_beside(v, v[0]);
 }
 
 CPP

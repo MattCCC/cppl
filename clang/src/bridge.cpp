@@ -5533,6 +5533,29 @@ struct BodyLowering {
                 }
             }
         }
+        // An element handed by reference beside its container handed by mutable
+        // reference: the callee may reallocate the container and end the
+        // element's lifetime while it still holds the reference.
+        for (const Position& element : positions) {
+            const Local& handed = state[element.storage];
+            if (!handed.formed_at.has_value()) {
+                continue;
+            }
+            const std::size_t owner = handed.formed_at->root;
+            for (const Position& container : positions) {
+                const Local& holder = state[container.storage];
+                if (!container.writable || holder.formed_at.has_value() ||
+                    (container.storage != owner && !may_alias(holder, state[owner]))) {
+                    continue;
+                }
+                return reject("'" + handed.spelling + "', an element of '" + state[owner].spelling +
+                              "', is passed to '" + qualified_name_of(callee) + "' by reference, and the same call "
+                              "passes '" + holder.spelling +
+                              "' by a reference through which the callee may reallocate it and end that element's "
+                              "lifetime; the storage a reference designates must not be storage the callee can "
+                              "replace (SPEC.md STDMODEL-016)");
+            }
+        }
         // A pointer to non-const lets the callee write storage this call does
         // not name, so nothing it reads by reference is known to be preserved.
         const bool through_pointer = writes_through_pointer;

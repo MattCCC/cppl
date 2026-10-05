@@ -6714,7 +6714,10 @@ live for the call and is not element storage of a sequence the function can reac
 by mutable reference. A verified call owes each capability: the caller passes a span or pointer
 parameter it holds the same capability for, a live span local, a container of its own
 converted to a span, or a container's data pointer, and a span or data pointer over a container
-passed in the same call by mutable reference is refused.
+passed in the same call by mutable reference is refused. So is an element of a container passed
+by reference to a call that passes the container, or storage the common alias model does not keep
+apart from it, by mutable reference: the callee could reallocate the container and end the
+element's lifetime while it holds the reference.
 
 Write access is a property of the access path, never of the storage behind it: `writable(s)`
 of a span of `const` elements, like `writable(p, n)` of a pointer to `const`, is refused where

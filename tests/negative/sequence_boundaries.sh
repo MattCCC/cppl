@@ -100,6 +100,7 @@ verified void put(unsigned* p, std::size_t n) expects (writable(p, n)) ensures (
 verified void put_and_grow(unsigned* p, std::size_t n, std::vector<unsigned>& w) expects (writable(p, n)) ensures (true) { }
 verified void read_n(const unsigned* p, std::size_t n) expects (readable(p, n)) ensures (true) { }
 verified void look_and_grow(std::span<const unsigned> s, std::vector<unsigned>& w) expects (readable(s)) ensures (true) { }
+verified unsigned grow_beside(std::vector<unsigned>& w, const unsigned& x) ensures (true) { w.push_back(1u); return x; }
 CPP
 }
 
@@ -952,6 +953,29 @@ CPP
 # reads by another name: another span parameter, a reference parameter, a
 # member of its object, a vector it holds by const reference (STDMODEL-017).
 # Accepted twin: `x_view_write_keeps_local`.
+# An element handed by reference beside its container handed by mutable
+# reference: the callee may reallocate the container and read or write the
+# element after its lifetime ended (STDMODEL-016). Accepted twin:
+# `x_element_beside_read_container`.
+refused x_element_beside_growing_container "'v[0]', an element of 'v', is passed to 'grow_beside' by reference, and the same call passes 'v' by a reference through which the callee may reallocate it" <<'CPP'
+verified unsigned x_element_beside_growing_container()
+    ensures (result == result)
+{
+    std::vector<unsigned> v{7u};
+    return grow_beside(v, v[0]);
+}
+
+CPP
+refused x_element_reference_beside_growing_container "'v[0]', an element of 'v', is passed to 'grow_beside' by reference" <<'CPP'
+verified unsigned x_element_reference_beside_growing_container()
+    ensures (result == result)
+{
+    std::vector<unsigned> v{7u};
+    const unsigned& r = v[0];
+    return grow_beside(v, r);
+}
+
+CPP
 refused x_view_write_other_span "return path 'x_view_write_other_span path" <<'CPP'
 verified unsigned x_view_write_other_span(std::span<unsigned> a, std::span<const unsigned> b)
     expects (writable(a) && readable(b) && 0ul < b.size())
