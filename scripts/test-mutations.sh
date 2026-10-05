@@ -545,8 +545,22 @@ copied() {
         -o -name .code-review-graph -o -name .claude -o -name .codex \) -prune \
         -o ! -name . "$@"
 }
+# tar restores the checkout's times, which can be older than an object the
+# reused build made from the copy's earlier content, such as a mutation an
+# interrupted run left applied. Every file whose content changes is touched
+# after the copy, so the build cannot keep that object.
+changed="$run/changed-files"
+: > "$changed"
+if [ -n "$reuse" ]; then
+    (cd "$root" && copied -type f -print0) | while IFS= read -r -d '' file; do
+        cmp -s "$root/$file" "$source_copy/$file" || printf '%s\0' "$file" >> "$changed"
+    done
+fi
 (cd "$root" && copied -print0 | tar --null --no-recursion -T - -cf -) |
     (cd "$source_copy" && tar -xf -)
+if [ -s "$changed" ]; then
+    (cd "$source_copy" && xargs -0 touch < "$changed")
+fi
 if [ -n "$reuse" ]; then
     stale_files=$(comm -13 <(cd "$root" && copied -print | LC_ALL=C sort) \
                            <(cd "$source_copy" && copied -print | LC_ALL=C sort))
