@@ -433,6 +433,8 @@ cppl_add_script_test(e2e_contradiction e2e/contradiction.sh)
 cppl_add_script_test(e2e_omitted_case e2e/omitted_case.sh)
 cppl_add_script_test(e2e_trust_closure e2e/trust_closure.sh)
 cppl_add_script_test(e2e_trust_report_json e2e/trust_report_json.sh)
+# RFC 0022: the V1 verified C++ subset, one fixture for each construct of SPEC.md Annex X.
+cppl_add_script_test(e2e_safety_subset e2e/safety_subset.sh)
 cppl_add_script_test(e2e_unsafe_boundary e2e/unsafe_boundary.sh)
 cppl_add_script_test(e2e_ghost_state e2e/ghost_state.sh)
 cppl_add_script_test(e2e_termination e2e/termination.sh)

@@ -1,0 +1,153 @@
+# The V1 verified C++ subset (RFC 0022): one row for each construct of SPEC.md Annex X.
+# construct	name	verdict	fixture	diagnostic its refused fixture must produce (extended regular expression)
+CONSTRUCT-001	integer literal	verified	x001_integer_literal.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-002	floating literal	refused	x002_floating_literal.cpp	local 'scale' has type 'double', which is not modeled
+CONSTRUCT-003	character literal	verified	x003_character_literal.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-004	string literal	refused	x004_string_literal.cpp	local 'text' has type 'const char \*', which is not modeled
+CONSTRUCT-005	boolean literal	verified	x005_boolean_literal.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-006	nullptr literal	verified	x006_nullptr_literal.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-007	identifier expression	verified	x007_identifier_expression.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-008	qualified-id	verified	x008_qualified_id.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-009	`this` expression	verified	x009_this_expression.cpp	error \[kernel-rejection\]: return path 'Box::get path [0-9]+' does not satisfy its contract
+CONSTRUCT-010	parenthesized expression	verified	x010_parenthesized_expression.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-011	lvalue-to-rvalue conversion	verified	x011_lvalue_to_rvalue_conversion.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-012	array-to-pointer conversion	refused	x012_array_to_pointer_conversion.cpp	local 'first' has type 'const unsigned int \*', which is not modeled
+CONSTRUCT-013	function-to-pointer conversion	refused	x013_function_to_pointer_conversion.cpp	local 'function' has type 'unsigned int \(\*\)\(unsigned int\)', which is not modeled
+CONSTRUCT-014	integral promotion	verified	x014_integral_promotion.cpp	error \[kernel-rejection\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-015	usual arithmetic conversion	verified	x015_usual_arithmetic_conversion.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-016	qualification conversion	verified	x016_qualification_conversion.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-017	temporary materialization	refused	x017_temporary_materialization.cpp	reference 'bound' must bind a tracked local object; this reference binding is no
+CONSTRUCT-018	unary plus	verified	x018_unary_plus.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-019	unary minus	verified	x019_unary_minus.cpp	error \[kernel-rejection\]: an operation in verified function 'probe' is not shown to have defined behavior: sig
+CONSTRUCT-020	logical not	verified	x020_logical_not.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-021	bitwise complement	refused	x021_bitwise_complement.cpp	operator '~' is not modeled
+CONSTRUCT-022	address-of	refused	x022_address_of.cpp	local 'where' has type 'unsigned int \*', which is not modeled
+CONSTRUCT-023	dereference	verified	x023_dereference.cpp	reading 'p' requires 'readable\(p\)', which was not established; 'p != nullptr' do
+CONSTRUCT-024	prefix increment	verified	x024_prefix_increment.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-025	postfix increment	verified	x025_postfix_increment.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-026	prefix decrement	verified	x026_prefix_decrement.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-027	postfix decrement	verified	x027_postfix_decrement.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-028	addition	verified	x028_addition.cpp	error \[kernel-rejection\]: an operation in verified function 'probe' is not shown to have defined behavior: sig
+CONSTRUCT-029	subtraction	verified	x029_subtraction.cpp	error \[kernel-rejection\]: an operation in verified function 'probe' is not shown to have defined behavior: sig
+CONSTRUCT-030	multiplication	verified	x030_multiplication.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-031	division	verified	x031_division.cpp	error \[kernel-rejection\]: an operation in verified function 'probe' is not shown to have defined behavior: div
+CONSTRUCT-032	remainder	verified	x032_remainder.cpp	error \[kernel-rejection\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-033	left shift	refused	x033_left_shift.cpp	operator '<<' is not modeled
+CONSTRUCT-034	right shift	refused	x034_right_shift.cpp	operator '>>' is not modeled
+CONSTRUCT-035	bitwise and	refused	x035_bitwise_and.cpp	operator '&' is not modeled
+CONSTRUCT-036	bitwise or	refused	x036_bitwise_or.cpp	operator '\|' is not modeled
+CONSTRUCT-037	bitwise xor	refused	x037_bitwise_xor.cpp	operator '\^' is not modeled
+CONSTRUCT-038	less-than	verified	x038_less_than.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-039	less-or-equal	verified	x039_less_or_equal.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-040	greater-than	verified	x040_greater_than.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-041	greater-or-equal	verified	x041_greater_or_equal.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-042	equality operator	verified	x042_equality_operator.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-043	inequality operator	verified	x043_inequality_operator.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-044	three-way comparison	refused	x044_three_way_comparison.cpp	operator '<=>' is not modeled
+CONSTRUCT-045	logical and runtime	verified	x045_logical_and_runtime.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-046	logical or runtime	verified	x046_logical_or_runtime.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-047	logical conjunction formal	verified	x047_logical_conjunction_formal.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-048	logical disjunction formal	verified	x048_logical_disjunction_formal.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-049	conditional operator	verified	x049_conditional_operator.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-050	assignment	verified	x050_assignment.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-051	compound assignment	verified	x051_compound_assignment.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-052	comma operator	refused	x052_comma_operator.cpp	operator ',' is not modeled
+CONSTRUCT-053	member access dot	verified	x053_member_access_dot.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-054	member access arrow	verified	x054_member_access_arrow.cpp	reading 'pair' requires 'readable\(pair\)', which was not established; 'p != nullp
+CONSTRUCT-055	built-in subscript	verified	x055_built_in_subscript.cpp	error \[kernel-rejection\]: law 'probe element index' is not proven
+CONSTRUCT-056	overloaded subscript	refused	x056_overloaded_subscript.cpp	call does not resolve to an ordinary function or to a member function named on i
+CONSTRUCT-057	direct function call	verified	x057_direct_function_call.cpp	error \[proof-failure\]: call-site precondition for 'probe -> successor' is not proven
+CONSTRUCT-058	member function call	verified	x058_member_function_call.cpp	error \[kernel-rejection\]: call-site precondition for 'probe -> Counter::next' is not proven
+CONSTRUCT-059	virtual call	refused	x059_virtual_call.cpp	a virtual call dispatches on the object's dynamic type, and override substitutab
+CONSTRUCT-060	function pointer call	refused	x060_function_pointer_call.cpp	call does not resolve to an ordinary function
+CONSTRUCT-061	callable object invocation	refused	x061_callable_object_invocation.cpp	call does not resolve to an ordinary function or to a member function named on i
+CONSTRUCT-062	constructor call	refused	x062_constructor_call.cpp	local 'meter' of type 'Meter' is not initialized by an aggregate initializer, so
+CONSTRUCT-063	conversion function call	refused	x063_conversion_function_call.cpp	call does not resolve to an ordinary function
+CONSTRUCT-064	static_cast	verified	x064_static_cast.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-065	dynamic_cast	refused	x065_dynamic_cast.cpp	an explicit conversion is not modeled
+CONSTRUCT-066	const_cast	refused	x066_const_cast.cpp	local 'writable_view' has type 'unsigned int \*', which is not modeled
+CONSTRUCT-067	reinterpret_cast	refused	x067_reinterpret_cast.cpp	local 'view' has type 'const int \*', which is not modeled
+CONSTRUCT-068	C-style cast	verified	x068_c_style_cast.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-069	functional cast	verified	x069_functional_cast.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-070	sizeof	refused	x070_sizeof.cpp	'UnaryExpr' is not modeled
+CONSTRUCT-071	alignof	refused	x071_alignof.cpp	'UnaryExpr' is not modeled
+CONSTRUCT-072	decltype	verified	x072_decltype.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-073	noexcept expression	refused	x073_noexcept_expression.cpp	'UnaryExpr' is not modeled
+CONSTRUCT-074	typeid	refused	x074_typeid.cpp	local 'type' has type 'const std::type_info', which is not modeled
+CONSTRUCT-075	new expression	refused	x075_new_expression.cpp	local 'cell' has type 'unsigned int \*', which is not modeled
+CONSTRUCT-076	delete expression	refused	x076_delete_expression.cpp	only if/else, while and for loops, blocks, local declarations, assignments, and
+CONSTRUCT-077	placement construction	refused	x077_placement_construction.cpp	local 'storage' of type 'unsigned char\[[0-9]+\]' is not initialized by an aggregate in
+CONSTRUCT-078	lambda expression	refused	x078_lambda_expression.cpp	local 'same' has type '\(lambda at
+CONSTRUCT-079	fold expression	refused	x079_fold_expression.cpp	error \[elaboration\]: the postcondition of verified function 'probe' was not resolved
+CONSTRUCT-080	requires expression	refused	x080_requires_expression.cpp	'RequiresExpr' is not modeled
+CONSTRUCT-081	pack expansion	refused	x081_pack_expansion.cpp	error \[elaboration\]: the postcondition of verified function 'probe' was not resolved
+CONSTRUCT-082	co_await	refused	x082_co_await.cpp	error \[verification-interface\]: verified function 'probe' is declared but not defined in this translation unit
+CONSTRUCT-083	co_yield	refused	x083_co_yield.cpp	error \[verification-interface\]: verified function 'probe' is declared but not defined in this translation unit
+CONSTRUCT-084	co_return	refused	x084_co_return.cpp	error \[verification-interface\]: verified function 'probe' is declared but not defined in this translation unit
+CONSTRUCT-085	expression statement	verified	x085_expression_statement.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-086	null statement	verified	x086_null_statement.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-087	compound statement	verified	x087_compound_statement.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-088	declaration statement	verified	x088_declaration_statement.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-089	if statement	verified	x089_if_statement.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-090	if constexpr	verified	x090_if_constexpr.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-091	switch statement	refused	x091_switch_statement.cpp	only if/else, while and for loops, blocks, local declarations, assignments, and
+CONSTRUCT-092	while statement	verified	x092_while_statement.cpp	error \[kernel-rejection\]: loop invariant 'probe loop at line [0-9]+ invariant [0-9]+' does not hold on entry
+CONSTRUCT-093	classic for statement	verified	x093_classic_for_statement.cpp	error \[kernel-rejection\]: loop invariant 'probe loop at line [0-9]+ invariant [0-9]+' is not preserved by an iteration
+CONSTRUCT-094	range-for statement	refused	x094_range_for_statement.cpp	range-based for loops are not modeled
+CONSTRUCT-095	do-while statement	verified	x095_do_while_statement.cpp	error \[kernel-rejection\]: loop invariant 'probe loop at line [0-9]+ invariant [0-9]+' does not hold on entry
+CONSTRUCT-096	break statement	verified	x096_break_statement.cpp	error \[kernel-rejection\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-097	continue statement	verified	x097_continue_statement.cpp	error \[kernel-rejection\]: loop measure 'probe loop at line [0-9]+ measure' is not shown to decrease on every iterat
+CONSTRUCT-098	return statement	verified	x098_return_statement.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-099	goto statement	refused	x099_goto_statement.cpp	only if/else, while and for loops, blocks, local declarations, assignments, and
+CONSTRUCT-100	label statement	refused	x100_label_statement.cpp	only if/else, while and for loops, blocks, local declarations, assignments, and
+CONSTRUCT-101	try block	refused	x101_try_block.cpp	only if/else, while and for loops, blocks, local declarations, assignments, and
+CONSTRUCT-102	catch handler	refused	x102_catch_handler.cpp	only if/else, while and for loops, blocks, local declarations, assignments, and
+CONSTRUCT-103	throw expression	refused	x103_throw_expression.cpp	only if/else, while and for loops, blocks, local declarations, assignments, and
+CONSTRUCT-104	inline asm	refused	x104_inline_asm.cpp	only if/else, while and for loops, blocks, local declarations, assignments, and
+CONSTRUCT-105	local variable declaration	verified	x105_local_variable_declaration.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-106	static local declaration	refused	x106_static_local_declaration.cpp	local 'calls' does not have automatic storage
+CONSTRUCT-107	thread_local declaration	refused	x107_thread_local_declaration.cpp	thread-local 'calls' is not modeled
+CONSTRUCT-108	global variable declaration	refused	x108_global_variable_declaration.cpp	'configured' is not a parameter or local of the enclosing declaration
+CONSTRUCT-109	reference declaration	verified	x109_reference_declaration.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-110	pointer variable declaration	refused	x110_pointer_variable_declaration.cpp	local 'none' has type 'const unsigned int \*', which is not modeled
+CONSTRUCT-111	array declaration	verified	x111_array_declaration.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-112	structured binding	refused	x112_structured_binding.cpp	only variable declarations are modeled inside a verified body; found 'UnexposedD
+CONSTRUCT-113	namespace declaration	verified	x113_namespace_declaration.cpp	error \[proof-failure\]: verified function 'billing::probe' does not satisfy its contract
+CONSTRUCT-114	namespace alias	verified	x114_namespace_alias.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-115	using declaration	verified	x115_using_declaration.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-116	using directive	verified	x116_using_directive.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-117	typedef declaration	verified	x117_typedef_declaration.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-118	using type alias	verified	x118_using_type_alias.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-119	enum declaration	verified	x119_enum_declaration.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-120	class declaration	verified	x120_class_declaration.cpp	error \[kernel-rejection\]: return path 'Account::get path [0-9]+' does not satisfy its contract
+CONSTRUCT-121	union declaration	refused	x121_union_declaration.cpp	error \[unsupported-semantics\]: verified member function 'Word::get' is not verified by this implementation: it
+CONSTRUCT-122	bit-field declaration	refused	x122_bit_field_declaration.cpp	bit-field 'ready' is not modeled: its values and its promotion follow its width,
+CONSTRUCT-123	function declaration	verified	x123_function_declaration.cpp	error \[elaboration\]: this verified declaration of 'probe' states a different contract from its earlier one
+CONSTRUCT-124	function definition	verified	x124_function_definition.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-125	defaulted function	verified	x125_defaulted_function.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-126	deleted function	verified	x126_deleted_function.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-127	friend declaration	verified	x127_friend_declaration.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-128	static_assert	refused	x128_static_assert.cpp	only variable declarations are modeled inside a verified body; found 'StaticAsse
+CONSTRUCT-129	attribute specifier	verified	x129_attribute_specifier.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-130	alignas specifier	verified	x130_alignas_specifier.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-131	extern linkage declaration	refused	x131_extern_linkage_declaration.cpp	error \[unsupported-semantics\]: 'verified' is applied outside namespace scope
+CONSTRUCT-132	template declaration	verified	x132_template_declaration.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-133	template specialization	verified	x133_template_specialization.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-134	explicit instantiation	verified	x134_explicit_instantiation.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-135	concept declaration	verified	x135_concept_declaration.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-136	deduction guide	verified	x136_deduction_guide.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-137	module declaration	refused	x137_module_declaration.cpp	error: unknown type name 'verified'
+CONSTRUCT-138	module import	refused	x138_module_import.cpp	fatal error: module 'probe_module' not found
+CONSTRUCT-139	module export	refused	x139_module_export.cpp	error \[unsupported-semantics\]: 'verified' is applied outside namespace scope
+CONSTRUCT-140	constructor	refused	x140_constructor.cpp	error \[unsupported-semantics\]: a verified constructor is not verified by this implementation
+CONSTRUCT-141	destructor	refused	x141_destructor.cpp	error \[unsupported-semantics\]: a verified destructor is not verified by this implementation
+CONSTRUCT-142	copy constructor	verified	x142_copy_constructor.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-143	move constructor	verified	x143_move_constructor.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-144	copy assignment	refused	x144_copy_assignment.cpp	call does not resolve to an ordinary function or to a member function named on i
+CONSTRUCT-145	move assignment	refused	x145_move_assignment.cpp	call does not resolve to an ordinary function or to a member function named on i
+CONSTRUCT-146	virtual function	refused	x146_virtual_function.cpp	error \[unsupported-semantics\]: a verified virtual function is not verified by this implementation
+CONSTRUCT-147	pure virtual function	refused	x147_pure_virtual_function.cpp	error \[unsupported-semantics\]: a verified virtual function is not verified by this implementation
+CONSTRUCT-148	base class conversion	refused	x148_base_class_conversion.cpp	local 'base' has type 'const Base', which is not modeled
+CONSTRUCT-149	downcast	refused	x149_downcast.cpp	local 'derived' has type 'const Derived', which is not modeled
+CONSTRUCT-150	multiple inheritance	refused	x150_multiple_inheritance.cpp	error \[unsupported-semantics\]: verified member function 'Both::get_left' is not verified by this implementatio
+CONSTRUCT-151	virtual inheritance	refused	x151_virtual_inheritance.cpp	error \[unsupported-semantics\]: verified member function 'Middle::get_root' is not verified by this implementat

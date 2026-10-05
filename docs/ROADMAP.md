@@ -699,7 +699,12 @@ V1 should not ship as "complete" unless all of the following core properties wor
 
 Some advanced C++ constructs may initially remain outside verified regions.
 
-That is acceptable if the boundary is explicit.
+That is acceptable if the boundary is explicit. For V1 it is RFC 0022: every
+construct of `SPEC.md` Annex X is listed as verified or refused, and a test
+checks each one (`tests/fixtures/subset/manifest.tsv`). RFC 0022 also fixes the
+V1 scope of arithmetic (no shifts or bitwise operators), induction (unsigned
+machine integers only) and dependent reasoning (indexed refinements, dependent
+contracts and indexed observation; no kernel type families).
 
 It is not acceptable to silently call them verified.
 
