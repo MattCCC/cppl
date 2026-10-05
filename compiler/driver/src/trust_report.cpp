@@ -595,6 +595,20 @@ std::string render_trust_report(const TrustSummary& summary, const BuildRecord& 
     json.key("directly_trusted_automation");
     json.begin_array();
     json.end_array();
+    // Every claim is also relative to the translation from C++ to the core,
+    // which is trusted and not verified (TRUST.md 7 to 17, 29).
+    json.key("trusted_translation");
+    json.begin_object();
+    json.key("verified");
+    json.boolean(false);
+    json.key("components");
+    json.begin_array();
+    for (const std::string_view component :
+         {"clang_semantics", "bridge", "elaboration", "obligation_construction", "erasure_check"}) {
+        json.string(component);
+    }
+    json.end_array();
+    json.end_object();
     // An interface's integrity is checked and its origin is not (TRUST.md
     // TCB-XTU-010).
     json.key("interface_provenance");

@@ -2444,9 +2444,17 @@ rests on, each kind apart:
   "unverified_ffi_boundaries": "not_analysed",
   "trusted_solvers": [],
   "directly_trusted_automation": [],
+  "trusted_translation": {
+    "verified": false,
+    "components": ["clang_semantics", "bridge", "elaboration", "obligation_construction", "erasure_check"]
+  },
   "interface_provenance": "none_imported"
 }
 ```
+
+`trusted_translation` states what every claim is also relative to: the
+translation from C++ to the core, which is trusted and not verified (`TRUST.md`
+7 to 17 and 29). The text report states it on its `Trusted translation` line.
 
 `trusted_closure_empty` answers whether a `PROVEN` claim rests on any trusted
 law, its own or one an imported record's proof rested on, and

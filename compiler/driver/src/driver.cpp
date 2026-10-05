@@ -577,7 +577,11 @@ void print_trust_report(const Options& options, const TrustSummary& summary) {
     }
     std::cout << "Unverified FFI boundaries:   not analysed\n\n";
     std::cout << "Trusted solvers:             0\n";
-    std::cout << "Trusted external axioms:     " << trusted_laws << "\n\n";
+    std::cout << "Trusted external axioms:     " << trusted_laws << "\n";
+    // Every claim above is also relative to the translation from C++ to the
+    // core, which is trusted and not verified (TRUST.md 7 to 17, 29).
+    std::cout << "Trusted translation:         not verified: C++ semantics as Clang resolves them, the bridge, "
+                 "elaboration, obligation construction and the erasure check\n\n";
     std::cout << "Kernel version:              " << kernel::kKernelVersion << "\n";
     std::cout << "Formal core version:         " << kernel::kFormalCoreVersion << "\n";
     std::cout << "Compiler version:            " << CPPL_VERSION << "\n";
