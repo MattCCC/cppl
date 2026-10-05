@@ -272,6 +272,28 @@ from the global scope; `verified ::std::size_t f(...)` names a member of a
 namespace or class `verified`, and the verified function is written
 `verified std::size_t f(...)`.
 
+[WORD-015] `verified`, `pure` and `unsafe` are declaration specifiers only where a
+return type follows the word and a declarator follows the return type. The
+decl-specifiers C++ admits after a type name (`const`, `volatile`, `static`,
+`extern`, `inline`, `constexpr`, `consteval`, `constinit`, `virtual`, `friend`,
+`mutable`, `thread_local`, `typedef`) do not decide: `verified const c{};`,
+`verified static s;` and `verified typedef alias;` declare with a type named
+`verified`, while `verified const int f()` is a verified function returning
+`const int`. A word followed directly by its declarator keeps its C++ meaning,
+whether that is an operator-function-id (`verified operator*(verified, verified)`),
+a template-id (`template <> verified f<int>(int)`), a qualified name
+(`verified C::make()`) or a parenthesized declarator. `explicit` after the word
+makes it a specifier: only a declaration with no return type is `explicit`.
+
+[WORD-016] A loop with one clause whose parentheses hold a declarator, a name
+after any `*`, `&`, `&&` or cv-qualifiers and before any array bounds, and whose
+braces hold no statement of their own and are followed by `;` or `,`, is the C++
+declaration it also spells: `while (n-- > 0) decreases (k) {n};` declares `k`, and
+`for (...) invariant (y) {i}, (z) {i + 1};` declares `y` and `z`. A refinement's
+`where` follows its base type directly. After `,` or an operator no type-id ends
+in, any but `>`, `>>`, `*`, `&` and `&&`, the word is ordinary C++, so
+`type a = 5, where (6);` declares `a` and `where`.
+
 [WORD-010] `omit` and `by` have special meaning only in a case omission, `omit label by
 contradiction evidence;`, written directly inside a `cases` statement (§20.2).
 `omit` begins one only where a case label followed by `by` comes after it; a

@@ -124,6 +124,67 @@ CPPL_TEST(a_return_type_qualified_by_a_cppl_word_follows_the_specifiers) {
     CPPL_CHECK_EQ(result.syntax.pure_markers[0].function_name, std::string("g"));
 }
 
+// SPEC: WORD-008, WORD-015
+// A word naming a type may be followed by the decl-specifiers C++ admits after
+// a type name, an operator-function-id, a template-id declarator or an
+// operator's alternative spelling. None of those states a return type after the
+// word, so none is a C++L declaration.
+CPPL_TEST(a_cppl_word_before_specifiers_or_an_operator_is_the_type_it_names) {
+    for (const char* text : {
+             "verified const c{};\n",
+             "pure const c{};\n",
+             "verified volatile c{};\n",
+             "verified static s;\n",
+             "verified constexpr c{};\n",
+             "verified typedef alias;\n",
+             "verified extern e;\n",
+             "verified thread_local t;\n",
+             "pure static make();\n",
+             "verified inline make() { return {}; }\n",
+             "verified constexpr make() { return {}; }\n",
+             "unsafe const u{};\n",
+             "struct S { verified mutable m; verified virtual get() const; verified static shared; };\n",
+             "template <> verified pick<int>(int) { return {}; }\n",
+             "verified operator*(verified a, verified b) { return a; }\n",
+             "verified operator&(verified a, verified b) { return a; }\n",
+             "verified S::operator*(verified b) { return b; }\n",
+             "void f() { verified const local{}; verified static kept; pure and_eq mask; unsafe or_eq mask; }\n",
+         }) {
+        Recognized result;
+        recognize(text, result);
+        CPPL_CHECK(result.engine.diagnostics().empty());
+        CPPL_CHECK(result.syntax.empty());
+    }
+}
+
+// SPEC: WORD-015
+// After those specifiers, a return type still makes the word a specifier: what
+// follows the specifiers decides, as it does without them.
+CPPL_TEST(a_return_type_after_ordinary_specifiers_still_follows_a_cppl_specifier) {
+    Recognized result;
+    recognize("verified inline unsigned f(unsigned x) ensures (result == x) { return x; }\n"
+              "verified const unsigned g(unsigned x) ensures (result == x) { return x; }\n"
+              "verified static unsigned h(unsigned x) ensures (result == x) { return x; }\n",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK_EQ(result.syntax.verified_functions.size(), std::size_t{3});
+}
+
+// SPEC: CONTRACT-011, WORD-015
+// `explicit` stands only on what has no return type, so the word before it is
+// never one: a verified constructor or conversion function is refused, after any
+// ordinary specifier, rather than handed to Clang as an unknown type.
+CPPL_TEST(a_verified_constructor_or_conversion_after_ordinary_specifiers_is_refused) {
+    for (const char* text : {"struct Meter { verified constexpr Meter(unsigned v) : value(v) {} unsigned value; };\n",
+                             "struct Meter { verified explicit Meter(unsigned v) : value(v) {} unsigned value; };\n",
+                             "struct Flag { verified explicit operator bool() const { return true; } };\n"}) {
+        Recognized result;
+        recognize(text, result);
+        CPPL_CHECK(result.engine.has_errors());
+        CPPL_CHECK(result.syntax.verified_functions.empty());
+    }
+}
+
 CPPL_TEST(the_pure_specifier_is_attached_to_its_function) {
     Recognized result;
     recognize("pure int identity(int x) {\n    return x;\n}\n", result);
@@ -442,6 +503,68 @@ CPPL_TEST(a_declaration_of_a_type_named_invariant_as_a_loop_body_stays_ordinary)
     recognize("struct invariant {}; void f(int n) { while (n > 0) invariant (x){}; }\n", result);
     CPPL_CHECK(!result.engine.has_errors());
     CPPL_CHECK(result.syntax.empty());
+}
+
+// SPEC: WORD-008, WORD-016
+// A loop body that declares locals of a type named `decreases` or `invariant`,
+// one or several, with braced initializers, in every loop form. One clause
+// holding a declarator, then braces holding no statement and a `;` or `,`, is
+// a declaration (GRAMMAR.md 25).
+CPPL_TEST(a_loop_body_declaring_locals_of_a_clause_named_type_stays_ordinary) {
+    for (const char* text : {
+             "void f(int n) { while (n-- > 0) decreases (k) {n}; }\n",
+             "void f(int n) { for (int i = 0; i < n; ++i) decreases (m) {i}; }\n",
+             "void f(int n) { do decreases (p) {7}; while (--n > 0); }\n",
+             "void f(int n) { for (int i = 0; i < n; ++i) invariant (y) {i}, (z) {i + 1}; }\n",
+             "void f(int n) { while (n < 2) invariant (w) {n++}, (q) {0}; }\n",
+             "void f(int n) { do invariant (x) {n}, (y) {n}; while (--n > 0); }\n",
+             "void f(int n) { while (n-- > 0) decreases (*p) {nullptr}, (&r) {kept}, (a[2]) {}; }\n",
+             "void f(int n) { int k = 0; while (n-- > 0) decreases (k) {n}; for (;;) decreases (m) {k}; }\n",
+         }) {
+        Recognized result;
+        recognize(text, result);
+        CPPL_CHECK(result.engine.diagnostics().empty());
+        CPPL_CHECK(result.syntax.empty());
+    }
+}
+
+// SPEC: LOOP-001, WORD-016
+// The same words stay clauses wherever the declaration cannot be meant: the
+// parentheses hold an expression, or the braces hold a statement, which a
+// braced initializer never does, even when a `;` follows the loop.
+CPPL_TEST(loop_clauses_before_a_body_that_cannot_be_an_initializer_stay_clauses) {
+    Recognized result;
+    recognize("verified unsigned f(unsigned n) ensures (result == n) { unsigned i = 0u;\n"
+              "  while (i < n) invariant (i <= n) {};\n"
+              "  while (i < n) invariant (ok) { ++i; };\n"
+              "  while (i < n) decreases (n - i) {};\n"
+              "  do invariant (i <= n) { ++i; } while (i < n);\n"
+              "  return i; }\n",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK_EQ(result.syntax.loops.size(), std::size_t{4});
+}
+
+// SPEC: REFINE-001, WORD-016
+// A refinement's `where` follows its base type, and a type-id never ends in `,`
+// or an operator. After one, the word is the next declarator of a C++
+// declaration, or an operand of its initializer.
+CPPL_TEST(where_after_a_comma_or_an_operator_is_not_a_refinement_predicate) {
+    for (const char* text :
+         {"type a = 5, where (6);\n", "void f() { type b = 7, where (8); }\n", "type c = 1 + where (2);\n",
+          "type d = x ? where (3) : 0;\n", "type e = b < c, where (9);\n"}) {
+        Recognized result;
+        recognize(text, result);
+        CPPL_CHECK(result.engine.diagnostics().empty());
+        CPPL_CHECK(result.syntax.empty());
+    }
+    Recognized result;
+    recognize("type Ordered = std::pair<int, int> where (self.first <= self.second);\n"
+              "type Present = int* where (self != nullptr);\n"
+              "type Small = unsigned where (self < 10u);\n",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK_EQ(result.syntax.refinement_types.size(), std::size_t{3});
 }
 
 CPPL_TEST(a_loop_invariant_outside_a_verified_function_is_refused) {

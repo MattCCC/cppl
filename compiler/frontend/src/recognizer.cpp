@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -524,6 +525,18 @@ bool try_refinement_type(const TokenStream& stream, std::size_t index, diagnosti
     }
     if (where + 1 >= tokens.size() || !tokens[where + 1].is_punctuator("(")) {
         return false; // `where` used as an ordinary name in the base type
+    }
+    // The predicate's `where` follows the base type, and a type-id ends only
+    // in a name, a keyword, `>`, `*`, `&`, `&&`, `)` or `]`. After any other
+    // punctuator, such as the `,` of `type a = 5, where (6);`, the word is an
+    // operand of an initializer or the next declarator of a C++ declaration
+    // (SPEC.md 3.1). Directly after `=` there is no base type at all, which is
+    // refused below as what it is.
+    if (const Token& before = tokens[where - 1];
+        before.kind == TokenKind::Punctuator && !before.is_punctuator("=") && !before.is_punctuator(">") &&
+        !before.is_punctuator(">>") && !before.is_punctuator("*") && !before.is_punctuator("&") &&
+        !before.is_punctuator("&&") && !before.is_punctuator(")") && !before.is_punctuator("]")) {
+        return false;
     }
     const std::size_t predicate_close = matching_parenthesis(tokens, where + 1);
     if (predicate_close >= tokens.size()) {
@@ -1304,9 +1317,26 @@ std::optional<std::size_t> past_template_arguments(const std::vector<Token>& tok
     return std::nullopt;
 }
 
+// The decl-specifiers C++ admits after a type name, before the declarator:
+// `verified const c{};` and `verified static s;` declare variables of a type
+// named `verified`, and `verified constexpr f();` a function returning one.
+constexpr auto kSpecifiersAfterType = std::to_array<std::string_view>(
+    {"const", "volatile", "static", "extern", "inline", "constexpr", "consteval", "constinit", "virtual", "friend",
+     "mutable", "thread_local", "typedef", "register"});
+
+// The alternative spellings of operators (`and` for `&&`). They lex as
+// identifiers, but `verified and ready;` is an expression, not a declaration.
+constexpr auto kAlternativeOperators = std::to_array<std::string_view>(
+    {"and", "and_eq", "bitand", "bitor", "compl", "not", "not_eq", "or", "or_eq", "xor", "xor_eq"});
+
+bool is_one_of(const Token& token, std::span<const std::string_view> words) {
+    return token.kind == TokenKind::Identifier && std::ranges::find(words, token.text) != words.end();
+}
+
 // The token just past the possibly qualified name beginning at `index`: `T`,
 // `ns::T`, `::ns::T`, `C<int>::T` or `C<T>::template X<int>`. Nothing when the
-// tokens there are not such a name.
+// tokens there are not such a name. An operator-function-id, `operator*` or
+// `C::operator&`, names a function and never a type, so it is not one either.
 std::optional<std::size_t> past_qualified_name(const std::vector<Token>& tokens, std::size_t index) {
     std::size_t cursor = index;
     if (cursor < tokens.size() && tokens[cursor].is_punctuator("::")) {
@@ -1316,7 +1346,8 @@ std::optional<std::size_t> past_qualified_name(const std::vector<Token>& tokens,
         if (cursor < tokens.size() && tokens[cursor].is_identifier("template")) {
             ++cursor;
         }
-        if (cursor >= tokens.size() || tokens[cursor].kind != TokenKind::Identifier) {
+        if (cursor >= tokens.size() || tokens[cursor].kind != TokenKind::Identifier ||
+            tokens[cursor].is_identifier("operator") || is_one_of(tokens[cursor], kAlternativeOperators)) {
             return std::nullopt;
         }
         ++cursor;
@@ -1338,7 +1369,21 @@ std::optional<std::size_t> past_qualified_name(const std::vector<Token>& tokens,
 // declarator. A name followed by an identifier or a pointer or reference
 // operator is a type: were it the declarator's own name, as it is in `T x;`,
 // `T(x)` or `ns::f()`, nothing but `(`, `[`, `=`, `{`, `,` or `;` could follow it.
+//
+// The specifiers C++ admits after a type name are passed over first, because
+// they say nothing yet: `verified const int f()` returns `const int`, while
+// `verified const c{};` declares `c` of type `verified const`. What follows
+// them decides, as it does with none. `explicit` alone decides at once: it
+// stands only on a constructor or a conversion function, which has no return
+// type, so the word before it cannot be one.
 bool begins_return_type(const std::vector<Token>& tokens, std::size_t cursor) {
+    while (cursor < tokens.size() &&
+           (is_one_of(tokens[cursor], kSpecifiersAfterType) || tokens[cursor].is_identifier("explicit"))) {
+        if (tokens[cursor].is_identifier("explicit")) {
+            return true;
+        }
+        ++cursor;
+    }
     if (cursor >= tokens.size()) {
         return false;
     }
@@ -1407,6 +1452,12 @@ std::optional<std::size_t> template_arguments_start(const std::vector<Token>& to
     }
 }
 
+// C++ keywords a `(` may follow that never name what a declarator declares:
+// `for (...) decreases (m) {i};` after a `;` is a loop, not a function `for`.
+constexpr auto kNotDeclaratorNames = std::to_array<std::string_view>(
+    {"alignas", "alignof", "catch", "co_await", "co_return", "co_yield", "delete", "for", "if", "new", "noexcept",
+     "requires", "return", "sizeof", "static_assert", "switch", "throw", "typeid", "while"});
+
 std::optional<std::size_t> find_declarator_name(const std::vector<Token>& tokens, std::size_t index) {
     std::size_t depth = 0;
     for (std::size_t cursor = index + 1; cursor < tokens.size(); ++cursor) {
@@ -1416,7 +1467,7 @@ std::optional<std::size_t> find_declarator_name(const std::vector<Token>& tokens
         }
         if (token.is_punctuator("(")) {
             if (depth == 0 && cursor > index + 1 && tokens[cursor - 1].kind == TokenKind::Identifier &&
-                !is_type_keyword(tokens[cursor - 1])) {
+                !is_type_keyword(tokens[cursor - 1]) && !is_one_of(tokens[cursor - 1], kNotDeclaratorNames)) {
                 return cursor - 1;
             }
             // An explicit specialization's declarator carries its arguments
@@ -2008,11 +2059,50 @@ enum class LoopClauses : std::uint8_t {
     Refused,
 };
 
-// `while (c)` or `for (...)` followed by loop specification clauses and a block
-// (GRAMMAR.md 25, 26). The clauses are C++L only where the tokens cannot be
-// C++: `invariant (x) { ... };` declares `x` when `invariant` names a type, so a
-// lone single-identifier invariant before a block that `;` follows is left to
-// C++ (SPEC.md 3.1).
+// Whether the tokens strictly between `open` and `close` form a declarator a
+// declaration could name in parentheses: pointer and reference operators and
+// cv-qualifiers, one name, and array bounds, as in `(x)`, `(*p)` or `(a[2])`.
+bool parenthesized_declarator(const std::vector<Token>& tokens, std::size_t open, std::size_t close) {
+    std::size_t cursor = open + 1;
+    while (cursor < close && (tokens[cursor].is_punctuator("*") || tokens[cursor].is_punctuator("&") ||
+                              tokens[cursor].is_punctuator("&&") || tokens[cursor].is_identifier("const") ||
+                              tokens[cursor].is_identifier("volatile"))) {
+        ++cursor;
+    }
+    if (cursor >= close || tokens[cursor].kind != TokenKind::Identifier) {
+        return false;
+    }
+    ++cursor;
+    while (cursor < close && tokens[cursor].is_punctuator("[")) {
+        cursor = matching_bracket(tokens, cursor) + 1;
+    }
+    return cursor == close;
+}
+
+// Whether the braces from `open` to `close` hold a `;` of their own, outside
+// any nested bracket. A compound statement holding a statement does; a
+// braced-init-list never does.
+bool holds_a_statement(const std::vector<Token>& tokens, std::size_t open, std::size_t close) {
+    std::size_t depth = 0;
+    for (std::size_t cursor = open + 1; cursor < close; ++cursor) {
+        const Token& token = tokens[cursor];
+        if (token.is_punctuator("(") || token.is_punctuator("[") || token.is_punctuator("{")) {
+            ++depth;
+        } else if ((token.is_punctuator(")") || token.is_punctuator("]") || token.is_punctuator("}")) && depth > 0) {
+            --depth;
+        } else if (depth == 0 && token.is_punctuator(";")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// `while (c)`, `for (...)` or `do` followed by loop specification clauses and
+// a block (GRAMMAR.md 25, 26). The clauses are C++L only where the tokens
+// cannot be C++ (SPEC.md 3.1). `invariant (x) {n};` and `decreases (k) {n},
+// (j) {m};` declare locals with braced initializers wherever the word names a
+// type, so one clause holding a declarator, before braces that hold no
+// statement and that `;` or `,` follows, is left to C++.
 // `clause_start` is where loop clauses may begin: just past the condition's
 // ')' for `while (c)`/`for (...)`, or right after the keyword itself for
 // `do` (GRAMMAR.md 26: `"do" loop-clauses compound-statement "while" ...` -
@@ -2045,9 +2135,11 @@ LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, std::
     if (body_close >= tokens.size()) {
         return LoopClauses::None;
     }
-    if (written.size() == 1 && tokens[written[0].keyword].is_identifier("invariant") &&
-        written[0].close == written[0].keyword + 3 && tokens[written[0].keyword + 2].kind == TokenKind::Identifier &&
-        body_close + 1 < tokens.size() && tokens[body_close + 1].is_punctuator(";")) {
+    const bool declaration_follows = body_close + 1 < tokens.size() && (tokens[body_close + 1].is_punctuator(";") ||
+                                                                        tokens[body_close + 1].is_punctuator(","));
+    if (written.size() == 1 && declaration_follows &&
+        parenthesized_declarator(tokens, written[0].keyword + 1, written[0].close) &&
+        !holds_a_statement(tokens, cursor, body_close)) {
         return LoopClauses::None;
     }
 
@@ -2628,16 +2720,23 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
         }
 
         // `verified` before a constructor or a destructor of the class it
-        // stands in. Neither declarator has a return type, so the specifier
-        // is not otherwise read as introducing a declaration; it is refused
-        // here rather than left for Clang to report as an unknown type.
+        // stands in, after any ordinary specifiers. Neither declarator has a
+        // return type, so the specifier is not otherwise read as introducing a
+        // declaration; it is refused here rather than left for Clang to report
+        // as an unknown type.
         if (!tolerant && tokens[index].is_identifier("verified") && at_member_scope() &&
             at_declaration_start(tokens, index) && !scope_names.back().empty()) {
             const std::string_view class_name = scope_names.back();
-            const bool constructor = index + 2 < tokens.size() && tokens[index + 1].is_identifier(class_name) &&
-                                     tokens[index + 2].is_punctuator("(");
-            const bool destructor = index + 3 < tokens.size() && tokens[index + 1].is_punctuator("~") &&
-                                    tokens[index + 2].is_identifier(class_name) && tokens[index + 3].is_punctuator("(");
+            std::size_t declarator = index + 1;
+            while (declarator < tokens.size() && (is_one_of(tokens[declarator], kSpecifiersAfterType) ||
+                                                  tokens[declarator].is_identifier("explicit"))) {
+                ++declarator;
+            }
+            const bool constructor = declarator + 1 < tokens.size() && tokens[declarator].is_identifier(class_name) &&
+                                     tokens[declarator + 1].is_punctuator("(");
+            const bool destructor = declarator + 2 < tokens.size() && tokens[declarator].is_punctuator("~") &&
+                                    tokens[declarator + 1].is_identifier(class_name) &&
+                                    tokens[declarator + 2].is_punctuator("(");
             if (constructor || destructor) {
                 refuse_lifetime_member(stream, tokens[index], destructor, engine);
                 ++index;

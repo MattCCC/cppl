@@ -111,8 +111,12 @@ refused	unmarked_law.cpp	identity_law.cpp	negative/unproven_dependencies.sh	-	-
 refused	false_law.cpp	true_arithmetic_law.cpp	e2e/invalid_law.sh	-	-
 exempt	hello.cpp	-	ordinary C++ with no C++L in it	-	-
 exempt	contextual_identifiers.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
+exempt	words_as_cpp/declarator_lists.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
+exempt	words_as_cpp/loop_bodies.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
+exempt	words_as_cpp/operator_spellings.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	words_as_cpp/qualified_declarators.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	words_as_cpp/qualified_names.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
+exempt	words_as_cpp/type_names.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	equivalence/abi_client.cpp	-	the ordinary C++ client of abi_library.cpp; it states no claim	-	-
 exempt	cppl_with_cpp_type_error.cpp	-	a C++ type error for the editor tests, refused by Clang before any claim is read	-	-
 exempt	equivalence/tampered/checked.cpp	-	an erasure altered to check at run time, which the erasure harness must tell apart; it states no claim	-	-

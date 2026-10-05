@@ -223,6 +223,10 @@ Examples: `static verified int`, `inline verified pure int`,
 `virtual verified int`. C++ restrictions on combinations still apply.
 `ghost` prefixes a local declaration; `trusted` prefixes `law`; `unsafe`
 prefixes a function declaration. These are not interchangeable function flags.
+A modifier is one only where a return type follows it (SPEC.md WORD-015):
+`verified const int f()` is verified, while `verified const c{};`,
+`verified static s;` and `verified operator*(verified, verified)` use a type
+named `verified`.
 
 ## 8. `verified`
 
@@ -277,7 +281,10 @@ type Percentage = NonNegative where (self <= 100);
 ```
 
 The predicate remains attached to the declaration. Refinement identity is
-verification-level; the runtime representation is its base C++ type.
+verification-level; the runtime representation is its base C++ type. `where`
+follows the base type directly: after `,` or an operator no type-id ends in it
+is ordinary C++, and `type a = 5, where (6);` declares two variables
+(SPEC.md WORD-016).
 
 ## 15. `self`
 
@@ -402,6 +409,11 @@ cppl-while-statement ::= "while" "(" condition ")" loop-clauses compound-stateme
 
 One invariant must hold on entry and be preserved by every continuing iteration.
 `decreases` additionally requests termination evidence.
+
+One clause whose parentheses hold a declarator, before braces that hold no
+statement and are followed by `;` or `,`, is the C++ declaration it also spells
+(SPEC.md WORD-016): `while (n-- > 0) decreases (k) {n};` declares `k`. A loop
+meant there is written with a statement in its body or without the `;`.
 
 ## 26. Other loop forms
 
