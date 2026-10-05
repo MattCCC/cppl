@@ -23,6 +23,7 @@ twin	equivalence/disjunction.cpp	negative/twins/equivalence_disjunction.cpp	erro
 twin	equivalence/formal_equality.cpp	negative/twins/equivalence_formal_equality.cpp	error \[kernel-rejection\]: proof 'explicit_identity_holds' does not establish law 'explicit_identity'	-	-
 twin	equivalence/ghost_state.cpp	negative/twins/equivalence_ghost_state.cpp	error \[kernel-rejection\]: return path 'count path [0-9]+' does not satisfy its contract	-	-
 twin	equivalence/instantiated_proof.cpp	negative/twins/equivalence_instantiated_proof.cpp	error \[proof-failure\]: 'identity_general' does not prove what proof 'identity_at_[0-9]+' claims	-	-
+twin	equivalence/law_lookup.cpp	negative/twins/equivalence_law_lookup.cpp	error \[proof-failure\]: verified function 'resolved' does not satisfy its contract	-	-
 twin	equivalence/logical_composition.cpp	negative/twins/equivalence_logical_composition.cpp	error \[kernel-rejection\]: proof 'formal_pair' does not establish what it claims	-	-
 twin	equivalence/path_splits.cpp	negative/twins/equivalence_path_splits.cpp	error \[kernel-rejection\]: return path 'settled path [0-9]+' does not satisfy its contract	-	-
 twin	equivalence/proofs.cpp	negative/twins/equivalence_proofs.cpp	error \[proof-failure\]: 'identity_returns_input_holds' does not prove what proof 'identity_of_seven_h	-	-

@@ -558,7 +558,9 @@ bodies continue to be parsed by Clang.
 ## 46. Law names
 
 Law names occupy a formal namespace associated with C++ scope and produce no
-runtime callable symbol. Ambiguous references are errors.
+runtime callable symbol. Ordinary C++ lookup never finds one; only a Law's or
+a proof's proposition names a Law (SPEC.md `LAW-008`). Ambiguous references
+are errors.
 
 ## 47. Proof names
 

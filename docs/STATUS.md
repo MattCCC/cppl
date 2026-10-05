@@ -1909,6 +1909,18 @@ that declaration, and nothing else changed, with line numbering unchanged
 the text checked. Equivalence is therefore established structurally for the
 constructs implemented, not proven in general.
 
+The analysed text declares no Law where ordinary C++ can find it: each Law and
+proof is projected into a formal namespace with a reserved name, which only
+Laws and proofs look into (`SPEC.md` `LAW-008`). A Law that would otherwise be
+the better overload, hide a function or satisfy a detection idiom changes
+nothing the program verified, and a template is verified at the arguments the
+program instantiates it at (`tests/e2e/erasure_equivalence.sh`,
+`tests/negative/erasure.sh`). A Law is named only by an unqualified name in a
+Law's or a proof's proposition, from the namespace it is declared in and every
+namespace nested in that one, and from the namespace enclosing an unnamed or
+inline one it is declared in; a qualified name such as `geo::area(x)` is
+refused as naming nothing.
+
 The check trusts the recognizer's spans. What shows a span wrong is comparison
 with programs written without C++L: each construct family has a C++L fixture and
 its erasure written by hand, and the two must print the same and compile to

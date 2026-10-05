@@ -20,9 +20,10 @@ namespace cppl::frontend {
 // specification expression: name lookup, overload resolution, conversions and
 // canonical types all come from Clang rather than from C++L (SPEC.md 7.3).
 //
-// It carries the Law's own name, so a Law occupies a formal declaration
-// namespace associated with its C++ scope and a proof can name it through
-// ordinary C++ lookup (GRAMMAR.md 46).
+// It carries the Law's own name, so a proof can name it through C++ lookup, but
+// it is declared in a formal namespace nested in its C++ scope that only the
+// projections of Laws and proofs look into: ordinary C++ never finds a Law
+// (GRAMMAR.md 46, SPEC.md LAW-008).
 struct SpecificationFunction {
     std::string name;
     std::size_t law_index = 0;

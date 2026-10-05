@@ -50,6 +50,7 @@ disjunction-shape	kernel/src/check.cpp	const auto* disjunction = std::get_if<Or>
 spend-dependency-proven	compiler/automation/src/composition.cpp	dependency.has_value() && !proven_.contains(*dependency)	false && (dependency.has_value() && !proven_.contains(*dependency))	^unit_contracts_test$
 erasure-span-blank	compiler/erasure/src/erase.cpp	spans_erased = false; // proof-only text left in the program	(void)spans_erased;	^unit_projection_test$
 erasure-lowering-canonical	compiler/erasure/src/erase.cpp	runtime.substr(runtime_offset, lowering.expected.size()) != lowering.expected	false && (runtime.substr(runtime_offset, lowering.expected.size()) != lowering.expected)	^unit_projection_test$
+law-formal-namespace-hidden	compiler/frontend/src/projection.cpp	std::string text = "\nnamespace " + name_of(path) + " {";	std::string text = "\ninline namespace " + name_of(path) + " {";	^negative_erasure$
 declarator-list-ends-clauses	compiler/frontend/src/recognizer.cpp	nesting == 0 && token.is_punctuator(",")	false && (nesting == 0 && token.is_punctuator(","))	^unit_recognizer_test$
 specifier-scope-is-a-name	compiler/frontend/src/recognizer.cpp	if (next >= tokens.size() || names_a_scope(tokens, index)) {	if (next >= tokens.size()) {	^unit_recognizer_test$|^conformance_words_as_cpp$
 specifier-word-scope-is-a-name	compiler/frontend/src/recognizer.cpp	tokens[index].is_identifier(word) && !names_a_scope(tokens, index);	tokens[index].is_identifier(word) && true;	^unit_recognizer_test$

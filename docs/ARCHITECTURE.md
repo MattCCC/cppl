@@ -477,6 +477,17 @@ for whether code generation is permitted.
 **[ARCH-PROJ-003]** Analysis-only scaffolding MUST never enter the runtime
 projection.
 
+**[ARCH-PROJ-004]** Analysis-only scaffolding MUST NOT be visible to the ordinary
+C++ around it. Ordinary code in the analysis projection must resolve every
+name, overload and detection idiom exactly as the runtime projection does, or
+the program verified is not the program run.
+
+The projection of a Law or a proof carries a name the author chose, so it is
+declared in a formal namespace with a reserved name, nested in the namespace the
+declaration is written in, and only the projections of Laws and proofs nominate
+formal namespaces (`SPEC.md` `LAW-008`, `TRUST.md` `TCB-SOURCE-009`). Every
+other generated declaration has a reserved name a unit may not spell.
+
 ---
 
 # 9. Analysis-only semantic probes

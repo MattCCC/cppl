@@ -213,7 +213,8 @@ CPPL_TEST(the_analysis_program_carries_the_proposition_for_clang_to_resolve) {
 
     CPPL_CHECK_EQ(projection.specification_functions.size(), std::size_t{3});
     // A law is projected under its own name, so a proof can name it through
-    // ordinary C++ lookup (GRAMMAR.md 46).
+    // C++ lookup (GRAMMAR.md 46), from a namespace ordinary code never looks
+    // into (SPEC.md LAW-008).
     CPPL_CHECK_EQ(projection.specification_functions[0].name, std::string("identity_returns_input"));
     CPPL_CHECK(projection.analysis.find("bool identity_returns_input(int x)") != std::string::npos);
     CPPL_CHECK(projection.analysis.find("identity(x) == x") != std::string::npos);
@@ -293,6 +294,79 @@ CPPL_TEST(the_analysis_program_carries_the_proposition_a_statement_assumes) {
     for (const cppl::frontend::Token& token : analysis.tokens()) {
         CPPL_CHECK(token.text != "assume");
     }
+}
+
+// SPEC: LAW-008
+CPPL_TEST(a_law_is_declared_where_ordinary_code_cannot_look) {
+    const std::string source = "# 1 \"main.cpp\"\n"
+                               "int pick(long) { return 2; }\n"
+                               "law pick(int x)\n"
+                               "    proves (x == x);\n"
+                               "namespace geo {\n"
+                               "law area(int x)\n"
+                               "    proves (x == x);\n"
+                               "proof pick_here(int x)\n"
+                               "    proves (pick(x))\n"
+                               "{\n"
+                               "    refl;\n"
+                               "}\n"
+                               "int use() { return pick(0L); }\n"
+                               "}\n";
+    cppl::diagnostics::Engine engine;
+    const auto stream = cppl::frontend::lex(source, "main.cpp");
+    const auto syntax = cppl::frontend::recognize(stream, engine);
+    const auto projection = cppl::frontend::project(stream, syntax, {});
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK_EQ(projection.specification_functions.size(), std::size_t{2});
+
+    // Walk the analysis text's scopes. Each Law's name stands directly in a
+    // namespace with a reserved name, and a formal namespace is nominated only
+    // from inside another one: ordinary code never looks into one.
+    const auto analysis = cppl::frontend::lex(projection.analysis, "main.cpp");
+    const auto& tokens = analysis.tokens();
+    std::vector<std::string> scopes;
+    std::vector<std::string> nominated_from;
+    std::vector<std::string> enclosing_laws;
+    for (std::size_t index = 0; index < tokens.size(); ++index) {
+        const auto& token = tokens[index];
+        if (token.is_punctuator("{")) {
+            const bool named = index >= 2 && tokens[index - 2].is_identifier("namespace");
+            scopes.push_back(named ? std::string(tokens[index - 1].text) : std::string("{"));
+            continue;
+        }
+        if (token.is_punctuator("}") && !scopes.empty()) {
+            scopes.pop_back();
+            continue;
+        }
+        if (token.is_identifier("using") && index + 2 < tokens.size() && tokens[index + 1].is_identifier("namespace") &&
+            tokens[index + 2].text.starts_with("__cppl_formal_")) {
+            nominated_from.push_back(scopes.empty() ? std::string() : scopes.back());
+        }
+        for (const auto& law : projection.specification_functions) {
+            if (token.span.offset == law.analysis_offset) {
+                enclosing_laws.push_back(scopes.empty() ? std::string() : scopes.back());
+            }
+        }
+    }
+    CPPL_CHECK_EQ(enclosing_laws.size(), std::size_t{2});
+    for (const std::string& scope : enclosing_laws) {
+        CPPL_CHECK(scope.starts_with("__cppl_formal_"));
+    }
+    // The global Law and the one in `geo` are in different formal namespaces.
+    if (enclosing_laws.size() == 2) {
+        CPPL_CHECK(enclosing_laws[0] != enclosing_laws[1]);
+    }
+    // The proof in `geo` sees the global Law: its formal namespace nominates
+    // the global one, and nothing else nominates any.
+    CPPL_CHECK(!nominated_from.empty());
+    for (const std::string& scope : nominated_from) {
+        CPPL_CHECK(scope.starts_with("__cppl_formal_"));
+    }
+
+    // The runtime program is untouched by any of it.
+    const auto erased = cppl::erasure::erase(stream, syntax, projection, engine);
+    CPPL_CHECK(erased.report.preserved());
+    CPPL_CHECK(erased.runtime.find("__cppl_") == std::string_view::npos);
 }
 
 CPPL_TEST(formal_connectives_are_recorded_with_specification_precedence) {

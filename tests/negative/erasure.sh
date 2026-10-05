@@ -92,6 +92,23 @@ case_run refuse misplaced_loop_clauses \
     "misplaced_loop_clauses.cpp:11:9: error [cpp-semantic]: use of undeclared identifier 'invariant'" \
     "misplaced_loop_clauses.cpp:22:20: error [cpp-semantic]: expected ';' after do/while statement"
 
+# SPEC: LAW-008, ERASE-005, ERASE-006
+# A Law has no runtime callable identity, and the analysed program gives it
+# none either: ordinary lookup, overload resolution and a detection idiom
+# resolve as the program does, so the specialization verified is the one the
+# program runs. Each claim below holds only of the specialization a visible Law
+# would have selected, and each goal names the one the program instantiates.
+case_run refuse law_answers_ordinary_lookup \
+    "law_answers_ordinary_lookup.cpp:27:12: error [proof-failure]: verified function 'resolved' does not satisfy its contract" \
+    "law_answers_ordinary_lookup.cpp:27:12: note: goal: forall u32. Eq<u32>(7:u32, 1:u32)" \
+    "law_answers_ordinary_lookup.cpp:43:12: error [proof-failure]: verified function 'geo::hidden' does not satisfy its contract" \
+    "law_answers_ordinary_lookup.cpp:43:12: note: goal: forall u32. Eq<u32>(7:u32, 1:u32)" \
+    "law_answers_ordinary_lookup.cpp:64:12: error [proof-failure]: verified function 'detected' does not satisfy its contract" \
+    "law_answers_ordinary_lookup.cpp:64:12: note: goal: forall u32. Eq<u32>(2:u32, 1:u32)"
+case_run refuse law_answers_explicit_instantiation \
+    "law_answers_explicit_instantiation.cpp:24:12: error [proof-failure]: verified function 'g' does not satisfy its contract" \
+    "law_answers_explicit_instantiation.cpp:24:12: note: goal: forall u32. Eq<u32>(7:u32, 1:u32)"
+
 # Every refused fixture, whichever stage refuses it.
 swept=0
 for fixture in "$FIXTURES"/*.cpp; do

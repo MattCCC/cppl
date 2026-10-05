@@ -161,6 +161,15 @@ equivalent refinements $'2 50 9 10 70 3 9\n16 4 4 8 12\n1 1 1 1\n2' \
 equivalent contextual_words '136 36 55 78 17 5 7 6 7' \
     'Laws proven: +1' 'Function contracts proven: +3'
 
+# SPEC: LAW-008, LAW-007, ERASE-005, ERASE-006
+# A Law ordinary C++ would choose, were it a function, as the better overload,
+# as a declaration hiding one, or as what satisfies a detection idiom, changes
+# nothing: each template is verified at the arguments the program instantiates
+# it at, while proofs still name each Law, from its namespace, from a nested
+# one and from an unnamed one.
+equivalent law_lookup '7 7 2' \
+    'Laws proven: +5' '  by a written proof: +4' 'Function contracts proven: +3'
+
 # SPEC: TERMINATION-004, LOOP-001
 # Measures leave with the other clauses, on functions and on every loop form,
 # and recursion and loops stay exactly as written: no counter, no check.

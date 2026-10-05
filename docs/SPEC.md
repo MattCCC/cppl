@@ -973,6 +973,20 @@ means the proposition represented by that particular Law instance.
 
 A Law has no ordinary runtime callable identity.
 
+[LAW-008] A Law is not a C++ declaration. Ordinary C++ name lookup, overload resolution,
+argument-dependent lookup and template argument substitution never find a Law,
+so declaring one changes the meaning of no ordinary C++ construct, in the
+program verified as in the program run (ERASE-005). A Law's name is found only
+from the proposition of a Law or of a proof: there, a Law declared earlier in
+the same namespace is found before an ordinary declaration of that name in
+that namespace, and a Law of an enclosing namespace, or of an unnamed or inline
+namespace whose members that namespace sees, is found where an ordinary
+declaration in its place would be. A qualified name names no Law. A contract,
+loop clause or refinement predicate resolves its names as ordinary C++ does,
+and names no Law. An
+implementation that cannot keep a Law out of ordinary lookup MUST refuse the
+unit rather than verify a program different from the one it runs.
+
 ---
 
 ## 10.5 Law changes

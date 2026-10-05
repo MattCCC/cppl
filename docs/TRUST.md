@@ -404,6 +404,12 @@ The analysis text may also carry a reference whose only purpose is to make the C
 
 **[TCB-SOURCE-008]** An analysis-only reference emitted to make an entity reachable MUST name it with the spelling the source used, and MUST NOT select among candidate entities itself. What it reaches is then whatever ordinary C++ name lookup and template argument resolution select, which is the same authority every other construct is resolved by (`TCB-CLANG-002`).
 
+The analysis text declares what the runtime text does not: the projection of each Law, proof and clause. Were ordinary C++ able to find one of those declarations, the analysed program would differ from the runtime one wherever lookup, overload resolution or a detection idiom met it, and a contract would be verified for a specialization the program never instantiates (`SPEC.md` `LAW-008`).
+
+**[TCB-SOURCE-009]** No declaration the analysis text has and the runtime text lacks MAY be found by ordinary C++ name lookup, overload resolution or argument-dependent lookup. Each either carries a name reserved for the projector, which a unit is refused for spelling, or, for the projection of a Law or a proof whose name the author chose, is declared in a namespace with such a name that no using-directive outside another such projection nominates.
+
+In this implementation every Law and proof is projected into a formal namespace nested in the namespace it is written in, named after that namespace's path, and only those projections nominate the formal namespaces of the namespaces enclosing them (`compiler/frontend/src/projection.cpp`, `formal_scopes`). A Law in an inline namespace's formal namespace would be visible beside ordinary declarations again; that mutation is caught (`law-formal-namespace-hidden`). Ghost declarations are the other analysis-only declarations with names the author chose, and are checked by the ghost scan (`TCB-ERASE-005`).
+
 ---
 
 # 9. Clang and C++ semantic authority
