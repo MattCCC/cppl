@@ -49,10 +49,11 @@
       "Bash(rm -f tests/suite_zzprobe.cpp)",
       "Bash(rm -f build/**)",
       "Bash(rm -rf build/**)",
+      "Bash(chmod:* tmp/**)",
       "Bash(git worktree list:*)",
       "Bash(git worktree remove:*)"
     ],
-    "ask": ["Bash(rm:*)", "Bash(chmod:*)"],
+    "ask": ["Bash(rm:*)"],
     "deny": [
       "Edit(.claude/hooks/**)",
       "Write(.claude/hooks/**)",
