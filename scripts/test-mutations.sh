@@ -78,6 +78,8 @@ trust-json-escaped	compiler/driver/src/trust_report.cpp	if (character == '"' || 
 trust-json-displayed	compiler/driver/src/trust_report.cpp	for (const char character : artifact::displayed(value)) {	for (const char character : std::string(value)) {	^unit_trust_report_test$
 trust-json-withdrawn-on-failure	compiler/driver/src/driver.cpp	            withdraw_trust_report(options.emit_trust_report);	            (void)options.emit_trust_report;	^e2e_trust_report_json$
 trust-json-withdraws-only-reports	compiler/driver/src/trust_report.cpp	if (first != kTrustReportPrefix) {	if (false) {	^unit_trust_report_test$|^e2e_trust_report_json$
+trust-translation-stated-text	compiler/driver/src/driver.cpp	std::cout << "Trusted translation:         not verified: C++ semantics as Clang resolves them, the bridge, "	std::cout << ""	^e2e_trust_report_json$
+trust-translation-stated-json	compiler/driver/src/trust_report.cpp	json.key("verified");	json.key("verified"); json.boolean(true); json.key("stated");	^unit_trust_report_test$|^e2e_trust_report_json$
 trust-json-needs-a-compile	compiler/driver/src/driver.cpp	if (!options.emit_trust_report.empty() && (options.passthrough || options.inputs.empty())) {	if (false) {	^e2e_trust_report_json$
 xtu-unsafe-imported	compiler/obligations/src/contracts.cpp	recorded->entry.unsafe, recorded->entry.depends,	std::vector<artifact::UnsafeBlock>{}, recorded->entry.depends,	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
 library-model-closure-through-calls	compiler/obligations/src/trust.cpp	changed = models[index].emplace(model, LibraryDependency{model, false}).second || changed;	changed = (models[index].contains(model) && false) || changed;	^e2e_containers$
@@ -173,7 +175,16 @@ xtu-refusal-escapes-conflict	compiler/driver/src/interface_io.cpp	artifact::disp
 xtu-refusal-escapes-dependency	compiler/driver/src/interface_io.cpp	artifact::displayed(broken->symbol)	broken->symbol	^negative_cross_tu$
 lsp-interface-language-mode	compiler/driver/src/buffer_compile.cpp	            standard = argument.substr(std::string_view("-std=").size());	            (void)argument;	^lsp_interfaces_test$
 lsp-imported-contract-recorded	compiler/driver/src/pipeline.cpp	                record.imported.push_back(ImportedRecord{imported.name, imported.origin});	                (void)imported;	^lsp_interfaces_test$
-lsp-lens-names-imported-contract	src/lsp/src/verification.cpp	    if (!imported.empty()) {	    if (false) {	^lsp_interfaces_test$
+lsp-lens-names-imported-contract	src/lsp/src/verification.cpp	part(rests.imported, "the imported contract of ", "the imported contracts of ");	(void)rests.imported;	^lsp_interfaces_test$
+lsp-lens-names-trusted-laws	src/lsp/src/verification.cpp	part(rests.premises, "trusted ", "trusted ");	(void)rests.premises;	^lsp_verification_test$
+lsp-lens-names-models	src/lsp/src/verification.cpp	part(models, "", "");	(void)models;	^lsp_verification_test$
+lsp-lens-names-unsafe	src/lsp/src/verification.cpp	part(rests.unsafe, "the unsafe block at ", "the unsafe blocks at ");	(void)rests.unsafe;	^lsp_verification_test$
+lsp-lens-names-validations	src/lsp/src/verification.cpp	part(rests.validations, "the runtime validation of ", "the runtime validations of ");	(void)rests.validations;	^lsp_verification_test$
+lsp-premises-through-uses	compiler/driver/src/pipeline.cpp	for (const obligations::TrustedPremise& premise : claim.premises) {	for (const obligations::TrustedPremise& premise : std::vector<obligations::TrustedPremise>{}) {	^lsp_verification_test$
+lsp-models-recorded	compiler/driver/src/pipeline.cpp	add(record.models, std::string(source::describe_model(library.model)));	(void)library;	^lsp_verification_test$
+lsp-unsafe-recorded	compiler/driver/src/pipeline.cpp	add(record.unsafe, at(block.location.file, block.location.line));	(void)block;	^lsp_verification_test$
+lsp-validations-recorded	compiler/driver/src/pipeline.cpp	add(record.validations, site.refinement + " at " + at(site.location.file, site.location.line));	(void)site;	^lsp_verification_test$
+lsp-hover-states-translation	src/lsp/src/verification.cpp	markdown += "\nPROVEN relative to the translation from C++ to the core, which is trusted and not verified.\n";	(void)markdown;	^lsp_verification_test$
 xtu-models-written	compiler/artifact/src/interface.cpp	canonical_lines(entry.models, model_line)	canonical_lines(std::vector<Model>{}, model_line)	^unit_interface_test$|^e2e_containers$
 xtu-models-exported	compiler/obligations/src/interface.cpp	entry.models.push_back(library_model(dependency.model));	(void)dependency;	^e2e_containers$|^unit_cross_unit_contracts_test$
 xtu-models-carried	compiler/obligations/src/interface.cpp	entry.models.insert(entry.models.end(), imported.models.begin(), imported.models.end());	(void)imported.models;	^e2e_containers$|^unit_cross_unit_contracts_test$
