@@ -725,20 +725,54 @@ generated derivations cover what the generator can build.
 
 ## 17. Mechanization plan
 
-Nothing in the core is mechanized yet (`STATUS.md`, Proof system status:
-*Mechanized core calculus* and *Meta-theory / soundness proofs* are
-`NOT STARTED`). This section is the plan. Every mechanized statement names the
-core version it is about (`TRUST.md` TCB-META-001); a theorem about this
-document's calculus removes no trust from the C++ kernel until an independently
-checked connection to the implementation exists (TCB-META-002); and the proof
-assistant used, with its own kernel and axioms, is recorded as part of what any
-resulting claim rests on (TCB-META-003).
+The core is mechanized in part, in Coq 8.18.0, in `formal/coq`
+(`tools/formal/check.sh`, CTest `formal_kernel_model`, CI job *Formal model*).
+The model states `cppl-core-0.9.0` (`core_version` in `Syntax.v`), and
+`tests/architecture/formal_model.sh` fails if the kernel's core version or its
+number of term formers, primitives or evidence formers differs from the model's,
+so a core change cannot leave the model describing another core
+(`TRUST.md` TCB-META-001). Every theorem below is audited by `Print Assumptions`
+to rest on nothing but Coq's kernel: no axiom and no admitted proof
+(TCB-META-003).
 
-**Choice of assistant.** Any proof assistant with a small trusted kernel and
-executable extraction serves: Lean 4, Rocq or Isabelle/HOL. The calculus is
-first order over decidable data, so no feature beyond inductive types,
-structural recursion and integers is needed. The choice is recorded with its
-version and axioms when the first milestone lands.
+| Milestone | State | Where |
+| --- | --- | --- |
+| M1 syntax and semantics | done | `Syntax.v`, `Semantics.v`: types, terms, propositions, evidence; machine integers, every primitive, `wrap` in range and exact on representable values, `rem` in range |
+| M2 term operations | substitution and shifting done; normalization not started | `Semantics.v` (`eval_shift`, `eval_inst`, `holds_pshift`, `holds_pinst`), `Typing.v` (typing preserved by both) |
+| M3 arithmetic | certificate checking done; translation not started | `Certificate.v` (`check_certificate_sound`) |
+| M4 the rules | done relative to M2 and M3 | `Checker.v` (`check_sound`, `check_consistent`), `Consistency.v` |
+| M5 reference checker | not started | |
+| M6 re-checkable evidence | not started | |
+
+`check_sound` is the soundness theorem of M4: if `check` accepts evidence `e`
+for `P`, `P` holds in every interpretation and every environment. Its only
+premises are that normalization preserves the meaning of a typed term (M2) and
+that an accepted arithmetic step's facts entail its goal (M3), stated as
+hypotheses. Everything else the rules do is defined in the model and proven:
+typing and well-formedness, structural comparison, capture-safe substitution
+and shifting, the hypothesis context and its scope, the premises the kernel
+states for conditional elimination and for induction, and the goal staying well
+formed wherever the checker reaches it. `syntactic_consistency` discharges both
+premises for the checker whose reflexivity compares terms as written and which
+has no arithmetic step, which is rules 2 to 8 and 10 to 15 exactly: no
+evidence, well formed or not, establishes `False` in it, unconditionally.
+`check_certificate_sound` proves the certificate checker of section 13: an
+accepted certificate leaves the system with no integer solution. What remains
+of rule 9 is the translation of section 12.
+
+The model omits the resource limits of section 14. They only reject, so the
+model accepts at least what the kernel accepts, and a bound on what it accepts
+bounds the kernel's. Its arithmetic is unbounded where the kernel's is 128-bit
+and rejects on overflow, with the same effect.
+
+What the model does not establish is that `kernel/src/check.cpp` implements it.
+The model's checker is transcribed rule by rule from `check_under`, with the
+C++ function each definition restates named beside it, and the drift test
+catches a changed set of formers, not a changed rule. The C++ kernel therefore
+stays in the logical TCB (TCB-META-002) until M5 runs an extracted checker
+beside it and M6 lets it re-check a build's evidence.
+
+The milestones as planned:
 
 **M1 — Syntax and semantics.** Types, terms, propositions and evidence of
 sections 2, 4, 7 and 10 as inductive types; the machine semantics of sections 3
@@ -796,6 +830,8 @@ limit's effect — changes the formal core. It needs:
   verification interfaces (`TRUST.md` TCB-XTU-008);
 - valid, invalid and malformed evidence for the change, the model and generator
   of section 16 extended to cover it, and mutation entries for each new check;
+- the mechanized model of section 17 changed to state the new core, with its
+  proofs, so that `tools/formal/check.sh` and `architecture_formal_model` pass;
 - an RFC when the change is substantial, and the soundness review of
   `.agents/skills/cppl-soundness-review`.
 

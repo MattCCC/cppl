@@ -243,6 +243,25 @@ jobs:
       - name: Test
         run: ctest --preset ci-fuzz
 
+  formal:
+    name: Formal model
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install Coq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y coq
+
+      - name: Check the kernel model
+        run: sh tools/formal/check.sh build/formal
+
   thread-sanitizer:
     name: ThreadSanitizer
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -288,6 +307,7 @@ jobs:
       - build-test
       - sanitizers
       - fuzz
+      - formal
 
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -313,6 +333,11 @@ jobs:
 
           if [[ "${{ needs.fuzz.result }}" != "success" ]]; then
               echo "Fuzzing failed."
+              exit 1
+          fi
+
+          if [[ "${{ needs.formal.result }}" != "success" ]]; then
+              echo "The kernel model failed."
               exit 1
           fi
 
