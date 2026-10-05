@@ -2708,7 +2708,12 @@ validator the program keeps and whose site the claim names
 (RUNTIMECHECK-011 to RUNTIMECHECK-021, RFC 0021). Anything else is refused.
 
 Evidence: `e2e_refinement_types`, `e2e_refinement_flow`,
-`e2e_runtime_validation` and `negative_runtime_validation`, and the
+`e2e_runtime_validation` and `negative_runtime_validation`; the matrices of
+`e2e_runtime_validation_matrix` (a validation in every admitted position, 21
+contracts run on valid, invalid and boundary input) and
+`negative_runtime_validation_matrix` (46 refusals: every route, write, call,
+alias and loop after which the fact no longer holds, every position where no
+program runs it, every predicate no program can evaluate soundly); and the
 `validation-*` and `runtime-check-*` mutation entries.
 
 ## V1 closure: equality (G5)
