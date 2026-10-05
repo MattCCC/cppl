@@ -2432,7 +2432,8 @@ rests on, each kind apart:
       "unsafe_blocks": [],
       "library_models": [],
       "runtime_checks": [],
-      "imported_contracts": []
+      "imported_contracts": [],
+      "proof_dependencies": []
     },
     ...
   ],
@@ -2453,7 +2454,12 @@ law, its own or one an imported record's proof rested on, and
 report's `Assumption-free claims` lists it (`TRUST.md` Annex C.5). Each trusted
 law is listed `TRUSTED` with the proposition the kernel is given as a premise
 and whether a claim of its unit rests on it; each unsafe region `UNSAFE` and
-each runtime validation site `RUNTIME-CHECKED`. Identities are full SHA-256
+each runtime validation site `RUNTIME-CHECKED`. `proof_dependencies` names the
+proven claims of the unit a claim's proof uses directly (`TRUST.md` Annex C.2):
+for a law, proof or omitted case, the proofs its evidence names; for a
+contract, those its body's claims name and the verified functions of the unit
+it calls. What those use is listed with them, so the whole graph is
+discoverable; trusted laws and the other dependencies are listed apart. Identities are full SHA-256
 digests, whose first sixteen characters are the ones the text report prints.
 Every string is written as a report shows text read from outside: printable
 ASCII other than `%` as itself and every other byte as `%XX`, so any byte of a

@@ -1736,10 +1736,13 @@ interface is not imported is refused, so no claim rests on an assumption this
 unit cannot list.
 
 Both trust-report rows are `PARTIAL` for the same reasons: unverified foreign
-boundaries are not analysed and are reported as such, and neither form lists
-the proofs a claim uses or the identity of its evidence, only the trusted laws,
-library models, unsafe code, runtime checks and imported records they bring
-(`TRUST.md` 36.1, Annex C.2). The report is written as text by
+boundaries are not analysed and are reported as such -- in the V1 subset no
+verified body calls a function without a contract, so a proven claim reaches
+foreign code only through an unsafe block, which is reported -- and neither form
+gives the identity of a claim's evidence, since proof terms have no canonical
+serialization (`TRUST.md` 36.1). The JSON document names, for each claim, the
+proven claims its proof uses directly (`proof_dependencies`, `TRUST.md` Annex
+C.2), so the proof-dependency graph is discoverable from it. The report is written as text by
 `--cppl-trust-report` and as a JSON document for tools by
 `--cppl-emit-trust-report=<file>` (`DEVELOPER_GUIDE.md` 12.2): one summary
 rendered twice, each claim classified by one predicate in both, and every count

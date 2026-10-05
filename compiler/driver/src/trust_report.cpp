@@ -441,6 +441,19 @@ void claim_record(Writer& json, const obligations::ClaimClosure& claim) {
         imported_record(json, imported, true);
     }
     json.end_array();
+    json.key("proof_dependencies");
+    json.begin_array();
+    for (const obligations::ClaimUse& use : claim.uses) {
+        json.begin_object();
+        json.key("kind");
+        json.string(claim_kind(use.kind));
+        json.key("name");
+        json.string(use.name);
+        json.key("location");
+        location(json, use.location);
+        json.end_object();
+    }
+    json.end_array();
     json.end_object();
 }
 

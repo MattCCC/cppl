@@ -94,6 +94,9 @@ validation-fact-polarity	compiler/obligations/src/contracts.cpp	kernel::Proposit
 validation-site-seeded	compiler/obligations/src/trust.cpp	for (const ValidationSite& found : contract.validations) {	for (const ValidationSite& found : std::vector<ValidationSite>{}) {	^e2e_runtime_validation$|^unit_trust_closure_test$
 validation-undefined-predicate	compiler/obligations/src/contracts.cpp	if (stated->unvalidatable.has_value()) {	if (false && stated->unvalidatable.has_value()) {	^negative_runtime_validation$
 validation-loop-clause	compiler/frontend/src/recognizer.cpp	if (in_loop_clause(keyword.span.offset)) {	if (false && in_loop_clause(keyword.span.offset)) {	^negative_runtime_validation$
+trust-proof-uses-reported	compiler/obligations/src/trust.cpp	proofs_used(written_uses(obligation), closure.claims.back().uses);	(void)written_uses(obligation);	^e2e_trust_report_json$|^unit_trust_closure_test$
+trust-contract-uses-reported	compiler/obligations/src/trust.cpp	std::ranges::move(called, std::back_inserter(closure.claims.back().uses));	(void)called;	^e2e_trust_report_json$|^unit_trust_closure_test$
+proof-uses-recorded	compiler/obligations/src/generate.cpp	written.uses = std::move(uses);	(void)uses;	^e2e_trust_report_json$
 runtime-check-closure-through-calls	compiler/obligations/src/trust.cpp	changed = sites[index].emplace(where, std::move(reached)).second || changed;	changed = (false && sites[index].emplace(where, std::move(reached)).second) || changed;	^e2e_runtime_validation$|^unit_trust_closure_test$
 runtime-check-imported-closure	compiler/obligations/src/trust.cpp	recorded.runtime};	std::vector<artifact::RuntimeCheck>{}};	^e2e_runtime_validation$
 runtime-check-exported	compiler/obligations/src/interface.cpp	entry.runtime.push_back(artifact::RuntimeCheck{	(void)(artifact::RuntimeCheck{	^e2e_runtime_validation$

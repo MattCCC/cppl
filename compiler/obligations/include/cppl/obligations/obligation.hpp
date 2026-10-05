@@ -99,6 +99,16 @@ struct TrustedPremise {
 // goal itself.
 [[nodiscard]] kernel::Proposition relative_to(const std::vector<TrustedPremise>& premises, kernel::Proposition goal);
 
+// A written proof whose evidence a claim's own evidence names: a proof
+// statement's `exact`, `apply`, `rewrite` or `contradiction`, or the
+// `contradiction` an omitted case or a runtime path claimed not to occur is
+// closed by (TRUST.md Annex C.2, proof dependencies). Trusted laws are
+// premises, kept apart.
+struct ProofUse {
+    std::string name;
+    source::SourceLocation location;
+};
+
 struct Obligation {
     ObligationId id;
     Origin origin = Origin::LawProposition;
@@ -130,6 +140,9 @@ struct Obligation {
     // The trusted laws that evidence rests on: it proves
     // `relative_to(assumptions, goal)`, which is what the kernel is given.
     std::vector<TrustedPremise> assumptions;
+
+    // The written proofs that evidence names, each once, in the order met.
+    std::vector<ProofUse> uses = {};
 
     // Why the evidence written for such a claim could not be built. The reason
     // was reported where it was found, so the claim stands unproven and is
@@ -182,6 +195,10 @@ struct WrittenProof {
     // goal)`: a proof that names no trusted law, directly or through another
     // proof, has none and proves `goal` itself.
     std::vector<TrustedPremise> assumptions;
+
+    // The written proofs its statements name as evidence, each once, in the
+    // order met. What those use in turn is theirs to list.
+    std::vector<ProofUse> uses = {};
 
     kernel::ProofTerm term;
     source::SourceRange range;

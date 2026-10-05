@@ -1625,7 +1625,8 @@ std::optional<kernel::ProofTerm> transport(Body& body, const vir::ProofStep& ste
 // are introduced after all the binders, in the order they were assumed; that
 // keeps each hypothesis the refutation names at the same position it had where
 // the refutation was built.
-void record_omission(const Body& body, const vir::CaseArm& arm, const kernel::ProofTerm& absurd) {
+void record_omission(const Body& body, const vir::CaseArm& arm, const vir::Reference& named,
+                     const kernel::ProofTerm& absurd) {
     kernel::Proposition goal = kernel::Proposition::falsity();
     kernel::ProofTerm evidence = absurd;
     for (std::size_t index = body.assumptions.size(); index > 0; --index) {
@@ -1652,6 +1653,12 @@ void record_omission(const Body& body, const vir::CaseArm& arm, const kernel::Pr
     }
     obligation.origin = Origin::OmittedCase;
     obligation.subject = "case '" + arm.label + "' of proof '" + body.proof.name + "'";
+    if (const auto* proof = std::get_if<vir::ProofRef>(&named.node)) {
+        if (const auto built = body.built_index.find(proof->proof.value); built != body.built_index.end()) {
+            const WrittenProof& used = body.built[built->second];
+            obligation.uses.push_back(ProofUse{used.name, used.range.begin});
+        }
+    }
     obligation.goal = std::move(goal);
     obligation.evidence = std::move(evidence);
     obligation.range = source::SourceRange{arm.location, {}};
@@ -1752,7 +1759,7 @@ std::optional<kernel::ProofTerm> prove_contradiction(Body& body, const vir::Proo
     }
 
     if (omitted != nullptr && body.omissions != nullptr) {
-        record_omission(body, *omitted, *absurd);
+        record_omission(body, *omitted, contradiction.evidence, *absurd);
     }
 
     return quantify(binders, kernel::ProofTerm::falsity_elimination(std::move(*absurd)));
@@ -2284,6 +2291,7 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
             // every proof it uses rests on. Keyed by law, so they are supposed
             // in declaration order whatever order they are met in.
             std::map<vir::LawId, TrustedPremise> premises;
+            std::vector<ProofUse> uses;
             const auto rests_on = [&premises](const TrustedPremise& premise, bool direct) {
                 auto [entry, added] = premises.emplace(premise.law, premise);
                 entry->second.direct = added ? direct : entry->second.direct || direct;
@@ -2354,8 +2362,12 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
                     ready = false;
                     break;
                 }
-                for (const TrustedPremise& premise : program.proofs[lowered.at(named->proof.value)].assumptions) {
+                const WrittenProof& used = program.proofs[lowered.at(named->proof.value)];
+                for (const TrustedPremise& premise : used.assumptions) {
                     rests_on(premise, false);
+                }
+                if (std::ranges::none_of(uses, [&used](const ProofUse& known) { return known.name == used.name; })) {
+                    uses.push_back(ProofUse{used.name, used.range.begin});
                 }
             }
 
@@ -2413,6 +2425,7 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
             written.goal = *claimed;
             written.closes_law = proof.law.has_value() && *claimed == obligation.goal;
             written.assumptions = std::move(assumptions);
+            written.uses = std::move(uses);
             written.term = std::move(*term);
             written.range = proof.range;
 
@@ -2532,6 +2545,7 @@ void discharge_path_claims(Program& program, diagnostics::Engine& engine) {
                    "the reason it was not admitted is reported above");
             continue;
         }
+        obligation.uses.push_back(ProofUse{proof->name, proof->range.begin});
 
         // A proof established relative to trusted laws is used relative to the
         // same ones (SPEC.md TRUSTED-006). They are supposed outside everything
