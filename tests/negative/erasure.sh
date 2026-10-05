@@ -16,13 +16,28 @@ CPPL="$1"
 FIXTURES="$2/negative"
 WORK="$3"
 
+# shellcheck source=../support/parallel.sh
+source "$(dirname "$0")/../support/parallel.sh"
+
 mkdir -p "$WORK"
 run=$(mktemp -d "$WORK/erasure-refusals.XXXXXX")
 
+# Each refusal is a case of its own, in files of its own, so they run side by
+# side (support/parallel.sh). The sweep below refuses the fixtures named here a
+# second time, so it writes into a directory of its own.
+cases_begin "$run/cases"
+mkdir -p "$run/sweep"
+
 # refuse <name> [expected diagnostic]...
 refuse() {
-    local name="$1"
-    shift
+    refuse_in "$run" "$@"
+}
+
+# refuse_in <directory> <name> [expected diagnostic]...: refuse, writing what
+# the compiler produces into <directory>.
+refuse_in() {
+    local run="$1" name="$2"
+    shift 2
     local status=0
     "$CPPL" -std=c++17 "$FIXTURES/$name.cpp" -o "$run/$name" "--cppl-emit-projection=$run/$name.runtime.ii" \
         > "$run/$name.log" 2>&1 || status=$?
@@ -56,23 +71,24 @@ refuse() {
 # as though checked. Ghost state that code
 # would give runtime storage, and a contract resting on what an unsafe block
 # did, are refused, and nothing is erased around them.
-refuse ghost_runtime_storage \
+case_run refuse ghost_runtime_storage \
     "ghost_runtime_storage.cpp:9:30: error [cppl-syntax]: ghost 'seen' is used by code that runs"
-refuse unsafe_false_postcondition \
+case_run refuse unsafe_false_postcondition \
     "unsafe_false_postcondition.cpp:12:12: error [kernel-rejection]: return path 'bumped path 1' does not satisfy its contract"
-refuse unsupported_old_value "unsupported_old_value.cpp:8:19: error [cpp-semantic]: use of undeclared identifier 'old'"
-refuse induction_signed_subject \
+case_run refuse unsupported_old_value "unsupported_old_value.cpp:8:19: error [cpp-semantic]: use of undeclared identifier 'old'"
+case_run refuse induction_signed_subject \
     "induction_signed_subject.cpp:16:5: error [proof-failure]: induction over 'x' has no principle"
-refuse misplaced_loop_clauses \
+case_run refuse misplaced_loop_clauses \
     "misplaced_loop_clauses.cpp:11:9: error [cpp-semantic]: use of undeclared identifier 'invariant'" \
     "misplaced_loop_clauses.cpp:22:20: error [cpp-semantic]: expected ';' after do/while statement"
 
 # Every refused fixture, whichever stage refuses it.
 swept=0
 for fixture in "$FIXTURES"/*.cpp; do
-    refuse "$(basename "$fixture" .cpp)"
+    case_run refuse_in "$run/sweep" "$(basename "$fixture" .cpp)"
     swept=$((swept + 1))
 done
+cases_end
 test "$swept" -ge 40
 
 echo "$swept refused units left no program and no runtime projection behind"
