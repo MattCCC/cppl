@@ -819,6 +819,11 @@ void Server::publish_diagnostics(const Document& doc, bool opened) {
     job.request.clang = clang_;
     job.request.clang_arguments = arguments_for(doc.path());
     job.request.import_interfaces = compile_commands_.interfaces_for(doc.path());
+    // A document its build compiles with what this compile is not given is
+    // not verified here (SPEC.md ARITH-014).
+    job.request.unverifiable =
+        compile_commands_.unpassed_option_for(doc.path(), clang_.empty() ? std::string{CPPL_DEFAULT_CLANG} : clang_)
+            .value_or(std::string{});
     if (compile_scheduler_) {
         compile_scheduler_(std::move(job), opened);
         return;

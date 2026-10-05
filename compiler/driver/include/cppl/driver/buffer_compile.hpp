@@ -46,6 +46,14 @@ struct BufferCompileRequest {
     // (BufferCompileOutcome::names), verifying nothing: what an index of a
     // workspace needs, at a fraction of a full compile's cost.
     bool stop_after_elaboration = false;
+
+    // Why the buffer must not be verified, when its build compiles it with an
+    // option `clang_arguments` leaves out that can change the target, data
+    // model or ABI it is compiled for: what would be verified is then not what
+    // the build verifies. The reason is reported as an error and the compile
+    // stops once elaboration has resolved names, so nothing is proven. Empty
+    // when nothing stands in the way (SPEC.md ARITH-014).
+    std::string unverifiable;
 };
 
 // A contract of another unit a proven claim rests on, as the trust report names

@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -23,9 +24,10 @@ class CompileCommands {
     //
     // Only what changes how the text reads is kept: include and framework
     // paths (made absolute against the entry's directory), macros, forced
-    // includes, the language standard and library, the target and system root,
-    // and the few `-f` and `-m` switches that define macros or change the
-    // language. Output, dependency and warning flags, and the input, are
+    // includes, the language standard and library, the target, architecture
+    // and system root, every machine option (`-m...`), and the `-f` switches
+    // that define macros, change the language or change the data model or ABI
+    // a type has. Output, dependency and warning flags, and the input, are
     // dropped. A database edited since it was read is read again.
     [[nodiscard]] std::vector<std::string> flags_for(const std::string& path);
 
@@ -33,6 +35,10 @@ class CompileCommands {
     // the same entry as its flags, each made absolute against the entry's
     // directory. Empty when no database is found.
     [[nodiscard]] std::vector<std::string> interfaces_for(const std::string& path);
+
+    // Why `path` must not be verified in the editor, from the same entry as its
+    // flags (`unpassed_option`), or nothing.
+    [[nodiscard]] std::optional<std::string> unpassed_option_for(const std::string& path, const std::string& driver);
 
     // Every file the build compiles, as the database at the root of a
     // workspace lists it: `root/compile_commands.json` or
@@ -65,6 +71,20 @@ class CompileCommands {
 // how the text reads, with each path made absolute against `directory`.
 [[nodiscard]] std::vector<std::string> reading_flags(const std::vector<std::string>& arguments,
                                                      const std::filesystem::path& directory);
+
+// The first option of `arguments` -- a compile command, compiler first -- that
+// can change which target the build compiles for, or the data model or ABI it
+// compiles with, and that the editor does not pass on to its own compile,
+// described; or nothing. `reading_flags` drops each such option because it can
+// load code into Clang or names files the project chose: `-Xclang`, an option
+// for one architecture, a response file, a configuration file, and a Clang
+// driver (`--cppl-clang=`) other than `driver`, the editor's own, which may
+// select another target by its name alone. A document so compiled is not
+// verified in the editor, since what it would verify is not what the build
+// does (SPEC.md ARITH-014).
+[[nodiscard]] std::optional<std::string> unpassed_option(const std::vector<std::string>& arguments,
+                                                         const std::filesystem::path& directory,
+                                                         const std::string& driver);
 
 // The verification interfaces `arguments` -- a compile command, compiler first
 // -- imports with `--cppl-import-interface=`, in order, each made absolute

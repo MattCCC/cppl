@@ -3030,6 +3030,12 @@ and adds its own `--clang-arg` flags after them.
 same flags, so navigation and diagnostics never describe two different
 programs.
 
+Every flag of the entry that can select the target, data model or ABI is among
+them, and one the server cannot pass on without running project code
+(`-Xclang`, a response or configuration file, another Clang driver) makes the
+document unverified in the editor rather than verified for a target its build
+does not compile for (`lsp::unpassed_option`, `SPEC.md` ARITH-014).
+
 A name a proof statement uses never reaches Clang. Elaboration, which resolves
 it, records the resolution (`elaboration::ResolvedName`, carried out through
 `driver::BufferCompileOutcome` beside the case engine's subject states), and the

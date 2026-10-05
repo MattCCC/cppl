@@ -165,11 +165,16 @@ BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnos
     // them rather than as long as this call.
     outcome.text = std::make_unique<const std::string>(std::move(*text));
 
+    // A buffer whose build compiles it with what this compile is not given is
+    // not verified here, since nothing proven here would be what the build
+    // proves (SPEC.md ARITH-014). Its names are still resolved.
+    const bool stop_after_elaboration = request.stop_after_elaboration || !request.unverifiable.empty();
+
     // What other units proved, from the interfaces the build imports into this
     // one, read and checked as the CLI reads them. Only verification consults
     // them, so a compile that stops after elaboration reads none.
     obligations::Imports imports;
-    if (!request.import_interfaces.empty() && !request.stop_after_elaboration) {
+    if (!request.import_interfaces.empty() && !stop_after_elaboration) {
         const std::expected<artifact::Configuration, std::string> configuration =
             detail::compared_configuration(clang, request.clang_arguments, language_standard(request.clang_arguments));
         if (configuration) {
@@ -188,7 +193,7 @@ BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnos
     pipeline_request.stem = stem;
     pipeline_request.clang = clang;
     pipeline_request.clang_arguments = request.clang_arguments;
-    pipeline_request.stop_after_elaboration = request.stop_after_elaboration;
+    pipeline_request.stop_after_elaboration = stop_after_elaboration;
     pipeline_request.imports = &imports;
     // The LSP has no later "real compile" step of its own, unlike the CLI,
     // so a document with no C++L syntax at all still needs Clang's own
@@ -199,6 +204,13 @@ BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnos
     // observable: it only wants diagnostics.
 
     detail::PipelineOutcome result = detail::run_pipeline(pipeline_request, engine);
+    // Said only of a buffer with something to verify: ordinary C++ is compiled
+    // as it always is.
+    if (!request.unverifiable.empty() && result.has_cppl) {
+        report(engine, diagnostics::Category::UnsupportedSemantics,
+               "'" + request.virtual_path + "' is not verified in the editor: " + request.unverifiable +
+                   ", so what it would verify is not what its build verifies");
+    }
     outcome.has_cppl = result.has_cppl;
     outcome.tokens = std::move(result.tokens);
     outcome.syntax = std::move(result.syntax);

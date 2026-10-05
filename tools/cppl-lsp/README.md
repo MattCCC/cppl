@@ -1580,18 +1580,36 @@ Only flags that change how the text reads are kept:
   directory;
 - macros defined and undefined, and forced includes;
 - the language standard and standard library;
-- the target and system root;
+- the target, architecture and system root (`--target=`, `-target`, `-arch`,
+  `--sysroot`, `--driver-mode=`);
+- every machine option (`-m...`: `-m32`, `-mx32`, `-mabi=`, `-mbig-endian`,
+  `-march=`, `-mlong-double-64`, ...), the class of options that select the
+  target's data model, ABI and instruction set, and `-EB` and `-EL`;
 - optimization levels, which define `__OPTIMIZE__`;
-- the few `-f` and `-m` switches that define macros or change the language.
+- the `-f` switches that define macros, change the language, or change the data
+  model or ABI a type has: `char` signedness, `wchar_t` width, short enums,
+  structure packing and return, `__int128`, `-fwrapv`, the Clang ABI version.
 
 Output, dependency, warning and code-generation flags are dropped, and so is
-the input.
+the input. `-mllvm` and `-mmlir`, which reach only code generation, are dropped
+with their values.
 
 The database belongs to the project, and opening a file must not run the
 project's code. The compiler an entry names is never run: the server always
 uses its own Clang. Only the flags above are passed on. A plugin (`-fplugin=`,
 `-Xclang -load`), a tool search path (`-B`) or a toolchain elsewhere never
 reaches Clang.
+
+Some of what never reaches Clang could select the target, data model or ABI the
+build compiles the document for: an option handed to Clang's frontend
+(`-Xclang`) or to one architecture's compile (`-Xarch_...`), a response file
+(`@file`), a configuration file (`--config=`, `--config-user-dir=`,
+`--config-system-dir=`), and a Clang driver other than the server's
+(`--cppl-clang=`), which may select another target by its name alone. A
+document whose entry has one is not verified in the editor: what the editor
+would prove of it would not be what its build proves (`SPEC.md` ARITH-014). It
+is still read and navigated, its lens says it was not verified, and an error
+with the `cppl.unsupported` code names the option.
 
 The document's editor unit and its compile read it with the same flags
 (`ARCH-LSP-008`), so navigation and diagnostics never see two different

@@ -267,6 +267,15 @@ analysis-target-compared	compiler/driver/src/pipeline.cpp	if (analyzed->unit.tar
 analysis-target-named	compiler/driver/src/target.cpp	given.push_back("--target=" + target.triple);	(void)target.triple;	^negative_analysis_target$
 analysis-configuration-read	compiler/driver/src/target.cpp	given.push_back("--config=" + file);	(void)file;	^negative_analysis_target$
 analysis-default-configuration-unread	compiler/driver/src/target.cpp	given.emplace_back("--no-default-config");	(void)given;	^negative_analysis_target$
+lsp-machine-options-kept	src/lsp/src/compile_commands.cpp	one_of(argument, kSwitches) || machine_option(argument) ||	one_of(argument, kSwitches) || (false && machine_option(argument)) ||	^lsp_compile_commands_test$|^lsp_interfaces_test$
+lsp-architecture-kept	src/lsp/src/compile_commands.cpp	({"-target", "-arch", "-mthread-model"});	({"-target", "-mthread-model"});	^lsp_compile_commands_test$
+lsp-unpassed-frontend-options	src/lsp/src/compile_commands.cpp	if (argument == "-Xclang" || argument.starts_with("-Xarch_")) {	if (false && (argument == "-Xclang" || argument.starts_with("-Xarch_"))) {	^lsp_compile_commands_test$|^lsp_interfaces_test$
+lsp-unpassed-response-file	src/lsp/src/compile_commands.cpp	if (argument.starts_with("@")) {	if (false && argument.starts_with("@")) {	^lsp_compile_commands_test$
+lsp-unpassed-configuration	src/lsp/src/compile_commands.cpp	if (argument == "--config" || argument.starts_with("--config=") || argument.starts_with("--config-user-dir=") ||	if (false &&	^lsp_compile_commands_test$
+lsp-unpassed-driver	src/lsp/src/compile_commands.cpp	if (named != driver && absolute(named, directory) != normal(driver).string()) {	if (false && named != driver && absolute(named, directory) != normal(driver).string()) {	^lsp_compile_commands_test$
+lsp-unverifiable-not-verified	compiler/driver/src/buffer_compile.cpp	const bool stop_after_elaboration = request.stop_after_elaboration || !request.unverifiable.empty();	const bool stop_after_elaboration = request.stop_after_elaboration;	^lsp_interfaces_test$
+lsp-unverifiable-reported	compiler/driver/src/buffer_compile.cpp	if (!request.unverifiable.empty() && result.has_cppl) {	if (false) {	^lsp_interfaces_test$
+lsp-unverifiable-requested	src/lsp/src/server.cpp	compile_commands_.unpassed_option_for(doc.path(), clang_.empty() ? std::string{CPPL_DEFAULT_CLANG} : clang_)	std::optional<std::string>{}	^lsp_interfaces_test$
 MUTATIONS
 )
 

@@ -113,6 +113,105 @@ CPPL_TEST(only_what_changes_how_the_text_reads_is_kept) {
            {"-DKEPT"}, __LINE__);
 }
 
+// SPEC: ARITH-014 -- the editor reads a document for the target, data model and
+// ABI its build compiles it for, or does not verify it.
+CPPL_TEST(every_option_selecting_the_target_data_model_or_abi_is_kept) {
+    expect(reading_flags({"cppl",
+                          "-m16",
+                          "-m32",
+                          "-m64",
+                          "-mx32",
+                          "-mabi=lp64",
+                          "-mbig-endian",
+                          "-mlittle-endian",
+                          "-EB",
+                          "-EL",
+                          "-arch",
+                          "arm64",
+                          "-target",
+                          "i686-linux-gnu",
+                          "--target=x86_64-linux-gnu",
+                          "-march=x86-64-v3",
+                          "-mlong-double-64",
+                          "-malign-double",
+                          "-mthread-model",
+                          "posix",
+                          "-fshort-enums",
+                          "-fpack-struct=4",
+                          "-fno-signed-char",
+                          "-fwrapv",
+                          "-fclang-abi-compat=17",
+                          "--driver-mode=g++",
+                          "--no-default-config",
+                          "-c",
+                          "a.cpp"},
+                         "/"),
+           {"-m16",
+            "-m32",
+            "-m64",
+            "-mx32",
+            "-mabi=lp64",
+            "-mbig-endian",
+            "-mlittle-endian",
+            "-EB",
+            "-EL",
+            "-arch",
+            "arm64",
+            "-target",
+            "i686-linux-gnu",
+            "--target=x86_64-linux-gnu",
+            "-march=x86-64-v3",
+            "-mlong-double-64",
+            "-malign-double",
+            "-mthread-model",
+            "posix",
+            "-fshort-enums",
+            "-fpack-struct=4",
+            "-fno-signed-char",
+            "-fwrapv",
+            "-fclang-abi-compat=17",
+            "--driver-mode=g++",
+            "--no-default-config"},
+           __LINE__);
+    // What reaches only code generation, or another stage, is dropped with its
+    // value, which is never read as a flag of its own.
+    expect(reading_flags({"cppl", "-mllvm", "-mx32", "-mmlir", "-m32", "-Xassembler", "-mbig-obj", "-Xlinker", "-m32",
+                          "-Xpreprocessor", "-m32", "-DKEPT"},
+                         "/"),
+           {"-DKEPT"}, __LINE__);
+}
+
+// SPEC: ARITH-014 -- what the editor cannot pass on, it does not verify past.
+CPPL_TEST(a_build_option_the_editor_cannot_pass_on_makes_the_document_unverified) {
+    const std::string driver = "/opt/llvm/bin/clang++";
+    const auto refused = [&driver](const std::vector<std::string>& arguments, const std::string& part) {
+        const std::optional<std::string> reason = unpassed_option(arguments, "/work/build", driver);
+        return reason.has_value() && reason->find(part) != std::string::npos;
+    };
+    CPPL_CHECK(refused({"cppl", "-Xclang", "-triple", "-Xclang", "i686-linux-gnu", "-c", "a.cpp"}, "'-Xclang'"));
+    CPPL_CHECK(refused({"cppl", "-Xarch_x86_64", "-m32", "-c", "a.cpp"}, "'-Xarch_x86_64'"));
+    CPPL_CHECK(refused({"cppl", "@flags.rsp", "-c", "a.cpp"}, "the response file 'flags.rsp'"));
+    CPPL_CHECK(refused({"cppl", "--config=cross.cfg", "-c", "a.cpp"}, "'--config=cross.cfg'"));
+    CPPL_CHECK(refused({"cppl", "--config-user-dir=cfg", "-c", "a.cpp"}, "'--config-user-dir=cfg'"));
+    CPPL_CHECK(refused({"cppl", "--config-system-dir=cfg", "-c", "a.cpp"}, "'--config-system-dir=cfg'"));
+    // A driver of another name may select another target by its name alone.
+    CPPL_CHECK(refused({"cppl", "--cppl-clang=/opt/llvm/bin/i686-linux-gnu-clang++", "-c", "a.cpp"},
+                       "the Clang driver '/opt/llvm/bin/i686-linux-gnu-clang++'"));
+    CPPL_CHECK(refused({"cppl", "--cppl-clang=../bin/clang++", "-c", "a.cpp"}, "the Clang driver '../bin/clang++'"));
+
+    // The editor's own driver, named as given or relative to the entry, and
+    // every option it passes on, stand in the way of nothing.
+    CPPL_CHECK(!unpassed_option({"cppl", "--cppl-clang=" + driver, "-mx32", "-target", "i686-linux-gnu", "-c", "a.cpp"},
+                                "/work/build", driver)
+                    .has_value());
+    CPPL_CHECK(
+        !unpassed_option({"cppl", "--cppl-clang=../../opt/llvm/bin/clang++", "-c", "a.cpp"}, "/work/build", driver)
+             .has_value());
+    // The compiler and the inputs are not options.
+    CPPL_CHECK(!unpassed_option({"@compiler", "-c", "a.cpp"}, "/", driver).has_value());
+    CPPL_CHECK(!unpassed_option({"cppl", "-c", "--", "@a.cpp"}, "/", driver).has_value());
+}
+
 CPPL_TEST(the_nearest_database_gives_a_file_its_own_entry_or_the_most_alike) {
     const cppl::driver::ScratchDirectory scratch;
     const std::filesystem::path root = scratch.path() / "project";

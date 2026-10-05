@@ -32,14 +32,15 @@ constexpr auto kPathFlags = std::to_array<std::string_view>(
 // Flags followed by a value that is not a path.
 constexpr auto kValueFlags = std::to_array<std::string_view>({"-D", "-U"});
 
-// Flags whose value is joined by `=`, kept whole.
-constexpr auto kJoinedFlags = std::to_array<std::string_view>(
-    {"-std=", "-stdlib=", "--target=", "--sysroot=", "-march=", "-mcpu=", "-mtune=", "-fms-compatibility-version="});
+// Flags whose value is joined by `=`, kept whole. Every machine option
+// (`-march=`, `-mabi=`, ...) is kept as well, by `machine_option`.
+constexpr auto kJoinedFlags =
+    std::to_array<std::string_view>({"-std=", "-stdlib=", "--target=", "--sysroot=", "--driver-mode=",
+                                     "-fms-compatibility-version=", "-fpack-struct=", "-fclang-abi-compat="});
 
-// Switches kept as they are: each defines a macro or changes the language.
-constexpr auto kSwitches = std::to_array<std::string_view>({"-m32",
-                                                            "-m64",
-                                                            "-pthread",
+// Switches kept as they are: each defines a macro, changes the language, or
+// changes the data model or the ABI a type has on the target.
+constexpr auto kSwitches = std::to_array<std::string_view>({"-pthread",
                                                             "-nostdinc",
                                                             "-nostdinc++",
                                                             "-nostdlibinc",
@@ -55,7 +56,23 @@ constexpr auto kSwitches = std::to_array<std::string_view>({"-m32",
                                                             "-fno-char8_t",
                                                             "-fsigned-char",
                                                             "-funsigned-char",
+                                                            "-fno-signed-char",
+                                                            "-fno-unsigned-char",
                                                             "-fshort-wchar",
+                                                            "-fno-short-wchar",
+                                                            "-fshort-enums",
+                                                            "-fno-short-enums",
+                                                            "-fpack-struct",
+                                                            "-fno-pack-struct",
+                                                            "-fpcc-struct-return",
+                                                            "-freg-struct-return",
+                                                            "-fforce-enable-int128",
+                                                            "-fno-force-enable-int128",
+                                                            "-fwrapv",
+                                                            "-fno-wrapv",
+                                                            "-EB",
+                                                            "-EL",
+                                                            "--no-default-config",
                                                             "-fms-extensions",
                                                             "-fms-compatibility",
                                                             "-fno-ms-compatibility",
@@ -66,9 +83,26 @@ constexpr auto kSwitches = std::to_array<std::string_view>({"-m32",
                                                             "-faligned-allocation",
                                                             "-fno-aligned-allocation"});
 
-// Flags whose value is a separate argument that is dropped with them.
+// Flags whose value is a separate argument that is dropped with them. Of those
+// that pass an option on to a stage, the ones that cannot change how the text
+// reads or what it is compiled for are here; the others make the document
+// unverifiable in the editor (`unpassed_option`). `-mllvm` and `-mmlir` reach
+// only code generation.
 constexpr auto kDroppedWithValue =
-    std::to_array<std::string_view>({"-o", "-MF", "-MT", "-MQ", "-MJ", "-x", "-arch", "-Xclang", "-Xlinker"});
+    std::to_array<std::string_view>({"-o", "-MF", "-MT", "-MQ", "-MJ", "-x", "-Xclang", "-Xlinker", "-Xassembler",
+                                     "-Xpreprocessor", "-mllvm", "-mmlir"});
+
+// Flags followed by a separate value, kept with it: what the build compiles
+// for.
+constexpr auto kKeptWithValue = std::to_array<std::string_view>({"-target", "-arch", "-mthread-model"});
+
+// Whether `argument` is a machine option: the class of options (`-m32`, `-mx32`,
+// `-mabi=`, `-mbig-endian`, `-mlong-double-64`, `-march=`, ...) that select the
+// target's data model, ABI and instruction set. Every one is kept, so none a
+// build compiles with is left out of how the editor reads the text.
+bool machine_option(std::string_view argument) {
+    return argument.size() > 2 && argument.starts_with("-m") && argument != "-mllvm" && argument != "-mmlir";
+}
 
 bool one_of(std::string_view word, const auto& words) {
     return std::ranges::find(words, word) != words.end();
@@ -189,7 +223,7 @@ std::vector<std::string> reading_flags(const std::vector<std::string>& arguments
             }
             continue;
         }
-        if (argument == "-target" || argument == "--sysroot") {
+        if (one_of(argument, kKeptWithValue) || argument == "--sysroot") {
             if (has_next) {
                 kept.emplace_back(argument);
                 kept.push_back(argument == "--sysroot" ? absolute(arguments[index + 1], directory)
@@ -212,12 +246,49 @@ std::vector<std::string> reading_flags(const std::vector<std::string>& arguments
             std::ranges::any_of(kValueFlags, [argument](std::string_view flag) { return argument.starts_with(flag); });
         const bool joined =
             std::ranges::any_of(kJoinedFlags, [argument](std::string_view flag) { return argument.starts_with(flag); });
-        if (joined_value || joined || one_of(argument, kSwitches) ||
+        if (joined_value || joined || one_of(argument, kSwitches) || machine_option(argument) ||
             (argument.starts_with("-O") && argument.size() <= 3)) {
             kept.emplace_back(argument);
         }
     }
     return kept;
+}
+
+std::optional<std::string> unpassed_option(const std::vector<std::string>& arguments,
+                                           const std::filesystem::path& directory, const std::string& driver) {
+    constexpr std::string_view kDriver = "--cppl-clang=";
+    for (std::size_t index = 1; index < arguments.size(); ++index) {
+        const std::string_view argument = arguments[index];
+        if (argument == "--") {
+            break; // only inputs follow
+        }
+        // An option handed to Clang's frontend unread by its driver, such as
+        // `-Xclang -triple`, or to the compile of one architecture alone.
+        if (argument == "-Xclang" || argument.starts_with("-Xarch_")) {
+            return "'" + std::string(argument) + "' passes options on to the compiler that the editor does not";
+        }
+        // Options the build reads from a file the editor does not read.
+        if (argument.starts_with("@")) {
+            return "it reads options from the response file '" + std::string(argument.substr(1)) + "'";
+        }
+        if (argument == "--config" || argument.starts_with("--config=") || argument.starts_with("--config-user-dir=") ||
+            argument.starts_with("--config-system-dir=")) {
+            return "'" + std::string(argument) + "' selects a configuration file of options the editor does not read";
+        }
+        // Another driver may compile for another target than the editor's,
+        // by its name alone (`i686-linux-gnu-clang++`).
+        if (argument.starts_with(kDriver)) {
+            const std::string named(argument.substr(kDriver.size()));
+            if (named != driver && absolute(named, directory) != normal(driver).string()) {
+                std::string reason = "it is compiled by the Clang driver '" + named;
+                reason += "', and the editor compiles with '";
+                reason += driver;
+                reason += "'";
+                return reason;
+            }
+        }
+    }
+    return std::nullopt;
 }
 
 std::vector<std::string> imported_interfaces(const std::vector<std::string>& arguments,
@@ -330,6 +401,11 @@ std::vector<std::string> CompileCommands::flags_for(const std::string& path) {
 std::vector<std::string> CompileCommands::interfaces_for(const std::string& path) {
     const Entry* entry = entry_for(path);
     return entry == nullptr ? std::vector<std::string>{} : imported_interfaces(entry->arguments, entry->directory);
+}
+
+std::optional<std::string> CompileCommands::unpassed_option_for(const std::string& path, const std::string& driver) {
+    const Entry* entry = entry_for(path);
+    return entry == nullptr ? std::nullopt : unpassed_option(entry->arguments, entry->directory, driver);
 }
 
 } // namespace cppl::lsp

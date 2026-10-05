@@ -58,13 +58,15 @@ void write(const std::filesystem::path& path, const std::string& text) {
 }
 
 // A library unit and a client of it, the library compiled by the CLI into its
-// object and its verification interface, in `standard` when one is given.
+// object and its verification interface, in `standard` when one is given and
+// with `flags`.
 struct Project {
     std::filesystem::path root;
     std::filesystem::path client;
     std::filesystem::path interface;
 
-    explicit Project(const std::filesystem::path& under, const std::string& standard)
+    explicit Project(const std::filesystem::path& under, const std::string& standard,
+                     const std::vector<std::string>& flags = {})
         : root(under / "project"),
           client(root / "src" / "client.cpp"),
           interface(root / "build" / "counter.cppli") {
@@ -72,7 +74,7 @@ struct Project {
         write(root / "lib" / "counter.cpp", kLibrary);
         write(client, kClient);
         std::filesystem::create_directories(root / "build");
-        std::vector<std::string> arguments;
+        std::vector<std::string> arguments = flags;
         if (!standard.empty()) {
             arguments.push_back("-std=" + standard);
         }
@@ -100,24 +102,23 @@ struct Opened {
     std::string hover;
 };
 
-// The client as an editor opens it: what is published for it, the lens over
-// `twice`, and the hover there.
-Opened open_client(const Project& project) {
+// `text` as an editor opens it at `path`: what is published for it, the lens
+// over the first `name`, and the hover there.
+Opened open_document(const std::filesystem::path& path, const std::string& text, const std::string& name) {
     Server server(CPPL_TEST_DEFAULT_CLANG);
     Opened opened;
     server.set_diagnostic_publisher([&opened](const std::string&, std::vector<Diagnostic> diagnostics) {
         opened.diagnostics = std::move(diagnostics);
     });
     TextDocumentItem item;
-    item.uri = path_to_uri(project.client.string());
-    item.text = kClient;
+    item.uri = path_to_uri(path.string());
+    item.text = text;
     item.version = 1;
     server.text_document_did_open(item);
 
     TextDocumentIdentifier id;
     id.uri = item.uri;
-    const std::string text = kClient;
-    const Position at = PositionMapper(text).byte_offset_to_position(text.find("twice"));
+    const Position at = PositionMapper(text).byte_offset_to_position(text.find(name));
     for (const CodeLens& lens : server.text_document_code_lens(id).value_or(std::vector<CodeLens>{})) {
         if (lens.range.start.line == at.line && lens.range.start.character == at.character) {
             opened.lens = lens.title;
@@ -129,11 +130,16 @@ Opened open_client(const Project& project) {
     return opened;
 }
 
-// Whether an interface error mentioning `part` was published. When none was,
+// The client as an editor opens it, with the lens and hover over `twice`.
+Opened open_client(const Project& project) {
+    return open_document(project.client, kClient, "twice");
+}
+
+// Whether an error with `code` mentioning `part` was published. When none was,
 // what was published is printed, so a failure says what the editor showed.
-bool has_interface_error(const Opened& opened, const std::string& part) {
-    const bool found = std::ranges::any_of(opened.diagnostics, [&part](const Diagnostic& diagnostic) {
-        return diagnostic.severity == DiagnosticSeverity::Error && diagnostic.code == "cppl.verification.interface" &&
+bool has_error_coded(const Opened& opened, const std::string& code, const std::string& part) {
+    const bool found = std::ranges::any_of(opened.diagnostics, [&code, &part](const Diagnostic& diagnostic) {
+        return diagnostic.severity == DiagnosticSeverity::Error && diagnostic.code == code &&
                diagnostic.message.find(part) != std::string::npos;
     });
     if (!found) {
@@ -142,6 +148,10 @@ bool has_interface_error(const Opened& opened, const std::string& part) {
         }
     }
     return found;
+}
+
+bool has_interface_error(const Opened& opened, const std::string& part) {
+    return has_error_coded(opened, "cppl.verification.interface", part);
 }
 
 bool has_error(const Opened& opened) {
@@ -206,4 +216,47 @@ CPPL_TEST(the_editor_compares_the_language_mode_its_build_compiles_in) {
     CPPL_CHECK(open_client(later).lens.starts_with("PROVEN"));
     later.compiled_with("-std=c++20 -std=c++17 --cppl-import-interface=counter.cppli");
     CPPL_CHECK(has_interface_error(open_client(later), "another C++ language mode"));
+}
+
+// SPEC: ARITH-014 -- the editor verifies a document for the target its build
+// compiles it for, as the CLI does, or not at all.
+CPPL_TEST(the_editor_verifies_for_the_target_its_build_compiles_for) {
+    const cppl::driver::ScratchDirectory scratch;
+    // Written for x86-64 wherever the test runs, so that x32 is another target
+    // on every host.
+    const std::string x86_64 = "--target=x86_64-unknown-linux-gnu";
+    const Project project(scratch.path(), "c++20", {x86_64});
+
+    project.compiled_with("-std=c++20 " + x86_64 + " --cppl-import-interface=counter.cppli");
+    CPPL_CHECK(open_client(project).lens.starts_with("PROVEN"));
+
+    // The build compiles the client for x32, which this interface was not
+    // produced for: the CLI refuses it, and so does the editor.
+    project.compiled_with("-std=c++20 " + x86_64 + " -mx32 --cppl-import-interface=counter.cppli");
+    const Opened x32 = open_client(project);
+    CPPL_CHECK(has_interface_error(x32, "it was produced for another target"));
+    CPPL_CHECK(!x32.lens.starts_with("PROVEN"));
+
+    // True of x86-64's 64-bit `unsigned long` and false of x32's 32-bit one:
+    // proven for the one build and not for the other.
+    const std::string widened = "verified unsigned long widened(unsigned long x)\n"
+                                "    expects (x == 4294967295ul)\n"
+                                "    ensures (result > 4294967295ul)\n"
+                                "{\n"
+                                "    return x + 1ul;\n"
+                                "}\n";
+    const std::filesystem::path document = project.root / "src" / "widened.cpp";
+    project.compiled_with("-std=c++20 " + x86_64);
+    CPPL_CHECK(open_document(document, widened, "widened").lens.starts_with("PROVEN"));
+    project.compiled_with("-std=c++20 " + x86_64 + " -mx32");
+    const Opened narrow = open_document(document, widened, "widened");
+    CPPL_CHECK(has_error_coded(narrow, "cppl.proof.failure", "does not satisfy its contract"));
+    CPPL_CHECK(!narrow.lens.starts_with("PROVEN"));
+
+    // An option the editor cannot pass on, which could select the target
+    // itself, leaves the document unverified rather than verified without it.
+    project.compiled_with("-std=c++20 " + x86_64 + " -Xclang -fno-signed-char");
+    const Opened opaque = open_document(document, widened, "widened");
+    CPPL_CHECK(has_error_coded(opaque, "cppl.unsupported", "is not verified in the editor: '-Xclang'"));
+    CPPL_CHECK(!opaque.lens.starts_with("PROVEN"));
 }
