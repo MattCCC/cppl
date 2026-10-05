@@ -25,8 +25,9 @@ Only what has been built and tested is supported. The matrix, and what has not
 been tested, is in [`STATUS.md`](./STATUS.md), "V1 closure: delivery". In
 short:
 
-- **Tested:** Linux x86_64, with LLVM/Clang 22.1 and the host's GCC 16
-  libstdc++ as the C++ standard library.
+- **Tested:** Linux x86_64 (Ubuntu 24.04), with LLVM/Clang 22.1.8 and the
+  libstdc++ of GCC 13.3, which that Clang selects, as the C++ standard library,
+  in `c++17`, `c++20` and `c++23`.
 - **Not tested here:** macOS, Windows, other architectures, other LLVM major
   versions, libc++ as the standard library of compiled programs. CI
   configurations exist for macOS and Windows (`docs/CI.md`); no release
@@ -113,6 +114,60 @@ compiles ordinary C++ and verified C++L, has a false Law refused, formats a
 file, and drives the language server through `initialize`, a refused document,
 `shutdown` and `exit`; then it checks the archive against its checksum and the
 install.
+
+## Verifying a downloaded release
+
+A published release carries, for each archive, its `.sha256` and a
+`SHA256SUMS` over every file. The release workflow also attests each archive
+(`.github/workflows/release.yml`, `actions/attest`). The attestation is a
+signed statement, recorded by GitHub, that the archive was built by that
+workflow from the tagged commit of this repository. Check both before
+installing:
+
+```sh
+sha256sum -c cppl-<version>-Linux-x86_64.tar.gz.sha256
+gh attestation verify cppl-<version>-Linux-x86_64.tar.gz --repo MattCCC/cppl
+```
+
+Then print the release record of the installed compiler (below) and compare
+its `Source revision` and `Source tag` with the release.
+
+The checksum says the archive is the one the release lists, and nothing more.
+The attestation says which workflow run on which commit built it. Neither says
+anything about what the compiler proves: that is the next section.
+
+## What a release claims
+
+A release claims, for the platform it names and nothing else, that its
+compiler does what `STATUS.md` records as implemented, with the trust boundary
+`TRUST.md` states. In particular:
+
+- **What PROVEN means.** A claim reported PROVEN was accepted by the kernel the
+  release record names, for exactly the proposition the claim states. It holds
+  relative to everything the trust report lists for it: its trusted laws, the
+  library models, the unsafe blocks, the imported contracts, and the runtime
+  validations, which the program performs as its erasure keeps them.
+- **The trust closure a user inherits.** A user of a verified program trusts:
+  - the kernel;
+  - the C++-to-proof translation, which is Clang's semantics, the bridge,
+    elaboration, obligation construction and the erasure checker (`TRUST.md`
+    7 to 17 and 29), none of it verified;
+  - the Clang, linker and standard library that build and run the program;
+  - the provenance of every verification interface a build imports, which
+    nothing authenticates (`TRUST.md` 31.1).
+
+  Every category of the closure appears in the report of each claim that rests
+  on it. Nothing is trusted silently.
+- **What it does not claim.** A release does not claim:
+  - that C++ outside the verified subset (RFC 0022) is verified;
+  - that the kernel's rules are mechanically proven sound: the Coq model proves
+    the checking judgment sound relative to two hypotheses (`KERNEL.md` 17);
+  - an ABI guarantee beyond Clang's own;
+  - any platform other than Linux x86_64;
+  - that the language or proof system is frozen.
+
+  A 0.x release is experimental (`STATUS.md`, "Current release policy"). Until
+  every gate of `ROADMAP.md`, "V1 release gates", passes, no release is V1.
 
 ## The release record
 
