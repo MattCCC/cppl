@@ -19,7 +19,6 @@ struct Money {
 using Positive = Money;
 
 unsigned made = 0u;
-unsigned gone = 0u;
 
 struct Tracked {
     unsigned id;
@@ -33,10 +32,6 @@ struct Tracked {
     }
 
     Tracked& operator=(const Tracked&) = default;
-
-    ~Tracked() {
-        ++gone;
-    }
 };
 
 using Live = Tracked;
@@ -100,5 +95,5 @@ int main() {
     std::printf("%d %d %d %d\n", static_cast<int>(typeid(Percentage) == typeid(int)),
                 static_cast<int>(typeid(Index<3u>) == typeid(unsigned)),
                 static_cast<int>(std::is_same_v<Live, Tracked>), static_cast<int>(sizeof(Positive) == sizeof(Money)));
-    std::printf("%u %u\n", made, gone);
+    std::printf("%u\n", made);
 }

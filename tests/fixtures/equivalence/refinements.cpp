@@ -23,10 +23,10 @@ struct Money {
 
 type Positive = Money where (self.cents > 0u);
 
-// A base with observable construction and destruction: refining it adds no
-// constructor, copy or destructor call.
+// A base with observable construction: refining it adds no constructor or copy
+// call. It declares no destructor, which a verified body refuses to model
+// (SPEC.md CLASS-015).
 unsigned made = 0u;
-unsigned gone = 0u;
 
 struct Tracked {
     unsigned id;
@@ -40,10 +40,6 @@ struct Tracked {
     }
 
     Tracked& operator=(const Tracked&) = default;
-
-    ~Tracked() {
-        ++gone;
-    }
 };
 
 type Live = Tracked where (self.id > 0u);
@@ -128,5 +124,5 @@ int main() {
     std::printf("%d %d %d %d\n", static_cast<int>(typeid(Percentage) == typeid(int)),
                 static_cast<int>(typeid(Index<3u>) == typeid(unsigned)),
                 static_cast<int>(std::is_same_v<Live, Tracked>), static_cast<int>(sizeof(Positive) == sizeof(Money)));
-    std::printf("%u %u\n", made, gone);
+    std::printf("%u\n", made);
 }

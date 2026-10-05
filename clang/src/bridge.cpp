@@ -142,6 +142,33 @@ bool record_has_base(CXType record) {
     return bases != 0;
 }
 
+// Whether a record declares a destructor it neither defaults nor deletes: user
+// code that runs where an object's lifetime ends. An instantiation may not
+// expose its members as cursors, so the template it was instantiated from is
+// asked too.
+bool has_user_provided_destructor(CXCursor definition) {
+    const auto declares = [](CXCursor record) {
+        bool found = false;
+        clang_visitChildren(
+            record,
+            [](CXCursor child, CXCursor, CXClientData data) {
+                if (clang_getCursorKind(child) == CXCursor_Destructor && clang_CXXMethod_isDefaulted(child) == 0 &&
+                    clang_CXXMethod_isDeleted(child) == 0) {
+                    *static_cast<bool*>(data) = true;
+                    return CXChildVisit_Break;
+                }
+                return CXChildVisit_Continue;
+            },
+            &found);
+        return found;
+    };
+    if (clang_Cursor_isNull(definition) != 0) {
+        return false;
+    }
+    const CXCursor primary = clang_getSpecializedCursorTemplate(definition);
+    return declares(definition) || (clang_Cursor_isNull(primary) == 0 && declares(primary));
+}
+
 source::RepresentationKind library_kind(CXCursor declaration) {
     using K = source::RepresentationKind;
     CXCursor primary = clang_getSpecializedCursorTemplate(declaration);
@@ -514,6 +541,14 @@ Type convert_type(CXType type, unsigned depth = 0, ReferenceModel references = R
                 }
                 if (record_has_base(canonical)) {
                     model.rejection = "base subobject decomposition requires an explicit accessible projection";
+                    break;
+                }
+                // A destructor runs where an object's lifetime ends, at a scope
+                // exit no statement names, and what it does is not modeled
+                // (SPEC.md CLASS-015).
+                if (has_user_provided_destructor(definition)) {
+                    model.rejection = "it has a user-provided destructor, which runs where an object's lifetime ends "
+                                      "and whose effects are not modeled (SPEC.md CLASS-015)";
                     break;
                 }
                 for (const auto& field : record_fields(canonical))

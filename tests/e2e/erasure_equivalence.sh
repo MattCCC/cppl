@@ -152,8 +152,8 @@ equivalent contracts '4 8 5 6 7 10 10 5 6 0 3 2 4 1 1' \
     'Impossible paths proven: +3'
 
 # Refinements lower to their base type's alias: the same layout, the same type
-# identity, the same construction and destruction.
-equivalent refinements $'2 50 9 10 70 3 9\n16 4 4 8 12\n1 1 1 1\n2 1' \
+# identity, the same construction.
+equivalent refinements $'2 50 9 10 70 3 9\n16 4 4 8 12\n1 1 1 1\n2' \
     'Function contracts proven: +9' 'Loop invariants proven: +2'
 
 # Every contextual word used as an ordinary name survives erasure of the same

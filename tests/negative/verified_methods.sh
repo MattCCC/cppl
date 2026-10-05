@@ -103,6 +103,14 @@ refuse methods_lifetime_members \
     "methods_lifetime_members.cpp:9:5: error [unsupported-semantics]: a verified constructor is not verified by this implementation" \
     "methods_lifetime_members.cpp:15:5: error [unsupported-semantics]: a verified destructor is not verified by this implementation"
 
+# SPEC: CLASS-015
+# A destructor the class provides runs at a scope exit no statement names, so a
+# local of such a type is refused rather than modeled as plain data.
+refuse methods_destructor_effects \
+    "methods_destructor_effects.cpp:22:15: error [unsupported-semantics]: verified function 'set' has a body this implementation cannot state as a value: local 'guard' has type 'Guard', which is not modeled: it has a user-provided destructor" \
+    "methods_destructor_effects.cpp:29:14: error [unsupported-semantics]: verified function 'kept' has a body this implementation cannot state as a value: local 'guard' has type 'Guard', which is not modeled: it has a user-provided destructor" \
+    "methods_destructor_effects.cpp:39:15: error [unsupported-semantics]: verified function 'set_templated' has a body this implementation cannot state as a value: local 'holder' has type 'Holder<int>', which is not modeled: it has a user-provided destructor"
+
 # SPEC: TEMPLATE-001, CLASS-015
 refuse methods_member_template \
     "methods_member_template.cpp:9:5: error [unsupported-semantics]: a verified member function template is not verified by this implementation"
