@@ -2903,7 +2903,10 @@ attributed to its own case by source location and each accepted twin run:
 - arithmetic translation: 82 steps over every path of the translation, for
   which the kernel and the Coq model's translation build the same system,
   constraint for constraint and in order (`kernel_translation_edges_test`,
-  `formal_kernel_model`).
+  `formal_kernel_model`);
+- the checking rules: 85 verdicts, an acceptance and its near misses for each
+  of the fifteen rules, on which the kernel and the Coq model's checker agree
+  (`kernel_check_edges_test`, `formal_kernel_model`).
 
 The matrices found one soundness defect, fixed with permanent regressions and a
 mutation entry (`TRUST.md` 36.3: a span passed by value was not followed to the

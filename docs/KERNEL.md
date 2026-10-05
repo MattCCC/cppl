@@ -846,6 +846,19 @@ and `tools/formal/check.sh` states each as an `Example` of the model's
 kernel keeps it, its variables merged, in increasing order and with nonzero
 coefficients; either side disagreeing with a row fails.
 
+A third, `tests/kernel/check_edges.tsv`, ties the model's checker to the
+kernel's: 85 propositions, each with evidence and whether the checker accepts
+it. Every one of the fifteen rules has an acceptance and its near misses: a
+binder, hypothesis, side, restatement, motive, premise or certificate that is
+wrong in exactly one place, a hypothesis out of scope or shifted wrongly under
+a binder, reflexivity across a fold and against one, induction over a signed
+type or another width, linear arithmetic over a fact or goal it does not
+admit, Farkas sums, integer splits and disjunction cases that do and do not
+refute, and goals that are ill typed, open or at an unsupported width.
+`kernel_check_edges_test` checks each with the kernel, and
+`tools/formal/check.sh` states each verdict as an `Example` of the model's
+`check`, with its normalizer and its translation, proven by computation.
+
 The model omits the resource limits of section 14. They only reject, so the
 model accepts at least what the kernel accepts, and a bound on what it accepts
 bounds the kernel's. Its recursion is bounded by fuel instead: the
@@ -859,8 +872,8 @@ model's checker is transcribed rule by rule from `check_under`, with the C++
 function each definition restates named beside it, and its normalizer and its
 translation are transcribed the same way from `kernel/src/context.cpp`,
 `kernel/src/arithmetic.cpp` and `kernel/src/linear.cpp`. The drift test
-catches a changed set of formers, not a changed rule, and the two edge tables
-check normalization and translation on their rows only. The C++ kernel
+catches a changed set of formers, not a changed rule, and the three tables
+check normalization, translation and the rules on their rows only. The C++ kernel
 therefore stays in the logical TCB
 (TCB-META-002) until M5 runs an extracted checker beside it and M6 lets it
 re-check a build's evidence.

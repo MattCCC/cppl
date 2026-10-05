@@ -117,6 +117,10 @@ cppl_add_unit_test(kernel_translation_edges_test kernel/translation_edges_test.c
 target_link_libraries(kernel_translation_edges_test PRIVATE cppl_kernel)
 target_compile_definitions(kernel_translation_edges_test PRIVATE
     CPPL_TRANSLATION_EDGES="${CMAKE_CURRENT_SOURCE_DIR}/kernel/translation_edges.tsv")
+cppl_add_unit_test(kernel_check_edges_test kernel/check_edges_test.cpp)
+target_link_libraries(kernel_check_edges_test PRIVATE cppl_kernel)
+target_compile_definitions(kernel_check_edges_test PRIVATE
+    CPPL_CHECK_EDGES="${CMAKE_CURRENT_SOURCE_DIR}/kernel/check_edges.tsv")
 
 cppl_add_unit_test(kernel_definedness_test kernel/definedness_test.cpp)
 target_link_libraries(kernel_definedness_test PRIVATE cppl_kernel)
