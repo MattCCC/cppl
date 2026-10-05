@@ -1,6 +1,6 @@
 # C++L Status
 
-**Project status:** Early implementation, first vertical slice  
+**Project status:** Early implementation; the V1 release gates are not all met (see [V1 closure](#v1-closure))  
 **Stability:** Experimental  
 **Production ready:** No  
 **Language specification frozen:** No  
@@ -47,7 +47,7 @@ C++L uses the following status categories.
 
 # What the current implementation does
 
-One vertical slice exists and works end to end. Concretely:
+The pipeline works end to end. Concretely:
 
 ```text
 cppl -std=c++17|c++20|c++23 main.cpp -o main
