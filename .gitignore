@@ -83,6 +83,8 @@ dist
 mcp.json
 opencode.jsonc
 docs/local/
+settings.local.json
+.roo
 
 # Editor extension build outputs
 editors/vscode/node_modules/
