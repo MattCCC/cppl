@@ -68,6 +68,62 @@ CPPL_TEST(a_declaration_of_a_variable_whose_type_is_named_pure_stays_ordinary) {
     CPPL_CHECK(result.syntax.empty());
 }
 
+// SPEC: WORD-008, WORD-014
+// A word followed by `::` is the first component of a nested-name-specifier.
+// Read as a specifier, `pure::inner g()` would become a pure `::inner g()`: the
+// same tokens with another return type, and no diagnostic.
+CPPL_TEST(a_cppl_word_followed_by_a_scope_operator_is_a_qualified_name) {
+    for (const char* text : {
+             "pure::inner g() { return {}; }\n",
+             "pure ::inner g() { return {}; }\n",
+             "static pure::inner g() { return {}; }\n",
+             "inline pure::inner g() { return {}; }\n",
+             "constexpr pure::inner g() { return {}; }\n",
+             "template <class T> pure::inner g(T) { return {}; }\n",
+             "struct S { static pure::inner g() { return {}; } pure::inner h() const { return {}; } };\n",
+             "pure::inner* g();\n",
+             "pure::inner value;\n",
+             "verified::inner g() { return {}; }\n",
+             "verified :: inner g() { return {}; }\n",
+             "static verified::R g(unsigned x) { return x; }\n",
+             "unsafe::inner g() { return {}; }\n",
+             "ghost::inner value;\n",
+             "void f() { pure::f(); int a = pure::f(); static pure::inner kept; (void)a; }\n",
+             "void f() { ghost::inner g; ghost::inner h = g; unsafe::inner u; verified::inner v; }\n",
+             "void f() { cases::inner c{}; decompose::inner d{}; contradiction::inner e; }\n",
+             "verified Factory::make() { return {}; }\n",
+             "pure Factory::make() { return {}; }\n",
+             "verified ns::value;\n",
+             "verified unsigned f(unsigned x) ensures (result == x) { cases::inner c{}; ghost::inner g; return x; }\n",
+         }) {
+        Recognized result;
+        recognize(text, result);
+        CPPL_CHECK(result.engine.diagnostics().empty());
+        CPPL_CHECK(result.syntax.pure_markers.empty());
+        CPPL_CHECK(result.syntax.unsafe_functions.empty());
+        CPPL_CHECK(result.syntax.ghost_declarations.empty());
+        CPPL_CHECK(result.syntax.path_splits.empty());
+        CPPL_CHECK(result.syntax.verified_functions.size() <= 1);
+    }
+}
+
+// SPEC: WORD-014
+// After the specifiers, a qualified return type may begin with a word: here
+// `pure::inner` is the type, and only `verified` is a specifier.
+CPPL_TEST(a_return_type_qualified_by_a_cppl_word_follows_the_specifiers) {
+    Recognized result;
+    const std::string text = "verified pure::inner f(int x) ensures (result.v == x) { return {x}; }\n"
+                             "verified pure unsigned g(unsigned x) ensures (result == x) { return x; }\n";
+    recognize(text, result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK_EQ(result.syntax.verified_functions.size(), std::size_t{2});
+    const auto& qualified = result.syntax.verified_functions[0];
+    CPPL_CHECK_EQ(qualified.function_name, std::string("f"));
+    CPPL_CHECK_EQ(text.substr(qualified.return_type.offset, qualified.return_type.length), std::string("pure::inner "));
+    CPPL_CHECK_EQ(result.syntax.pure_markers.size(), std::size_t{1});
+    CPPL_CHECK_EQ(result.syntax.pure_markers[0].function_name, std::string("g"));
+}
+
 CPPL_TEST(the_pure_specifier_is_attached_to_its_function) {
     Recognized result;
     recognize("pure int identity(int x) {\n    return x;\n}\n", result);

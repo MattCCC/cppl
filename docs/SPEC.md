@@ -262,6 +262,16 @@ member access.
 [WORD-008] C++L MUST NOT globally reinterpret contextual identifiers or operators outside
 their defined grammatical contexts.
 
+[WORD-014] A contextual word immediately followed by `::` is the first component of a
+C++ nested-name-specifier and keeps its C++ meaning. It never begins a C++L
+declaration, specifier or statement: `pure::inner g();` declares a function
+returning `pure::inner`, `static verified::R f(unsigned);` one returning
+`verified::R`, and `ghost::T g;` or `cases::T c{};` in a block declares a local.
+A C++L specifier is therefore never directly followed by a return type spelled
+from the global scope; `verified ::std::size_t f(...)` names a member of a
+namespace or class `verified`, and the verified function is written
+`verified std::size_t f(...)`.
+
 [WORD-010] `omit` and `by` have special meaning only in a case omission, `omit label by
 contradiction evidence;`, written directly inside a `cases` statement (§20.2).
 `omit` begins one only where a case label followed by `by` comes after it; a

@@ -19,7 +19,10 @@ and `by` have meaning only in a case omission (section 5.7),
 and `omit` begins one only where a case label followed by `by` comes after it.
 `result`, `old`, and `self` have only the scopes defined below. C++ keywords take
 precedence; `case` remains a runtime switch label. None of these additions
-globally reserves an ordinary C++ identifier.
+globally reserves an ordinary C++ identifier. A word immediately followed by
+`::` is the first component of a C++ nested-name-specifier and begins no C++L
+construct (SPEC.md WORD-014): `pure::inner g();` returns `pure::inner`, and
+`ghost::T g;` declares a local.
 
 ## 2. Extended declarations
 

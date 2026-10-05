@@ -51,6 +51,10 @@ spend-dependency-proven	compiler/automation/src/composition.cpp	dependency.has_v
 erasure-span-blank	compiler/erasure/src/erase.cpp	spans_erased = false; // proof-only text left in the program	(void)spans_erased;	^unit_projection_test$
 erasure-lowering-canonical	compiler/erasure/src/erase.cpp	runtime.substr(runtime_offset, lowering.expected.size()) != lowering.expected	false && (runtime.substr(runtime_offset, lowering.expected.size()) != lowering.expected)	^unit_projection_test$
 declarator-list-ends-clauses	compiler/frontend/src/recognizer.cpp	nesting == 0 && token.is_punctuator(",")	false && (nesting == 0 && token.is_punctuator(","))	^unit_recognizer_test$
+specifier-scope-is-a-name	compiler/frontend/src/recognizer.cpp	if (next >= tokens.size() || names_a_scope(tokens, index)) {	if (next >= tokens.size()) {	^unit_recognizer_test$|^conformance_words_as_cpp$
+specifier-word-scope-is-a-name	compiler/frontend/src/recognizer.cpp	tokens[index].is_identifier(word) && !names_a_scope(tokens, index);	tokens[index].is_identifier(word) && true;	^unit_recognizer_test$
+ghost-scope-is-a-name	compiler/frontend/src/recognizer.cpp	if (index + 1 >= tokens.size() || tokens[index + 1].kind != TokenKind::Identifier) {	if (index + 1 >= tokens.size() || (tokens[index + 1].kind != TokenKind::Identifier && !tokens[index + 1].is_punctuator("::"))) {	^unit_recognizer_test$|^conformance_words_as_cpp$
+split-scope-is-a-name	compiler/frontend/src/recognizer.cpp	if (names_a_scope(tokens, index)) {	if (false && names_a_scope(tokens, index)) {	^unit_recognizer_test$
 call-capability-kind	compiler/obligations/src/contracts.cpp	return candidate.kind == required.kind &&	return true &&	^negative_memory_capabilities$
 call-capability-pointer	compiler/obligations/src/contracts.cpp	candidate.place.root.id == passed->parameter;	(true || candidate.place.root.id == passed->parameter);	^negative_memory_capabilities$
 call-capability-extent	compiler/obligations/src/contracts.cpp	if (required.extent.empty() && !held_sized && !region.has_value()) {	if (true || (required.extent.empty() && !held_sized && !region.has_value())) {	^negative_memory_capabilities$

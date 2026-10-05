@@ -400,6 +400,7 @@ set_tests_properties(format_check PROPERTIES
 
 cppl_add_script_test(conformance_ordinary_cpp conformance/ordinary_cpp.sh)
 cppl_add_script_test(conformance_contextual_identifiers conformance/contextual_identifiers.sh)
+cppl_add_script_test(conformance_words_as_cpp conformance/words_as_cpp.sh)
 cppl_add_script_test(conformance_target_standard_isolation conformance/target_standard_isolation.sh)
 
 # The documented examples are compiled by the compiler they document.

@@ -1249,22 +1249,131 @@ bool try_proof(const TokenStream& stream, std::size_t index, diagnostics::Engine
     return true;
 }
 
-// `pure` and `verified` are declaration specifiers only where the following
-// tokens cannot begin an ordinary declaration whose type carries that name.
-bool specifier_introduces_declaration(const std::vector<Token>& tokens, std::size_t index) {
-    if (index + 1 >= tokens.size()) {
+// Whether the word at `index` is followed by `::`. Such a word is the first
+// component of a C++ nested-name-specifier, `pure::inner`, whatever C++L gives
+// the word elsewhere: a namespace or a class of that name is all it can denote
+// there (SPEC.md 3.1, WORD-008).
+bool names_a_scope(const std::vector<Token>& tokens, std::size_t index) {
+    return index + 1 < tokens.size() && tokens[index + 1].is_punctuator("::");
+}
+
+// Whether the token at `index` is the C++L specifier `word`, rather than the
+// first component of a qualified name spelled with it.
+bool is_specifier(const std::vector<Token>& tokens, std::size_t index, std::string_view word) {
+    return index < tokens.size() && tokens[index].is_identifier(word) && !names_a_scope(tokens, index);
+}
+
+// The token just past the template-argument list opened at `open`. The list
+// closes at the `>` that balances its `<`, or at a `>>` closing two lists at
+// once; a `>` inside parentheses or brackets is a comparison. Nothing when no
+// such `>` comes before what cannot stand in an argument list.
+std::optional<std::size_t> past_template_arguments(const std::vector<Token>& tokens, std::size_t open) {
+    std::size_t angles = 0;
+    std::size_t brackets = 0;
+    for (std::size_t cursor = open; cursor < tokens.size(); ++cursor) {
+        const Token& token = tokens[cursor];
+        if (token.kind == TokenKind::EndOfFile || token.is_punctuator(";") || token.is_punctuator("{") ||
+            token.is_punctuator("}")) {
+            return std::nullopt;
+        }
+        if (token.is_punctuator("(") || token.is_punctuator("[")) {
+            ++brackets;
+        } else if (token.is_punctuator(")") || token.is_punctuator("]")) {
+            if (brackets == 0) {
+                return std::nullopt;
+            }
+            --brackets;
+        } else if (brackets > 0) {
+            continue;
+        } else if (token.is_punctuator("<")) {
+            ++angles;
+        } else if (token.is_punctuator(">")) {
+            if (--angles == 0) {
+                return cursor + 1;
+            }
+        } else if (token.is_punctuator(">>")) {
+            if (angles < 2) {
+                return std::nullopt;
+            }
+            angles -= 2;
+            if (angles == 0) {
+                return cursor + 1;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+// The token just past the possibly qualified name beginning at `index`: `T`,
+// `ns::T`, `::ns::T`, `C<int>::T` or `C<T>::template X<int>`. Nothing when the
+// tokens there are not such a name.
+std::optional<std::size_t> past_qualified_name(const std::vector<Token>& tokens, std::size_t index) {
+    std::size_t cursor = index;
+    if (cursor < tokens.size() && tokens[cursor].is_punctuator("::")) {
+        ++cursor;
+    }
+    while (true) {
+        if (cursor < tokens.size() && tokens[cursor].is_identifier("template")) {
+            ++cursor;
+        }
+        if (cursor >= tokens.size() || tokens[cursor].kind != TokenKind::Identifier) {
+            return std::nullopt;
+        }
+        ++cursor;
+        if (cursor < tokens.size() && tokens[cursor].is_punctuator("<")) {
+            const std::optional<std::size_t> past = past_template_arguments(tokens, cursor);
+            if (!past.has_value()) {
+                return std::nullopt;
+            }
+            cursor = *past;
+        }
+        if (cursor >= tokens.size() || !tokens[cursor].is_punctuator("::")) {
+            return cursor;
+        }
+        ++cursor;
+    }
+}
+
+// Whether the tokens from `cursor` state a return type and then go on into a
+// declarator. A name followed by an identifier or a pointer or reference
+// operator is a type: were it the declarator's own name, as it is in `T x;`,
+// `T(x)` or `ns::f()`, nothing but `(`, `[`, `=`, `{`, `,` or `;` could follow it.
+bool begins_return_type(const std::vector<Token>& tokens, std::size_t cursor) {
+    if (cursor >= tokens.size()) {
         return false;
     }
-    const Token& next = tokens[index + 1];
-    if (is_type_keyword(next) || next.is_punctuator("::") || next.is_identifier("pure")) {
+    if (is_type_keyword(tokens[cursor])) {
         return true;
     }
-    if (next.kind != TokenKind::Identifier || index + 2 >= tokens.size()) {
+    const std::optional<std::size_t> past = past_qualified_name(tokens, cursor);
+    if (!past.has_value() || *past >= tokens.size()) {
         return false;
     }
-    const Token& after = tokens[index + 2];
-    return after.kind == TokenKind::Identifier || after.is_punctuator("::") || after.is_punctuator("<") ||
-           after.is_punctuator("*") || after.is_punctuator("&") || after.is_punctuator("&&");
+    const Token& after = tokens[*past];
+    return after.kind == TokenKind::Identifier || after.is_punctuator("*") || after.is_punctuator("&") ||
+           after.is_punctuator("&&");
+}
+
+// `pure`, `verified` and `unsafe` are declaration specifiers only where the
+// following tokens cannot begin an ordinary declaration whose type carries that
+// name: where a return type follows the word, and a declarator follows that
+// (GRAMMAR.md 7). `verified pure` is both specifiers where a return type
+// follows the second.
+//
+// A word followed by `::` is never a specifier. `pure::inner g();` declares a
+// function returning a type of namespace `pure`, and reading the word as a
+// specifier there would give the function a different return type, `::inner`,
+// with no diagnostic at all.
+bool specifier_introduces_declaration(const std::vector<Token>& tokens, std::size_t index) {
+    const std::size_t next = index + 1;
+    if (next >= tokens.size() || names_a_scope(tokens, index)) {
+        return false;
+    }
+    if (!tokens[index].is_identifier("pure") && is_specifier(tokens, next, "pure") &&
+        begins_return_type(tokens, next + 1)) {
+        return true;
+    }
+    return begins_return_type(tokens, next);
 }
 
 // The start of the template-argument list ending at `index`, which must hold a
@@ -1570,9 +1679,9 @@ std::optional<std::size_t> scan_function_clauses(const TokenStream& stream, std:
 // function postcondition uses 'ensures', never 'proves'".
 bool has_cppl_keyword(const std::vector<Token>& tokens, std::size_t index, std::size_t name_index) {
     for (std::size_t cursor = index; cursor < name_index && cursor < tokens.size(); ++cursor) {
-        if (tokens[cursor].is_identifier("verified") || tokens[cursor].is_identifier("pure") ||
-            tokens[cursor].is_identifier("law") || tokens[cursor].is_identifier("proof") ||
-            tokens[cursor].is_identifier("trusted")) {
+        if (is_specifier(tokens, cursor, "verified") || is_specifier(tokens, cursor, "pure") ||
+            is_specifier(tokens, cursor, "law") || is_specifier(tokens, cursor, "proof") ||
+            is_specifier(tokens, cursor, "trusted")) {
             return true;
         }
     }
@@ -1656,7 +1765,7 @@ bool refused_member(const TokenStream& stream, std::size_t index, std::size_t na
     }
     const bool destructor = name > 0 && tokens[name - 1].is_punctuator("~");
     std::size_t type_start = index + 1;
-    if (type_start < tokens.size() && tokens[type_start].is_identifier("pure")) {
+    if (is_specifier(tokens, type_start, "pure")) {
         ++type_start;
     }
     if (destructor || type_start >= name || (!class_name.empty() && tokens[name].is_identifier(class_name))) {
@@ -1736,11 +1845,11 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
     // Whatever stands between the specifiers and the declarator is the return
     // type, and the contract's `result` is a value of it.
     std::size_t type_start = index + 1;
-    const bool also_pure = tokens[type_start].is_identifier("pure");
+    const bool also_pure = is_specifier(tokens, type_start, "pure");
     if (also_pure) {
         ++type_start;
     }
-    if (tokens[type_start].is_identifier("unsafe")) {
+    if (is_specifier(tokens, type_start, "unsafe")) {
         report(engine, stream, tokens[type_start], diagnostics::Category::CpplSyntax,
                "'unsafe' cannot be combined with 'verified'",
                "an unsafe function is not verified: it marks a boundary whose safety is not established, so it "
@@ -2026,10 +2135,10 @@ std::optional<std::size_t> contradiction_statement_end(const std::vector<Token>&
 
 // Where a `ghost` declaration beginning at `index` ends: the index of its `;`,
 // when a declaration follows the word (GRAMMAR.md 21). Whether it declares
-// anything is Clang's to say; this only delimits it.
+// anything is Clang's to say; this only delimits it. `ghost::` begins a
+// qualified name, never a declaration (`names_a_scope`).
 std::optional<std::size_t> ghost_declaration_end(const std::vector<Token>& tokens, std::size_t index) {
-    if (index + 1 >= tokens.size() ||
-        (tokens[index + 1].kind != TokenKind::Identifier && !tokens[index + 1].is_punctuator("::"))) {
+    if (index + 1 >= tokens.size() || tokens[index + 1].kind != TokenKind::Identifier) {
         return std::nullopt;
     }
     std::size_t depth = 0;
@@ -2069,8 +2178,12 @@ bool ghost_declares(const std::vector<Token>& tokens, std::size_t index, std::si
 
 // Where a `cases` or `decompose` statement beginning at `index` ends: the index
 // of the `}` closing its arms, when the tokens have the statement's one shape, a
-// subject and then a braced arm list (GRAMMAR.md 5.7).
+// subject and then a braced arm list (GRAMMAR.md 5.7). `cases::` begins a
+// qualified name, never a split (`names_a_scope`).
 std::optional<std::size_t> split_statement_end(const std::vector<Token>& tokens, std::size_t index) {
+    if (names_a_scope(tokens, index)) {
+        return std::nullopt;
+    }
     std::size_t depth = 0;
     std::size_t open = index + 1;
     for (; open < tokens.size() && tokens[open].kind != TokenKind::EndOfFile; ++open) {
@@ -2761,7 +2874,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
         // waives what `verified` or `pure` asks for (UNSAFE-002), so it is not
         // combined with either.
         if (tokens[index].is_identifier("unsafe") && specifier_introduces_declaration(tokens, index)) {
-            if (tokens[index + 1].is_identifier("verified") || tokens[index + 1].is_identifier("pure")) {
+            if (is_specifier(tokens, index + 1, "verified") || is_specifier(tokens, index + 1, "pure")) {
                 report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
                        "'unsafe' cannot be combined with '" + std::string(tokens[index + 1].text) + "'",
                        "an unsafe function is not verified: it marks a boundary whose safety is not established, so "
@@ -2795,7 +2908,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                     // `verified pure` is both: the contract is discharged here,
                     // and the function is still a candidate definition for the
                     // formal core.
-                    if (tokens[index + 1].is_identifier("pure")) {
+                    if (is_specifier(tokens, index + 1, "pure")) {
                         PureMarker marker;
                         marker.keyword = tokens[index + 1].span;
                         marker.keyword_location = stream.location_of(tokens[index + 1]);
@@ -2819,7 +2932,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
 
         if (tokens[index].is_identifier("pure") && specifier_introduces_declaration(tokens, index)) {
             const std::optional<std::size_t> name = find_declarator_name(tokens, index);
-            if (tokens[index + 1].is_identifier("unsafe")) {
+            if (is_specifier(tokens, index + 1, "unsafe")) {
                 report(engine, stream, tokens[index + 1], diagnostics::Category::CpplSyntax,
                        "'unsafe' cannot be combined with 'pure'",
                        "an unsafe function is not verified: it marks a boundary whose safety is not established, so "
