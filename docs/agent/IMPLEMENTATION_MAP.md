@@ -767,6 +767,9 @@ tests/fixtures/containers.cpp                  every accepted use, each the twin
 tests/e2e/containers.sh                        the report, runtime values, erasure at -O0/-O2 in C++20 and C++23
 tests/negative/containers.sh                   every rejection, written out in tests/fixtures/negative/container_*.cpp
 tests/fixtures/equivalence/containers.cpp      erasure against a hand-erased twin
+tests/fixtures/sequence_attacks.cpp            the accepted twin of every storage, bounds and aliasing attack
+tests/e2e/sequence_attacks.sh                  those twins proven and run, alone and across translation units
+tests/negative/sequence_attacks.sh             the attacks, in tests/fixtures/negative/sequence_attack_*.cpp
 ```
 
 Not built: iterators, range-based `for`, `at`, `front`, `back`, `insert`,
