@@ -5,10 +5,11 @@
 // checked against one table of every rule's acceptances and near misses
 // (docs/KERNEL.md 17).
 //
-// Run with CPPL_CHECK_EDGES_PRINT=1 to print the kernel's verdict and, for a
-// refusal, its reason, for each row.
+// A failing row names the kernel's verdict and, for a refusal, its reason.
 
+#include "cppl/kernel/box.hpp"
 #include "cppl/kernel/check.hpp"
+#include "cppl/kernel/context.hpp"
 #include "cppl/kernel/proof.hpp"
 #include "cppl/kernel/proposition.hpp"
 #include "cppl/kernel/term.hpp"
@@ -17,9 +18,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <fstream>
-#include <iostream>
 #include <map>
 #include <sstream>
 #include <string>
@@ -108,6 +107,7 @@ class Reader {
         const k::IntType type = int_type(next());
         const std::size_t arity = token == "Not" || token == "Convert" ? 1u : token == "Select" ? 3u : 2u;
         std::vector<k::Term> operands;
+        operands.reserve(arity);
         for (std::size_t operand = 0; operand < arity; ++operand) {
             operands.push_back(term());
         }
@@ -275,7 +275,6 @@ class Reader {
 CPPL_TEST(every_check_row_gets_the_verdict_it_states) {
     std::ifstream table(CPPL_CHECK_EDGES);
     CPPL_CHECK(table.good());
-    const bool print = std::getenv("CPPL_CHECK_EDGES_PRINT") != nullptr;
     std::size_t rows = 0;
     std::size_t accepted = 0;
     std::string line;
@@ -293,11 +292,16 @@ CPPL_TEST(every_check_row_gets_the_verdict_it_states) {
         CPPL_CHECK(evidence_reader.done());
         const auto verdict = k::check({}, goal, evidence, k::CoreLimits{});
         const std::string stated = verdict.has_value() ? "accept" : "refuse";
-        if (print) {
-            std::cout << rows + 1 << '\t' << stated << '\t' << row[2]
-                      << (verdict.has_value() ? std::string{} : "\t" + verdict.error().detail) << '\n';
-        } else if (stated != row[2]) {
-            ::cppl::testing::fail(__FILE__, __LINE__, "the kernel's verdict on '" + line + "' is " + stated);
+        if (stated != row[2]) {
+            std::string message = "the kernel's verdict on '";
+            message += line;
+            message += "' is ";
+            message += stated;
+            if (!verdict.has_value()) {
+                message += ": ";
+                message += verdict.error().detail;
+            }
+            ::cppl::testing::fail(__FILE__, __LINE__, message);
         }
         accepted += verdict.has_value() ? 1u : 0u;
         ++rows;
