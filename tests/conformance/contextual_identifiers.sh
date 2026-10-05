@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPEC: WORD-002, WORD-008, WORD-010
+# SPEC: WORD-001, WORD-002, WORD-008, WORD-010
 # C++L words used as ordinary identifiers stay ordinary identifiers.
 set -euo pipefail
 
@@ -26,6 +26,19 @@ for standard in c++17 c++20 c++23; do
     grep -Eq "^Unresolved obligations: +0$" "$words.report"
     if [ "$("$words")" != "4" ]; then
         echo "the program using the omission words as names computed the wrong value ($standard)" >&2
+        exit 1
+    fi
+
+    # A function named `old`, outside a postcondition's entry-value form: a
+    # Law and a contract about it verify, and the program calls it and a
+    # member of the same name (SPEC.md 11.4, WORD-001).
+    old="$run/old-$standard"
+    "$CPPL" "-std=$standard" "$FIXTURES/contextual_old.cpp" -o "$old" --cppl-trust-report > "$old.report"
+    grep -Eq "^Laws proven: +1$" "$old.report"
+    grep -Eq "^Function contracts proven: +1$" "$old.report"
+    grep -Eq "^Unresolved obligations: +0$" "$old.report"
+    if [ "$("$old")" != "4 2" ]; then
+        echo "the program calling a function named old computed the wrong value ($standard)" >&2
         exit 1
     fi
 done

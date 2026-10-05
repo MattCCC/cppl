@@ -60,6 +60,7 @@ twin	written_proof.cpp	negative/twins/written_proof.cpp	error \[kernel-rejection
 covered	case_split.cpp	negative/split_after_call.cpp	negative/case_splits.sh	-	-
 covered	container_crossings.cpp	negative/capability_non_null.cpp	negative/containers.sh	-	-
 covered	containers.cpp	negative/container_array_out_of_bounds.cpp	negative/containers.sh	-	-
+covered	contextual_old.cpp	negative/old_shadowed_by_function.cpp	negative/erasure.sh	-	-
 covered	contradiction.cpp	negative/contradiction_structured_goal_satisfiable.cpp	negative/contradictions.sh	-	-
 covered	cross_feature/buffers.cpp	negative/cross_feature_container_member.cpp	negative/cross_feature.sh	-	-
 covered	cross_feature/views.cpp	negative/cross_feature_alias_view_after_call.cpp	negative/cross_feature.sh	-	-

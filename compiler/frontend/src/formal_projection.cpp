@@ -420,4 +420,24 @@ FormulaProjection project_formula(const TokenStream& stream, source::ByteSpan ex
     return formula(stream, expression, 0);
 }
 
+// In a function postcondition `old(e)` is the entry value of `e` (SPEC.md 11.4,
+// GRAMMAR.md 13), and inside a specification the formal form takes precedence
+// over any C++ entity spelled `old` (SPEC.md 3.1): a visible function named
+// `old` does not make the form a call to it. The form is the word followed by a
+// parenthesis anywhere in the clause. Only a qualified name or a member, `::old`
+// or `x.old`, names something else; after `->` the word may stand as an
+// implication's conclusion, which is the formal form, so it is read as one.
+std::optional<source::SourceLocation> entry_value_form(const TokenStream& stream, source::ByteSpan postcondition) {
+    const auto& tokens = stream.tokens();
+    const auto [begin, end] = token_range(stream, postcondition);
+    for (std::size_t index = begin; index + 1 < end; ++index) {
+        if (!tokens[index].is_identifier("old") || tokens[index + 1].text != "(")
+            continue;
+        if (index > begin && (tokens[index - 1].text == "::" || tokens[index - 1].text == "."))
+            continue;
+        return stream.location_of(tokens[index]);
+    }
+    return std::nullopt;
+}
+
 } // namespace cppl::frontend::detail

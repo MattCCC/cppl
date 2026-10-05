@@ -809,6 +809,22 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         // a refined result. Membership supplies the actual postcondition there.
         Generated replacement;
         if (postcondition != nullptr) {
+            // Entry values are specified and not implemented. Left to Clang, the
+            // form would call whatever `old` is visible and state the
+            // post-state value in place of the entry value (SPEC.md 11.4).
+            if (const auto snapshot = detail::entry_value_form(stream, postcondition->expression)) {
+                diagnostics::Diagnostic diagnostic;
+                diagnostic.severity = diagnostics::Severity::Error;
+                diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+                diagnostic.location = *snapshot;
+                diagnostic.message = "'old(...)' in a postcondition denotes the entry value of its operand, and entry "
+                                     "values are not supported yet";
+                diagnostic.notes.push_back(
+                    {"within a postcondition the form is never a call to a C++ entity named 'old'; a function so named "
+                     "is called there by a qualified name, such as '::old(...)'",
+                     *snapshot});
+                projection.diagnostics.push_back(std::move(diagnostic));
+            }
             replacement = emit(projected.postcondition_name, result_parameter, postcondition->expression,
                                postcondition->location, verified.body_end_line);
         } else {

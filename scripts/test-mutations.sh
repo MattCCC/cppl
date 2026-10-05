@@ -262,6 +262,7 @@ refined-parameter-membership	compiler/obligations/src/generate.cpp	auto ranged =
 forall-binder-refinement-kept	clang/src/bridge.cpp	binder_type.refinements = std::move(*refined);	(void)refined;	^negative_quantified_propositions$|^e2e_refined_quantifiers$
 equality-operand-refinement-kept	clang/src/bridge.cpp	equality.operand_type.refinements = std::move(*refined);	(void)refined;	^negative_quantified_propositions$
 formal-equality-refinement-refused	compiler/obligations/src/generate.cpp	if (carries_refinement(equality->operand_type)) {	if (false && carries_refinement(equality->operand_type)) {	^negative_quantified_propositions$|^unit_quantified_propositions_test$
+old-entry-value-refused	compiler/frontend/src/projection.cpp	if (const auto snapshot = detail::entry_value_form(stream, postcondition->expression)) {	if (const auto snapshot = (false ? detail::entry_value_form(stream, postcondition->expression) : std::nullopt)) {	^negative_erasure$
 MUTATIONS
 )
 

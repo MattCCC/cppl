@@ -75,7 +75,17 @@ case_run refuse ghost_runtime_storage \
     "ghost_runtime_storage.cpp:9:30: error [cppl-syntax]: ghost 'seen' is used by code that runs"
 case_run refuse unsafe_false_postcondition \
     "unsafe_false_postcondition.cpp:12:12: error [kernel-rejection]: return path 'bumped path 1' does not satisfy its contract"
-case_run refuse unsupported_old_value "unsupported_old_value.cpp:8:19: error [cpp-semantic]: use of undeclared identifier 'old'"
+old_refused="error [unsupported-semantics]: 'old(...)' in a postcondition denotes the entry value of its operand"
+case_run refuse unsupported_old_value "unsupported_old_value.cpp:8:19: $old_refused"
+# A visible function named `old` does not make the form a call to it, wherever
+# the postcondition writes it (SPEC.md 3.1, 11.4).
+case_run refuse old_shadowed_by_function "old_shadowed_by_function.cpp:15:19: $old_refused"
+case_run refuse old_forms_in_postconditions \
+    "old_forms_in_postconditions.cpp:16:34: $old_refused" \
+    "old_forms_in_postconditions.cpp:22:29: $old_refused" \
+    "old_forms_in_postconditions.cpp:28:56: $old_refused" \
+    "old_forms_in_postconditions.cpp:34:39: $old_refused" \
+    "old_forms_in_postconditions.cpp:40:24: $old_refused"
 case_run refuse induction_signed_subject \
     "induction_signed_subject.cpp:16:5: error [proof-failure]: induction over 'x' has no principle"
 case_run refuse misplaced_loop_clauses \

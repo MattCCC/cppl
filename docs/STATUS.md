@@ -160,6 +160,15 @@ hypothesis or rewrites once per available equality in either direction, newest f
 reflexivity; the kernel
 checks every step. Written `refl` retains its
 definitional-equality semantics. `result` is erased specification syntax.
+`old(e)` in a postcondition, the entry value of `e` (`SPEC.md` 11.4), is
+`SPECIFIED` and refused by name wherever the postcondition writes it, whatever
+C++ entity named `old` is visible: the formal form takes precedence there
+(WORD-001, WORD-007), so it is never read as a call. Only `::old(...)` or
+`x.old(...)` names something else. Read as a call to a visible `pure` function
+`old`, a contract stating that a body leaves its reference parameter unchanged
+was PROVEN while the body changed it (`TRUST.md` 36.3). Outside a postcondition
+`old` stays an ordinary name: in code that runs, in a precondition and in a Law
+(`conformance_contextual_identifiers`, `negative_erasure`).
 Verified calls instantiate their callee's contract at the resolved arguments.
 Each precondition must be kernel-proven before its postcondition is available.
 Caller reasoning uses abstract call results and proven summaries; kernel-checked
