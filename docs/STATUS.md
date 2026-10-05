@@ -2829,7 +2829,7 @@ Pass condition: `check_sound` with no hypothesis, audited closed by
 ## V1 closure: adversarial testing (G14)
 
 `PARTIAL`. Every kernel rule, primitive and verifier check named in
-`TRUST.md` 36.3 has adversarial tests and a mutation entry; there are 225
+`TRUST.md` 36.3 has adversarial tests and a mutation entry; there are 228
 entries (`MUTATION_TESTING.md`). Persistent fuzz targets exist for kernel
 proofs, terms, certificates and arithmetic, and for the recognizer, the
 verification-interface decoder and the language server.
