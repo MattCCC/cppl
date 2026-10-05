@@ -5303,6 +5303,11 @@ struct BodyLowering {
                            "satisfying '" +
                            state[root].sequence->element.refinements.front().name + "'";
                 }
+                // A second writable view of the same container leaves nothing
+                // more unknown than the first.
+                if (std::ranges::find(written_roots, root) != written_roots.end()) {
+                    continue;
+                }
                 written_roots.push_back(root);
                 // Every element place of the container is unknown after the
                 // call; the container's length is not, since no element write
@@ -5910,11 +5915,13 @@ struct BodyLowering {
         }
         if (kind == CXCursor_CallExpr)
             return lower_call(statement, next, locals, depth);
-        // A container mutator whose argument is a temporary stands inside the
-        // node Clang adds to destroy that temporary at the statement's end.
+        // A call with a temporary argument, such as a container mutator's
+        // argument or a container copied into a by-value parameter, stands
+        // inside the node Clang adds to destroy that temporary at the
+        // statement's end.
         if (kind == CXCursor_UnexposedExpr) {
             const CXCursor inner = strip_parens(statement);
-            if (clang_getCursorKind(inner) == CXCursor_CallExpr && sequence_call(inner).has_value()) {
+            if (clang_getCursorKind(inner) == CXCursor_CallExpr) {
                 return lower_call(inner, next, locals, depth);
             }
         }
