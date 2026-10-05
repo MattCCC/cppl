@@ -29,6 +29,11 @@ class CompileCommands {
     // dropped. A database edited since it was read is read again.
     [[nodiscard]] std::vector<std::string> flags_for(const std::string& path);
 
+    // The verification interfaces the build imports into `path`'s unit, from
+    // the same entry as its flags, each made absolute against the entry's
+    // directory. Empty when no database is found.
+    [[nodiscard]] std::vector<std::string> interfaces_for(const std::string& path);
+
     // Every file the build compiles, as the database at the root of a
     // workspace lists it: `root/compile_commands.json` or
     // `root/build/compile_commands.json`.
@@ -46,6 +51,7 @@ class CompileCommands {
     };
 
     [[nodiscard]] const Database* database_at(const std::filesystem::path& file);
+    [[nodiscard]] const Entry* entry_for(const std::string& path);
 
     std::map<std::filesystem::path, Database> databases_;
 };
@@ -59,5 +65,11 @@ class CompileCommands {
 // how the text reads, with each path made absolute against `directory`.
 [[nodiscard]] std::vector<std::string> reading_flags(const std::vector<std::string>& arguments,
                                                      const std::filesystem::path& directory);
+
+// The verification interfaces `arguments` -- a compile command, compiler first
+// -- imports with `--cppl-import-interface=`, in order, each made absolute
+// against `directory`.
+[[nodiscard]] std::vector<std::string> imported_interfaces(const std::vector<std::string>& arguments,
+                                                           const std::filesystem::path& directory);
 
 } // namespace cppl::lsp

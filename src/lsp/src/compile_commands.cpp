@@ -220,6 +220,19 @@ std::vector<std::string> reading_flags(const std::vector<std::string>& arguments
     return kept;
 }
 
+std::vector<std::string> imported_interfaces(const std::vector<std::string>& arguments,
+                                             const std::filesystem::path& directory) {
+    constexpr std::string_view kImport = "--cppl-import-interface=";
+    std::vector<std::string> interfaces;
+    for (std::size_t index = 1; index < arguments.size(); ++index) {
+        const std::string_view argument = arguments[index];
+        if (argument.starts_with(kImport) && argument.size() > kImport.size()) {
+            interfaces.push_back(absolute(argument.substr(kImport.size()), directory));
+        }
+    }
+    return interfaces;
+}
+
 const CompileCommands::Database* CompileCommands::database_at(const std::filesystem::path& file) {
     std::error_code error;
     const std::filesystem::file_time_type written = std::filesystem::last_write_time(file, error);
@@ -277,9 +290,9 @@ std::vector<std::filesystem::path> CompileCommands::listed_under(const std::file
     return files;
 }
 
-std::vector<std::string> CompileCommands::flags_for(const std::string& path) {
+const CompileCommands::Entry* CompileCommands::entry_for(const std::string& path) {
     if (path.empty() || !std::filesystem::path(path).is_absolute()) {
-        return {}; // not a file on disk, so in no build
+        return nullptr; // not a file on disk, so in no build
     }
     const std::filesystem::path file = normal(path);
     for (std::filesystem::path directory = file.parent_path();; directory = directory.parent_path()) {
@@ -301,12 +314,22 @@ std::vector<std::string> CompileCommands::flags_for(const std::string& path) {
                     best = score;
                 }
             }
-            return reading_flags(chosen->arguments, chosen->directory);
+            return chosen;
         }
         if (directory == directory.parent_path() || directory.empty()) {
-            return {};
+            return nullptr;
         }
     }
+}
+
+std::vector<std::string> CompileCommands::flags_for(const std::string& path) {
+    const Entry* entry = entry_for(path);
+    return entry == nullptr ? std::vector<std::string>{} : reading_flags(entry->arguments, entry->directory);
+}
+
+std::vector<std::string> CompileCommands::interfaces_for(const std::string& path) {
+    const Entry* entry = entry_for(path);
+    return entry == nullptr ? std::vector<std::string>{} : imported_interfaces(entry->arguments, entry->directory);
 }
 
 } // namespace cppl::lsp

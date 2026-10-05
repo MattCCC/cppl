@@ -49,6 +49,20 @@ std::string listed(const std::vector<std::string>& names) {
     return out;
 }
 
+// What a proven claim rests on, as the trust report names it: its trusted Laws,
+// and the contracts of other units it was proven through (SPEC.md TUBOUND-014).
+std::string relative_to(const std::vector<std::string>& premises, const std::vector<std::string>& imported) {
+    std::string relative;
+    if (!premises.empty()) {
+        relative = " relative to trusted " + listed(premises);
+    }
+    if (!imported.empty()) {
+        relative += (relative.empty() ? " relative to the imported " : " and the imported ") +
+                    std::string(imported.size() == 1 ? "contract of " : "contracts of ") + listed(imported);
+    }
+    return relative;
+}
+
 // What a group of verdicts comes to, in one line. A proof of a Law is judged
 // through the Law: it is the Law's accepted evidence, or it names a Law whose
 // verdict it did not decide.
@@ -74,14 +88,20 @@ std::string summary(const Document& document, const CpplDeclaration& declaration
         return "UNRESOLVED: no obligation was produced for it; the diagnostics say why";
     }
     std::vector<std::string> premises;
+    std::vector<std::string> imported;
     for (const driver::ObligationRecord* record : records) {
         for (const std::string& premise : record->premises) {
             if (std::ranges::find(premises, premise) == premises.end()) {
                 premises.push_back(premise);
             }
         }
+        for (const driver::ImportedRecord& contract : record->imported) {
+            if (std::ranges::find(imported, contract.name) == imported.end()) {
+                imported.push_back(contract.name);
+            }
+        }
     }
-    const std::string relative = premises.empty() ? std::string() : " relative to trusted " + listed(premises);
+    const std::string relative = relative_to(premises, imported);
     if (records.size() == 1) {
         const driver::ObligationRecord& record = *records.front();
         std::string title = obligations::describe(record.status);
@@ -224,8 +244,13 @@ std::string verification_markdown(const Document& document, const CpplDeclaratio
     for (std::size_t index = 0; index < records.size() && index < kShown; ++index) {
         const driver::ObligationRecord& record = *records[index];
         markdown += "**" + obligations::describe(record.status) + "** " + obligations::describe(record.origin);
-        if (!record.premises.empty()) {
-            markdown += ", relative to trusted " + listed(record.premises);
+        std::vector<std::string> imported;
+        imported.reserve(record.imported.size());
+        for (const driver::ImportedRecord& contract : record.imported) {
+            imported.push_back(contract.name + " (from `" + contract.origin + "`)");
+        }
+        if (const std::string relative = relative_to(record.premises, imported); !relative.empty()) {
+            markdown += "," + relative;
         }
         markdown += "  \n";
         if (!record.goal.empty()) {

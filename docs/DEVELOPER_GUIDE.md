@@ -3565,8 +3565,10 @@ Keep in mind:
   template a unit only declares is refused, since nothing instantiates its
   contract there;
 - recursion across units is not verified;
-- the editor (`cppl-lsp`) does not import interfaces yet, so it reports such a
-  call as unavailable.
+- the editor (`cppl-lsp`) imports the interfaces the document's
+  `compile_commands.json` entry names with `--cppl-import-interface=`, checked
+  as the CLI checks them, and reports a call no usable interface records as
+  unavailable (`tools/cppl-lsp/README.md`, "Verification interfaces").
 
 `tests/fixtures/cross_tu/` is a complete three-unit example, built by
 `tests/e2e/cross_tu.sh`.

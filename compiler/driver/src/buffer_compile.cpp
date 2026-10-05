@@ -1,10 +1,14 @@
 #include "cppl/driver/buffer_compile.hpp"
 
+#include "cppl/artifact/interface.hpp"
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
+#include "cppl/obligations/interface.hpp"
+#include "interface_io.hpp"
 #include "pipeline.hpp"
 
+#include <expected>
 #include <filesystem>
 #include <fstream>
 #include <ios>
@@ -12,6 +16,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -19,12 +24,29 @@ namespace cppl::driver {
 
 namespace {
 
-void report_internal(diagnostics::Engine& engine, std::string message) {
+void report(diagnostics::Engine& engine, diagnostics::Category category, std::string message) {
     diagnostics::Diagnostic diagnostic;
     diagnostic.severity = diagnostics::Severity::Error;
-    diagnostic.category = diagnostics::Category::Internal;
+    diagnostic.category = category;
     diagnostic.message = std::move(message);
     engine.report(std::move(diagnostic));
+}
+
+void report_internal(diagnostics::Engine& engine, std::string message) {
+    report(engine, diagnostics::Category::Internal, std::move(message));
+}
+
+// The language mode the unit is compiled in, taken as the CLI takes it: from
+// the last `-std=`, the one Clang obeys. An interface records the mode it was
+// verified in, and one verified in another is refused (SPEC.md TUBOUND-005).
+std::string language_standard(const std::vector<std::string>& arguments) {
+    std::string standard;
+    for (const std::string& argument : arguments) {
+        if (argument.starts_with("-std=")) {
+            standard = argument.substr(std::string_view("-std=").size());
+        }
+    }
+    return standard;
 }
 
 std::optional<std::string> read_scratch_file(const std::filesystem::path& path) {
@@ -143,6 +165,21 @@ BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnos
     // them rather than as long as this call.
     outcome.text = std::make_unique<const std::string>(std::move(*text));
 
+    // What other units proved, from the interfaces the build imports into this
+    // one, read and checked as the CLI reads them. Only verification consults
+    // them, so a compile that stops after elaboration reads none.
+    obligations::Imports imports;
+    if (!request.import_interfaces.empty() && !request.stop_after_elaboration) {
+        const std::expected<artifact::Configuration, std::string> configuration =
+            detail::compared_configuration(clang, request.clang_arguments, language_standard(request.clang_arguments));
+        if (configuration) {
+            imports = detail::read_imports(request.import_interfaces, *configuration, engine);
+        } else {
+            report(engine, diagnostics::Category::VerificationInterface,
+                   "cannot use the verification interfaces this unit imports: " + configuration.error());
+        }
+    }
+
     detail::PipelineRequest pipeline_request;
     pipeline_request.preprocessed_text = *outcome.text;
     pipeline_request.original_path = request.virtual_path;
@@ -152,6 +189,7 @@ BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnos
     pipeline_request.clang = clang;
     pipeline_request.clang_arguments = request.clang_arguments;
     pipeline_request.stop_after_elaboration = request.stop_after_elaboration;
+    pipeline_request.imports = &imports;
     // The LSP has no later "real compile" step of its own, unlike the CLI,
     // so a document with no C++L syntax at all still needs Clang's own
     // diagnostics to reach the editor (README.md: "Ordinary C++ remains

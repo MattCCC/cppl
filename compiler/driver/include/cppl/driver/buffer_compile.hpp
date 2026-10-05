@@ -35,10 +35,24 @@ struct BufferCompileRequest {
     std::string clang;
     std::vector<std::string> clang_arguments;
 
+    // The verification interfaces the unit imports, as `--cppl-import-interface=`
+    // names them to the CLI. Each is read and checked exactly as the CLI checks
+    // it (SPEC.md TUBOUND-005), so a call to a function another unit proved is
+    // verified against the record the build would use, and an interface that
+    // cannot be used is reported and none of its contracts is available.
+    std::vector<std::string> import_interfaces;
+
     // Stop once elaboration has resolved the names proof statements use
     // (BufferCompileOutcome::names), verifying nothing: what an index of a
     // workspace needs, at a fraction of a full compile's cost.
     bool stop_after_elaboration = false;
+};
+
+// A contract of another unit a proven claim rests on, as the trust report names
+// it (SPEC.md TUBOUND-006): the function, and the interface that recorded it.
+struct ImportedRecord {
+    std::string name;
+    std::string origin;
 };
 
 // What became of one proof obligation, as an editor shows it. A copy of the
@@ -58,6 +72,10 @@ struct ObligationRecord {
     std::string strategy;
     // The trusted Laws a proven claim rests on, by name.
     std::vector<std::string> premises;
+    // The contracts of other units a proven claim rests on, directly or through
+    // the verified functions it calls. Such a claim is never free of
+    // assumptions (SPEC.md TUBOUND-014).
+    std::vector<ImportedRecord> imported;
     // For a Law's obligation: the written proof whose evidence was submitted
     // for it, which the verdict accepted or refused, and every proof that names
     // the Law. Such a proof has no obligation of its own; the Law's verdict is

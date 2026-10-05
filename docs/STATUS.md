@@ -869,8 +869,10 @@ that crosses a unit is refused wherever it lies. Nothing here re-checks another
 unit's proof: the interface and its provenance are artifact and reuse TCB
 (`TRUST.md` 31.1), the integrity digest is unauthenticated, and a deliberately
 edited interface whose digest is recomputed is not detected. What binds the object linked to the
-interface imported is left to the build. `cppl-lsp` does not import interfaces
-yet, so an editor refuses such a call as the CLI without imports does.
+interface imported is left to the build. `cppl-lsp` imports the interfaces a
+document's `compile_commands.json` entry names, read and checked by the same
+code as the CLI's, and names the imported contract beside the verdict of every
+claim resting on one (`lsp_interfaces_test`).
 
 A function's header declaration and its definition may both be marked
 `verified` and state its contract, as a definition whose body states loop
@@ -1929,6 +1931,7 @@ AI output must always be independently verified.
 | LSP: document outline                | `PROTOTYPE`   |
 | LSP: folding and selection ranges    | `PROTOTYPE`   |
 | LSP: build flags (compile_commands)  | `PROTOTYPE`   |
+| LSP: imported verification interfaces | `PROTOTYPE`  |
 | LSP: inlay hints                     | `PROTOTYPE`   |
 | LSP: background compiles, cancel     | `PROTOTYPE`   |
 | LSP: workspace index and symbols     | `PROTOTYPE`   |
@@ -1979,7 +1982,8 @@ it, and after a compile the client is asked to fetch its code lenses and
 semantic tokens again. Each document is compiled, and read by its editor unit,
 with the
 flags its build gives it in the nearest `compile_commands.json`, followed by
-the server's `--clang-arg` flags. A quoted `#include` is looked for beside the
+the server's `--clang-arg` flags, and with the verification interfaces that
+entry imports, checked as the CLI checks them. A quoted `#include` is looked for beside the
 document. Transport is separate from analysis, and the library is tested
 without an editor. The server also advertises
 `documentFormattingProvider`, `documentRangeFormattingProvider` and

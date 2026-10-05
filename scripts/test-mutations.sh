@@ -163,6 +163,9 @@ xtu-refusal-escapes-source	compiler/driver/src/interface_io.cpp	const std::strin
 xtu-refusal-escapes-unit	compiler/driver/src/interface_io.cpp	"rebuild '" + artifact::displayed(recorded->unit) +	"rebuild '" + recorded->unit +	^negative_cross_tu$
 xtu-refusal-escapes-conflict	compiler/driver/src/interface_io.cpp	artifact::displayed(entry.name)	entry.name	^negative_cross_tu$
 xtu-refusal-escapes-dependency	compiler/driver/src/interface_io.cpp	artifact::displayed(broken->symbol)	broken->symbol	^negative_cross_tu$
+lsp-interface-language-mode	compiler/driver/src/buffer_compile.cpp	            standard = argument.substr(std::string_view("-std=").size());	            (void)argument;	^lsp_interfaces_test$
+lsp-imported-contract-recorded	compiler/driver/src/pipeline.cpp	                record.imported.push_back(ImportedRecord{imported.name, imported.origin});	                (void)imported;	^lsp_interfaces_test$
+lsp-lens-names-imported-contract	src/lsp/src/verification.cpp	    if (!imported.empty()) {	    if (false) {	^lsp_interfaces_test$
 xtu-models-written	compiler/artifact/src/interface.cpp	canonical_lines(entry.models, model_line)	canonical_lines(std::vector<Model>{}, model_line)	^unit_interface_test$|^e2e_containers$
 xtu-models-exported	compiler/obligations/src/interface.cpp	entry.models.push_back(library_model(dependency.model));	(void)dependency;	^e2e_containers$|^unit_cross_unit_contracts_test$
 xtu-models-carried	compiler/obligations/src/interface.cpp	entry.models.insert(entry.models.end(), imported.models.begin(), imported.models.end());	(void)imported.models;	^e2e_containers$|^unit_cross_unit_contracts_test$
