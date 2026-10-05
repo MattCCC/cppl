@@ -113,6 +113,10 @@ cppl_add_unit_test(kernel_normalization_edges_test kernel/normalization_edges_te
 target_link_libraries(kernel_normalization_edges_test PRIVATE cppl_kernel)
 target_compile_definitions(kernel_normalization_edges_test PRIVATE
     CPPL_NORMALIZATION_EDGES="${CMAKE_CURRENT_SOURCE_DIR}/kernel/normalization_edges.tsv")
+cppl_add_unit_test(kernel_translation_edges_test kernel/translation_edges_test.cpp)
+target_link_libraries(kernel_translation_edges_test PRIVATE cppl_kernel)
+target_compile_definitions(kernel_translation_edges_test PRIVATE
+    CPPL_TRANSLATION_EDGES="${CMAKE_CURRENT_SOURCE_DIR}/kernel/translation_edges.tsv")
 
 cppl_add_unit_test(kernel_definedness_test kernel/definedness_test.cpp)
 target_link_libraries(kernel_definedness_test PRIVATE cppl_kernel)
