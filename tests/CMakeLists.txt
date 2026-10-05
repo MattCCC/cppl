@@ -595,10 +595,15 @@ set_tests_properties(architecture_draft_boundaries PROPERTIES
 
 # The installed tools, used from a fresh, relocated prefix in a clean
 # environment, and the release archive with its checksum (docs/INSTALL.md).
+if(CPPL_ENABLE_ASAN OR CPPL_ENABLE_UBSAN OR CPPL_ENABLE_TSAN OR CPPL_BUILD_FUZZERS)
+    set(CPPL_INSTALLED_BUILD_KIND instrumented)
+else()
+    set(CPPL_INSTALLED_BUILD_KIND plain)
+endif()
 add_test(NAME integration_installed_package
          COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/integration/installed_package.sh"
                  "${CMAKE_COMMAND}" "${CMAKE_CPACK_COMMAND}" "${CMAKE_BINARY_DIR}" "${CMAKE_SOURCE_DIR}"
-                 "${CPPL_TEST_WORK}")
+                 "${CPPL_TEST_WORK}" "${CPPL_INSTALLED_BUILD_KIND}")
 set_tests_properties(integration_installed_package PROPERTIES
     LABELS "integration;package;script"
     TIMEOUT ${CPPL_TEST_TIMEOUT})

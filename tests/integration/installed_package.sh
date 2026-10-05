@@ -27,11 +27,16 @@ CPACK="$2"
 BUILD="$3"
 SOURCE="$4"
 WORK="$5"
+KIND="$6"
 
 fail() {
     echo "$1" >&2
     exit 1
 }
+case "$KIND" in
+    plain | instrumented) ;;
+    *) fail "unknown build kind '$KIND'" ;;
+esac
 
 mkdir -p "$WORK"
 run=$(mktemp -d "$WORK/installed-package.XXXXXX")
@@ -47,14 +52,21 @@ done
 [ -f "$prefix/share/doc/cppl/INSTALL.md" ] || fail "the install holds no installation guide"
 
 # Nothing installed names the tree it was built from, so nothing installed can
-# read a file of it: a style, a header, a model, a script.
-for tool in cppl cppl-lsp cppl-format; do
-    for tree in "$SOURCE" "$BUILD"; do
-        if grep -aFq "$tree" "$prefix/bin/$tool"; then
-            fail "the installed $tool names '$tree', the tree it was built in"
-        fi
+# read a file of it: a style, a header, a model, a script. A sanitizer writes
+# the path of every instrumented file into the binary, which stripping keeps,
+# so an instrumented build names its tree by construction. It is never a
+# release artifact; every uninstrumented profile runs this check.
+if [ "$KIND" = plain ]; then
+    for tool in cppl cppl-lsp cppl-format; do
+        for tree in "$SOURCE" "$BUILD"; do
+            if grep -aFq "$tree" "$prefix/bin/$tool"; then
+                fail "the installed $tool names '$tree', the tree it was built in"
+            fi
+        done
     done
-done
+else
+    echo "the build is instrumented, so whether its tools name their tree is checked by uninstrumented profiles only"
+fi
 
 # A clean environment: no LLVM on PATH, no library path, no compiler flags.
 clean() {
