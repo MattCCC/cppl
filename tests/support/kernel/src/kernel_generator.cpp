@@ -1744,7 +1744,9 @@ class Generator {
             sample.locals.back() = as_type(small_integer());
             sample.term = integer_term(sample.locals, at, 2);
             sample.proposition = proposition(sample.locals, 2);
-            replacement = integer_term(outer, sample.locals.back().integer_type(), 2);
+            // proposition() may have reallocated the locals `outer` viewed.
+            const std::span<const k::Type> kept(sample.locals.data(), sample.locals.size() - 1);
+            replacement = integer_term(kept, sample.locals.back().integer_type(), 2);
         }
         sample.argument = std::move(*replacement);
         sample.context = context_;
