@@ -45,8 +45,15 @@ std::expected<kernel::Term, Failure> lower_value(const vir::Expr& expression, co
                                                  std::size_t binders, const CallBindings* calls = nullptr,
                                                  const VersionBindings* versions = nullptr,
                                                  const OpaqueBindings* opaque = nullptr);
-std::expected<kernel::Proposition, Failure> lower_predicate(const vir::Expr& expression,
+std::expected<kernel::Proposition, Failure> lower_predicate(const vir::Expr& expression, const Program& program,
                                                             const DefinitionMap& definitions, std::size_t binders);
+// What `value` must satisfy to stand as a value of `type`: the predicate of
+// every refinement the type names, and of every refined component, or nothing
+// for a type that names none (SPEC.md 17.2, 17.6). A refinement `program` has
+// not stated is a failure, never an empty requirement.
+std::expected<std::optional<kernel::Proposition>, Failure> refinement_membership(const Program& program,
+                                                                                 const vir::Type& type,
+                                                                                 const kernel::Term& value);
 ObligationId identify_goal(const kernel::Context& context, const std::string& subject, const kernel::Proposition& goal);
 void generate_contracts(const vir::Module& module, const DefinitionMap& pure_definitions, Program& program,
                         diagnostics::Engine& engine, const std::function<std::string(const Failure&)>& explain,

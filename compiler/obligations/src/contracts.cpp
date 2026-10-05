@@ -577,7 +577,7 @@ std::expected<void, Failure> state_contract(const vir::Function& function, const
         plan.parameters.push_back(*type);
     }
     const auto& contract = *function.contract;
-    auto post = lower_predicate(contract.postcondition, pure_definitions, plan.parameters.size() + 1);
+    auto post = lower_predicate(contract.postcondition, program, pure_definitions, plan.parameters.size() + 1);
     if (!post) {
         return std::unexpected(post.error());
     }
@@ -595,7 +595,7 @@ std::expected<void, Failure> state_contract(const vir::Function& function, const
     }
 
     for (const auto& precondition : contract.preconditions) {
-        auto pre = lower_predicate(precondition, pure_definitions, plan.parameters.size());
+        auto pre = lower_predicate(precondition, program, pure_definitions, plan.parameters.size());
         if (!pre) {
             return std::unexpected(pre.error());
         }
@@ -3080,6 +3080,15 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
     }
 
     settle_totality(program, contracts, engine);
+}
+
+// The one statement of membership, shared with the quantifiers of laws, proofs
+// and propositions, so a binder of a refinement type ranges over exactly the
+// values a parameter of that type does (SPEC.md FORALL-001).
+std::expected<std::optional<kernel::Proposition>, Failure> refinement_membership(const Program& program,
+                                                                                 const vir::Type& type,
+                                                                                 const kernel::Term& value) {
+    return membership(program, type, value);
 }
 
 } // namespace cppl::obligations::detail

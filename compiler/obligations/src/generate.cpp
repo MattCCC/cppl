@@ -570,7 +570,52 @@ detail::TermLowerer specification_terms(const DefinitionMap& definitions, std::s
     };
 }
 
-std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& expression,
+// Supposes of each binder of a group, outermost first, that it is a value of its
+// type (SPEC.md FORALL-001, 8.1). A binder of a refinement type ranges over the
+// values of its base type that satisfy the refinement's predicate, so that
+// predicate, stated of the binder, is a premise of `body`. Every premise follows
+// the whole group, so the group is instantiated exactly as an unrefined one is,
+// and what an instantiation then states is the membership its terms owe before
+// the body can be used. A binder whose type names no refinement adds nothing,
+// so a proposition over such binders is the one stated without this.
+// On failure `unstated`, when given, names the binder whose membership could
+// not be stated.
+std::expected<kernel::Proposition, Failure> suppose_membership(const Program& program,
+                                                               const std::vector<vir::Type>& binders,
+                                                               kernel::Proposition body,
+                                                               const source::SourceLocation& location,
+                                                               const vir::Type** unstated = nullptr) {
+    for (std::size_t index = binders.size(); index > 0; --index) {
+        const vir::Type& binder = binders[index - 1];
+        const auto member = detail::refinement_membership(
+            program, binder, kernel::Term::variable(kernel::parameter_reference(binders.size(), index - 1)));
+        if (!member) {
+            if (unstated != nullptr)
+                *unstated = &binder;
+            return fail("a binder of type '" + vir::describe(binder) +
+                            "' has no stated range of values: " + member.error().reason,
+                        location);
+        }
+        if (member->has_value())
+            body = kernel::Proposition::implication(**member, std::move(body));
+    }
+    return body;
+}
+
+// Whether a value of `type` must satisfy a refinement: the type's own, or a
+// component's at any depth (SPEC.md 17.6). A type nested past the bound is
+// counted as one, so nothing deeper goes unasked.
+bool carries_refinement(const vir::Type& type, unsigned depth = 0) {
+    if (type.is_refined() || depth > 32)
+        return true;
+    if (!type.is_value())
+        return false;
+    return std::ranges::any_of(std::get<vir::ValueType>(type.node).projections, [depth](const vir::Type& component) {
+        return carries_refinement(component, depth + 1);
+    });
+}
+
+std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& expression, const Program& program,
                                                               const DefinitionMap& definitions,
                                                               std::size_t parameter_count) {
     const source::SourceLocation& location = expression.provenance.range.begin;
@@ -581,7 +626,11 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
     if (const auto* quantified = std::get_if<vir::Universal>(&expression.node)) {
         if (!expression.type.is_proposition() || quantified->binders.empty() || quantified->body.size() != 1)
             return fail("malformed universal proposition", location);
-        auto body = lower_proposition(quantified->body[0], definitions, parameter_count + quantified->binders.size());
+        auto body =
+            lower_proposition(quantified->body[0], program, definitions, parameter_count + quantified->binders.size());
+        if (!body)
+            return body;
+        body = suppose_membership(program, quantified->binders, std::move(*body), location);
         if (!body)
             return body;
         for (const auto& binder : std::views::reverse(quantified->binders)) {
@@ -605,10 +654,10 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
         if (!expression.type.is_boolean() || binary->operands.size() != 2 || !binary->operands[0].type.is_boolean() ||
             !binary->operands[1].type.is_boolean())
             return fail(conjunction ? "malformed conjunction" : "malformed disjunction", location);
-        auto left = lower_proposition(binary->operands[0], definitions, parameter_count);
+        auto left = lower_proposition(binary->operands[0], program, definitions, parameter_count);
         if (!left)
             return left;
-        auto right = lower_proposition(binary->operands[1], definitions, parameter_count);
+        auto right = lower_proposition(binary->operands[1], program, definitions, parameter_count);
         if (!right)
             return right;
         return conjunction ? kernel::Proposition::conjunction(std::move(*left), std::move(*right))
@@ -618,10 +667,10 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
     if (const auto* connective = std::get_if<vir::Connective>(&expression.node)) {
         if (!expression.type.is_proposition() || connective->operands.size() != 2)
             return fail("malformed logical connective", location);
-        auto left = lower_proposition(connective->operands[0], definitions, parameter_count);
+        auto left = lower_proposition(connective->operands[0], program, definitions, parameter_count);
         if (!left)
             return left;
-        auto right = lower_proposition(connective->operands[1], definitions, parameter_count);
+        auto right = lower_proposition(connective->operands[1], program, definitions, parameter_count);
         if (!right)
             return right;
         switch (connective->kind) {
@@ -639,10 +688,10 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
     if (const auto* implication = std::get_if<vir::Implication>(&expression.node)) {
         if (!expression.type.is_proposition() || implication->operands.size() != 2)
             return fail("malformed implication proposition", location);
-        auto premise = lower_proposition(implication->operands[0], definitions, parameter_count);
+        auto premise = lower_proposition(implication->operands[0], program, definitions, parameter_count);
         if (!premise)
             return premise;
-        auto conclusion = lower_proposition(implication->operands[1], definitions, parameter_count);
+        auto conclusion = lower_proposition(implication->operands[1], program, definitions, parameter_count);
         if (!conclusion)
             return conclusion;
         return kernel::Proposition::implication(std::move(*premise), std::move(*conclusion));
@@ -654,6 +703,19 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
             !(equality->operands[0].type == equality->operand_type) ||
             !(equality->operands[1].type == equality->operand_type)) {
             return fail("malformed formal equality", location);
+        }
+        // `Eq<R>(a, b)` equates two values of `R`. Its operands are values of
+        // the base type, and nothing here shows them members of `R`, so the
+        // equality would hold of values outside the type it names (SPEC.md
+        // FORALL-001, REFINE-003). It is refused rather than stated at the base
+        // type.
+        if (carries_refinement(equality->operand_type)) {
+            const vir::Type& named = equality->operand_type;
+            return fail("formal equality at '" +
+                            (named.is_refined() ? named.refinements.front().name : vir::spelled(named)) +
+                            "' equates values of a refinement type, and its operands are not shown to be values of "
+                            "it; state the equality at its base type",
+                        location);
         }
         TermLowering lowering(definitions, parameter_count);
         auto lhs = lowering.lower(equality->operands[0]);
@@ -676,9 +738,23 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
     return detail::specified(expression, specification_terms(definitions, parameter_count));
 }
 
-// Closes a proposition over a declaration's parameters, outermost first.
-std::optional<kernel::Proposition> quantify_over(const std::vector<vir::Parameter>& parameters,
+// Closes a proposition over a declaration's parameters, outermost first. A
+// parameter is quantified as a binder is (SPEC.md 8), so a refined parameter
+// ranges over the values of its type and its membership is supposed of it
+// before the declaration's own premise.
+std::optional<kernel::Proposition> quantify_over(const Program& program, const std::vector<vir::Parameter>& parameters,
                                                  kernel::Proposition body, std::string& unrepresented) {
+    std::vector<vir::Type> types;
+    types.reserve(parameters.size());
+    for (const auto& parameter : parameters)
+        types.push_back(parameter.type);
+    const vir::Type* unstated = nullptr;
+    auto ranged = suppose_membership(program, types, std::move(body), {}, &unstated);
+    if (!ranged) {
+        unrepresented = unstated != nullptr ? vir::describe(*unstated) : ranged.error().reason;
+        return std::nullopt;
+    }
+    body = std::move(*ranged);
     for (const auto& parameter : std::views::reverse(parameters)) {
         const std::optional<kernel::Type> binder = lower_type(parameter.type);
         if (!binder.has_value()) {
@@ -1045,6 +1121,14 @@ void report(diagnostics::Engine& engine, diagnostics::Category category, const s
 // the quantifiers instantiated: universal elimination, performed here on the
 // proposition by the kernel's own substitution. What remains open are the
 // proof's own parameters, and those are quantified back over the result.
+//
+// A refined law parameter's membership is part of the law's proposition, so
+// the instance supposes it of the argument: the claim never states the law's
+// conclusion at a value outside the parameter's type. The proof's parameters
+// are quantified back with no membership of their own, so a proof claiming its
+// law at its own parameters states exactly the law; a refined proof parameter
+// the law does not refine is claimed of every value of its base type, which
+// claims more and never less.
 std::optional<kernel::Proposition> claimed_proposition(const vir::Proof& proof, const Obligation& obligation,
                                                        const DefinitionMap& definitions, diagnostics::Engine& engine) {
     if (!proof.law)
@@ -1335,6 +1419,9 @@ std::optional<std::size_t> premises_before_the_goal(const kernel::Context& conte
 struct Body {
     const vir::Proof& proof;
     const kernel::Context& context;
+    // The unit's stated refinements, so a proposition written in the body
+    // quantifies as the one it is compared with does.
+    const Program& program;
     const DefinitionMap& definitions;
     const std::vector<WrittenProof>& built;
     const std::map<std::uint32_t, std::size_t>& built_index;
@@ -1443,7 +1530,7 @@ std::optional<kernel::ProofTerm> suppose(Body& body, const vir::ProofStep& step,
     const kernel::Proposition* inner = under_quantifiers(goal, binders);
     const std::size_t depth = body.depth + binders.size();
 
-    auto written = lower_proposition(assumed.proposition, body.definitions, depth);
+    auto written = lower_proposition(assumed.proposition, body.program, body.definitions, depth);
     if (!written) {
         report(engine, diagnostics::Category::UnsupportedSemantics, step.location,
                "the assumed proposition cannot be stated: " + written.error().reason);
@@ -2394,7 +2481,7 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
             }
 
             std::vector<Obligation> omissions;
-            Body body{proof, program.context, definitions, program.proofs, lowered, {}, 0, 0};
+            Body body{proof, program.context, program, definitions, program.proofs, lowered, {}, 0, 0};
             body.omissions = &omissions;
             body.trusted = &assumptions;
             body.automation = &automation;
@@ -2694,9 +2781,10 @@ std::expected<kernel::Term, detail::Failure> detail::lower_value(const vir::Expr
 }
 
 std::expected<kernel::Proposition, detail::Failure> detail::lower_predicate(const vir::Expr& expression,
+                                                                            const Program& program,
                                                                             const DefinitionMap& definitions,
                                                                             std::size_t binders) {
-    return lower_proposition(expression, definitions, binders);
+    return lower_proposition(expression, program, definitions, binders);
 }
 
 ObligationId detail::identify_goal(const kernel::Context& context, const std::string& subject,
@@ -2846,9 +2934,68 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
         return note;
     };
 
+    // A refinement type's predicate, stated once so every site a value enters
+    // that type can ask for it (SPEC.md 17.2). It is a proposition over the
+    // declaration's indices and the value, and it becomes an obligation only
+    // where a value actually enters the type - a declaration asserts nothing.
+    for (const auto& refinement : module.refinements) {
+        RefinementPredicate stated;
+        stated.name = refinement.name;
+        stated.identity = refinement.identity;
+        stated.statement = vir::describe(refinement.predicate);
+        bool modeled = true;
+        for (const auto& index : refinement.indices) {
+            const std::optional<kernel::Type> type = detail::core_type(index.type);
+            if (!type.has_value()) {
+                report(engine, diagnostics::Category::UnsupportedSemantics, refinement.range.begin,
+                       "refinement type '" + refinement.name + "' has an index of type '" + vir::describe(index.type) +
+                           "', which the formal core does not represent");
+                modeled = false;
+                break;
+            }
+            stated.parameters.push_back(*type);
+        }
+        if (!modeled) {
+            continue;
+        }
+        const std::optional<kernel::Type> base = detail::core_type(refinement.base);
+        if (!base.has_value()) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, refinement.range.begin,
+                   "refinement type '" + refinement.name + "' refines '" + vir::describe(refinement.base) +
+                       "', which the formal core does not represent");
+            continue;
+        }
+        stated.parameters.push_back(*base);
+
+        auto predicate = lower_proposition(refinement.predicate, program, definitions, stated.parameters.size());
+        if (!predicate) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, predicate.error().location,
+                   "refinement type '" + refinement.name +
+                       "' cannot be stated to the formal core: " + predicate.error().reason,
+                   explain(predicate.error()));
+            continue;
+        }
+        stated.predicate = std::move(*predicate);
+        // A validation runs the predicate on whatever value it is given, so an
+        // operation C++ defines only under a condition on its operands would
+        // make the test itself undefined for some value (SPEC.md
+        // RUNTIMECHECK-020, ARITH-010).
+        if (detail::first_definedness_site(refinement.predicate).has_value()) {
+            stated.unvalidatable = "its predicate evaluates an operation C++ defines only under a condition on its "
+                                   "operands, so testing some value would have undefined behavior";
+        }
+        // A validation tests the predicate this declaration states, which is
+        // membership only where the base type adds none of its own.
+        if (!refinement.base.refinements.empty()) {
+            stated.unvalidatable = "its base type is itself a refinement type, whose predicate a validation of '" +
+                                   refinement.name + "' would not test";
+        }
+        program.refinements.push_back(std::move(stated));
+    }
+
     for (const vir::Law& law : module.laws) {
         std::expected<kernel::Proposition, Failure> conclusion =
-            lower_proposition(law.proposition, definitions, law.parameters.size());
+            lower_proposition(law.proposition, program, definitions, law.parameters.size());
         if (!conclusion) {
             report(engine, diagnostics::Category::UnsupportedSemantics,
                    conclusion.error().location.is_valid() ? conclusion.error().location : law.proposition_range.begin,
@@ -2864,7 +3011,7 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
         // (GRAMMAR.md 3).
         if (law.premise.has_value()) {
             std::expected<kernel::Proposition, Failure> premise =
-                lower_proposition(*law.premise, definitions, law.parameters.size());
+                lower_proposition(*law.premise, program, definitions, law.parameters.size());
             if (!premise) {
                 report(engine, diagnostics::Category::UnsupportedSemantics,
                        premise.error().location.is_valid() ? premise.error().location : law.premise_range.begin,
@@ -2877,7 +3024,8 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
         }
 
         std::string unrepresented;
-        std::optional<kernel::Proposition> quantified = quantify_over(law.parameters, std::move(goal), unrepresented);
+        std::optional<kernel::Proposition> quantified =
+            quantify_over(program, law.parameters, std::move(goal), unrepresented);
         if (!quantified.has_value()) {
             report(engine, diagnostics::Category::UnsupportedSemantics, law.range.begin,
                    "law '" + law.name + "' quantifies over '" + unrepresented +
@@ -2924,65 +3072,6 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
                                                                      assumption.range.begin, std::move(statement)});
     }
 
-    // A refinement type's predicate, stated once so every site a value enters
-    // that type can ask for it (SPEC.md 17.2). It is a proposition over the
-    // declaration's indices and the value, and it becomes an obligation only
-    // where a value actually enters the type - a declaration asserts nothing.
-    for (const auto& refinement : module.refinements) {
-        RefinementPredicate stated;
-        stated.name = refinement.name;
-        stated.identity = refinement.identity;
-        stated.statement = vir::describe(refinement.predicate);
-        bool modeled = true;
-        for (const auto& index : refinement.indices) {
-            const std::optional<kernel::Type> type = detail::core_type(index.type);
-            if (!type.has_value()) {
-                report(engine, diagnostics::Category::UnsupportedSemantics, refinement.range.begin,
-                       "refinement type '" + refinement.name + "' has an index of type '" + vir::describe(index.type) +
-                           "', which the formal core does not represent");
-                modeled = false;
-                break;
-            }
-            stated.parameters.push_back(*type);
-        }
-        if (!modeled) {
-            continue;
-        }
-        const std::optional<kernel::Type> base = detail::core_type(refinement.base);
-        if (!base.has_value()) {
-            report(engine, diagnostics::Category::UnsupportedSemantics, refinement.range.begin,
-                   "refinement type '" + refinement.name + "' refines '" + vir::describe(refinement.base) +
-                       "', which the formal core does not represent");
-            continue;
-        }
-        stated.parameters.push_back(*base);
-
-        auto predicate = lower_proposition(refinement.predicate, definitions, stated.parameters.size());
-        if (!predicate) {
-            report(engine, diagnostics::Category::UnsupportedSemantics, predicate.error().location,
-                   "refinement type '" + refinement.name +
-                       "' cannot be stated to the formal core: " + predicate.error().reason,
-                   explain(predicate.error()));
-            continue;
-        }
-        stated.predicate = std::move(*predicate);
-        // A validation runs the predicate on whatever value it is given, so an
-        // operation C++ defines only under a condition on its operands would
-        // make the test itself undefined for some value (SPEC.md
-        // RUNTIMECHECK-020, ARITH-010).
-        if (detail::first_definedness_site(refinement.predicate).has_value()) {
-            stated.unvalidatable = "its predicate evaluates an operation C++ defines only under a condition on its "
-                                   "operands, so testing some value would have undefined behavior";
-        }
-        // A validation tests the predicate this declaration states, which is
-        // membership only where the base type adds none of its own.
-        if (!refinement.base.refinements.empty()) {
-            stated.unvalidatable = "its base type is itself a refinement type, whose predicate a validation of '" +
-                                   refinement.name + "' would not test";
-        }
-        program.refinements.push_back(std::move(stated));
-    }
-
     detail::generate_contracts(module, definitions, program, engine, explain, imports);
 
     // Direct proves (P) declarations have their own obligations. They never
@@ -2990,7 +3079,7 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
     for (const auto& proof : module.proofs) {
         if (proof.law)
             continue;
-        auto proposition = lower_proposition(proof.proposition, definitions, proof.parameters.size());
+        auto proposition = lower_proposition(proof.proposition, program, definitions, proof.parameters.size());
         if (!proposition) {
             report(engine, diagnostics::Category::UnsupportedSemantics, proposition.error().location,
                    "proof '" + proof.name + "' cannot be stated to the formal core: " + proposition.error().reason,
@@ -2998,7 +3087,7 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
             continue;
         }
         std::string unrepresented;
-        auto goal = quantify_over(proof.parameters, std::move(*proposition), unrepresented);
+        auto goal = quantify_over(program, proof.parameters, std::move(*proposition), unrepresented);
         if (!goal) {
             report(engine, diagnostics::Category::UnsupportedSemantics, proof.range.begin,
                    "proof '" + proof.name + "' quantifies over an unsupported type: " + unrepresented);

@@ -1439,6 +1439,11 @@ struct Signature {
     // as the parameter it is. A body tracks every leaf as storage instead, and
     // reads it at the version current where the read stands.
     bool clause = false;
+    // The unit's refinements, so a type a proposition writes for itself, a
+    // quantifier's binder or an equality's operand, keeps the refinement Clang
+    // canonicalizes away (SPEC.md FORALL-001). A reference, so no signature can
+    // be made without them.
+    const std::vector<Selection::Refinement>& refinements;
 
     [[nodiscard]] std::uint32_t leaves() const {
         return receiver.has_value() ? static_cast<std::uint32_t>(receiver->leaves.size()) : 0;
@@ -8458,8 +8463,15 @@ std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::Pro
         if (clang_equalTypes(first, second) == 0)
             return std::unexpected("equality operand types differ");
         // The equality helper takes its operands by reference so it imposes no
-        // copy on the values compared. The operand type is the referent's.
-        FormalEquality equality{convert_type(first, 0, ReferenceModel::Referent), {}};
+        // copy on the values compared. The operand type is the referent's, with
+        // the refinement it is written as, which obligation construction must
+        // see to refuse an equality between values of a refinement type.
+        FormalEquality equality{convert_type(first, 0, ReferenceModel::Referent, &signature.refinements), {}};
+        auto refined =
+            refinements_of(formals[0], clang_getPointeeType(clang_getCursorType(formals[0])), signature.refinements);
+        if (!refined)
+            return std::unexpected("formal equality operand type has " + refined.error());
+        equality.operand_type.refinements = std::move(*refined);
         // The first operator() argument is the closure object.
         for (unsigned index = 1; index < 3; ++index)
             equality.operands.push_back(build_expression(clang_Cursor_getArgument(cursor, index), signature, {}, 0));
@@ -8492,9 +8504,19 @@ std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::Pro
         auto body = build_formal(values[0], shape.children[0], scope, depth + 1);
         if (!body)
             return body;
+        // A binder ranges over the values of the type it is written with, so a
+        // refinement is recovered from the written type exactly as a
+        // parameter's is (SPEC.md FORALL-001).
         Universal quantified;
-        for (const auto binder : binders)
-            quantified.binders.push_back(convert_type(clang_getCursorType(binder)));
+        for (const auto binder : binders) {
+            Type binder_type = convert_type(clang_getCursorType(binder));
+            auto refined = refinements_of(binder, clang_getCursorType(binder), signature.refinements);
+            if (!refined)
+                return std::unexpected("forall binder '" + take(clang_getCursorSpelling(binder)) + "' has " +
+                                       refined.error());
+            binder_type.refinements = std::move(*refined);
+            quantified.binders.push_back(std::move(binder_type));
+        }
         quantified.body.push_back(std::move(*body));
         result.node = std::move(quantified);
         return result;
@@ -9104,7 +9126,9 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
         // A member function's probe is a member too, so a pointer it names
         // stands past the implicit object's leaves (SPEC.md CLASS-008).
         MemberStanding standing = member_standing(*at, request.selection.refinements);
-        extract_formal(resolved, *at, Signature{parameters_of(*at), std::move(standing.receiver), true}, probe.shape);
+        extract_formal(resolved, *at,
+                       Signature{parameters_of(*at), std::move(standing.receiver), true, request.selection.refinements},
+                       probe.shape);
         if (resolved.capabilities.empty()) {
             continue;
         }
@@ -9240,8 +9264,10 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
             // the definition, so it is asked rather than assumed.
             const CXCursor defined = clang_getCursorDefinition(cursor);
             const CXCursor stating = clang_Cursor_isNull(defined) != 0 ? cursor : defined;
-            extract_formal(function, stating, Signature{parameters_of(stating), std::move(standing.receiver), true},
-                           probe->shape);
+            extract_formal(
+                function, stating,
+                Signature{parameters_of(stating), std::move(standing.receiver), true, request.selection.refinements},
+                probe->shape);
         } else {
             // Clang owns declaration/definition identity, including overloads
             // and parameter renaming. The public declaration supplies contract
@@ -9253,11 +9279,13 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
             // else selected here is a clause or a definition the formal core
             // may use, which reads a member of the implicit object as the
             // parameter it is.
-            extract_body(
-                function, body_cursor, Signature{parameters_of(body_cursor), std::move(standing.receiver), !executable},
-                request.selection.specification_prefix.empty() ? std::string() : request.selection.specification_prefix,
-                request.selection.refinements, executable,
-                stated == stated_capabilities.end() ? nullptr : &stated->second);
+            extract_body(function, body_cursor,
+                         Signature{parameters_of(body_cursor), std::move(standing.receiver), !executable,
+                                   request.selection.refinements},
+                         request.selection.specification_prefix.empty() ? std::string()
+                                                                        : request.selection.specification_prefix,
+                         request.selection.refinements, executable,
+                         stated == stated_capabilities.end() ? nullptr : &stated->second);
         }
         result.functions.push_back(std::move(function));
     }

@@ -200,3 +200,162 @@ CPP
 grep -q 'kernel-rejection' "$run/false_right_conjunct.log"
 grep -q 'kernel-rejection' "$run/conjunction_capture.log"
 grep -q 'not modeled as a value' "$run/conjunction_as_value.log"
+
+# SPEC: FORALL-001, REFINE-003
+# A binder of a refinement type ranges over the refinement's values, never over
+# its whole base type, and instantiating it at a term owes that the term is one
+# of them. Each premise below is true and each conclusion false at 10u, so each
+# was a false PROVEN while the binder ranged over every unsigned.
+reject refined_binder_instantiated_outside <<'CPP'
+type Small = unsigned where (self < 10u);
+pure unsigned twice(unsigned x) { return x + x; }
+law twice_bounded_everywhere(unsigned n)
+    expects (forall (Small s) { twice(s) < 20u })
+    proves (twice(n) < 20u)
+{
+    assume bounded : forall (Small s) { twice(s) < 20u };
+    exact bounded(n);
+}
+CPP
+reject refined_binder_every_unsigned <<'CPP'
+type Small = unsigned where (self < 10u);
+law every_unsigned_is_small(unsigned n)
+    expects (forall (Small s) { s < 10u })
+    proves (n < 10u)
+{
+    assume all_small : forall (Small s) { s < 10u };
+    exact all_small(n);
+}
+CPP
+reject refined_binder_contradiction <<'CPP'
+type Small = unsigned where (self < 10u);
+law small_premise()
+    expects (forall (Small s) { s < 10u })
+    proves (1u == 2u)
+{
+    assume h : forall (Small s) { s < 10u };
+    contradiction h(10u);
+}
+CPP
+reject refined_binder_contradiction_in_implication <<'CPP'
+type Small = unsigned where (self < 10u);
+proof small_implication()
+    proves ((forall (Small s) { s < 10u }) -> 1u == 2u)
+{
+    assume h : forall (Small s) { s < 10u };
+    contradiction h(10u);
+}
+CPP
+# The membership an application owes is a goal like any other: left open, or
+# closed by a premise that does not establish it, the proof is refused.
+reject refined_binder_membership_left_open <<'CPP'
+type Small = unsigned where (self < 10u);
+pure unsigned twice(unsigned x) { return x + x; }
+law left_open(unsigned n)
+    proves ((forall (Small s) { twice(s) < 20u }) -> twice(n) < 20u)
+{
+    assume bounded : forall (Small s) { twice(s) < 20u };
+    apply bounded(n);
+}
+CPP
+reject refined_binder_membership_not_established <<'CPP'
+type Small = unsigned where (self < 10u);
+pure unsigned twice(unsigned x) { return x + x; }
+law near(unsigned n)
+    expects (n < 11u)
+    proves ((forall (Small s) { twice(s) < 20u }) -> twice(n) < 20u)
+{
+    assume near : n < 11u;
+    assume bounded : forall (Small s) { twice(s) < 20u };
+    apply bounded(n);
+    exact near;
+}
+CPP
+reject refined_binder_membership_false_literal <<'CPP'
+type Small = unsigned where (self < 10u);
+pure unsigned twice(unsigned x) { return x + x; }
+proof at_ten()
+    proves ((forall (Small s) { twice(s) < 20u }) -> twice(10u) < 20u)
+{
+    assume bounded : forall (Small s) { twice(s) < 20u };
+    apply bounded(10u);
+    refl;
+}
+CPP
+# Every predicate of a refinement of a refinement, and an index's value, is part
+# of the range.
+reject refined_binder_nested_refinement <<'CPP'
+type Small = unsigned where (self < 10u);
+type Tiny = Small where (self < 4u);
+law tiny_outside(unsigned n)
+    expects (forall (Tiny t) { t < 4u })
+    proves (n < 10u -> n < 4u)
+{
+    assume all_tiny : forall (Tiny t) { t < 4u };
+    assume small : n < 10u;
+    apply all_tiny(n);
+    exact small;
+}
+CPP
+reject refined_binder_indexed <<'CPP'
+type Below(unsigned n) = unsigned where (self < n);
+law below_outside(unsigned n)
+    expects (forall (Below<4> b) { b < 4u })
+    proves (n < 4u)
+{
+    assume all_below : forall (Below<4> b) { b < 4u };
+    exact all_below(n);
+}
+CPP
+# A law's own refined parameter ranges over the refinement too: proven or
+# trusted, the law is used at a term only once the term's membership is shown.
+reject refined_parameter_proven_law_outside <<'CPP'
+type Small = unsigned where (self < 10u);
+proof small_below(Small s) proves (s < 10u) {
+    assume small : s < 10u;
+    exact small;
+}
+proof every_unsigned(unsigned n) proves (n < 10u) {
+    exact small_below(n);
+}
+CPP
+reject refined_parameter_trusted_law_outside <<'CPP'
+type Small = unsigned where (self < 10u);
+trusted law small_below(Small s) proves (s < 10u);
+proof every_unsigned(unsigned n) proves (n < 10u) {
+    exact small_below(n);
+}
+CPP
+reject refined_parameter_trusted_law_contradiction <<'CPP'
+type Small = unsigned where (self < 10u);
+trusted law small_below(Small s) proves (s < 10u);
+proof one_is_two() proves (1u == 2u) {
+    contradiction small_below(10u);
+}
+CPP
+# `Eq<R>` equates two values of `R`. Its operands are not shown to be values of
+# it, so it is refused rather than stated of values outside the type.
+reject refined_formal_equality <<'CPP'
+type Small = unsigned where (self < 10u);
+proof eq_small() proves (Eq<Small>(20u, 20u)) { refl; }
+CPP
+reject refined_formal_equality_of_a_parameter <<'CPP'
+type Small = unsigned where (self < 10u);
+law eq_self(Small s) proves (Eq<Small>(s, s));
+CPP
+
+for name in refined_binder_instantiated_outside refined_binder_every_unsigned refined_parameter_proven_law_outside \
+    refined_parameter_trusted_law_outside refined_binder_indexed; do
+    grep -q 'does not prove what proof' "$run/$name.log"
+done
+for name in refined_binder_contradiction refined_binder_contradiction_in_implication \
+    refined_parameter_trusted_law_contradiction; do
+    grep -q 'does not establish an equality, so it cannot state a contradiction' "$run/$name.log"
+done
+grep -q "leaves a goal open" "$run/refined_binder_membership_left_open.log"
+grep -q "'near' does not prove what proof 'near' claims" "$run/refined_binder_membership_not_established.log"
+grep -q "kernel-rejection" "$run/refined_binder_membership_false_literal.log"
+grep -q "'small' does not prove what proof 'tiny_outside' claims" "$run/refined_binder_nested_refinement.log"
+for name in refined_formal_equality refined_formal_equality_of_a_parameter; do
+    grep -q "formal equality at 'Small' equates values of a refinement type" "$run/$name.log"
+done

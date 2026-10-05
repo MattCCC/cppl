@@ -107,6 +107,22 @@ quantification, quantifiers in loop invariants, and formal forms nested inside a
 ordinary C++ expression are refused. See `SPEC.md` 8, 8.1-8.2 and 9. Both forms
 lower onto the quantifier and implication the kernel already had, and added no
 kernel rule.
+A binder of a refinement type, and a Law's or proof's parameter of one, ranges
+over that refinement's values only (FORALL-001): `forall (Small s) { P }` is the
+kernel's `forall u32. s < 10 -> P`, each refined binder's membership stated after
+its group of binders, and an unrefined binder states none. Instantiating such
+evidence at a term therefore leaves the term's membership to be proven before
+the conclusion is used (REFINE-003): `apply h(n);` leaves it as the next goal,
+and `exact h(n)` or `contradiction h(10u)` at a term not shown to be a member is
+refused. The predicate is stated by the membership a refined function parameter
+already uses, so a refinement of a refinement and an indexed refinement range
+over every predicate that applies. `Eq<R>(a, b)` at a refinement type, or at a
+type with a refined component, is refused: its operands are not shown to be
+values of `R`. Until this was so, a binder ranged over the whole base type, so
+a quantified premise was stronger than written and a trusted law over a refined
+parameter was assumed of every base value; both proved false claims
+(`TRUST.md` 36.3). Evidence: `e2e_refined_quantifiers` and its refused twin,
+`negative_quantified_propositions`, `unit_quantified_propositions_test`.
 Conjunction of supported Boolean predicates is now `PROTOTYPE`: nested `&&`
 works in Laws, direct proofs, preconditions, postconditions and `assume`, under
 quantifiers and implications. Introduction proves both sides; elimination exposes
@@ -943,7 +959,7 @@ through an imported contract -- names it. Such a claim stays `PROVEN` and is not
 reported as resting on an assumption; that the executable performs each
 validation as its lowering states is correspondence TCB (`TRUST.md`
 TCB-RUNTIMECHK-006). A verification interface records sites as a category of
-their own (format 3), part of the record's result identity, under verification
+their own (format 3), part of the record's result identity, since verification
 semantics `cppl-verification-3`. `e2e_runtime_validation` pins the whole site
 and claim lists, that no path-fact crossing is a site, the program's output on
 valid, invalid and extreme input, the validator and each call of it in the

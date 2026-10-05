@@ -23,8 +23,11 @@ namespace cppl::obligations {
 // TCB-VERSION-003). Version 2 records runtime validation sites. Version 3
 // records as sites only explicit validation expressions: a refinement crossing
 // proven from path facts is proven statically and is no site (SPEC.md
-// RUNTIMECHECK-010, RUNTIMECHECK-011).
-inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-3";
+// RUNTIMECHECK-010, RUNTIMECHECK-011). Version 4 quantifies a binder or a
+// parameter of a refinement type over that refinement's values only, so a
+// contract stating such a quantifier states less than it did (SPEC.md
+// FORALL-001).
+inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-4";
 
 // A contract another translation unit proved, offered to this one by the
 // verification interface that recorded it (SPEC.md TUBOUND-003).

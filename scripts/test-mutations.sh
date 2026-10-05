@@ -257,6 +257,11 @@ unknown-divisor-remainder-below	kernel/src/linear.cpp	either(*divisor, 0, *exces
 unknown-divisor-remainder-above	kernel/src/linear.cpp	either(*divisor, 0, *shortfall, 1)	either(*divisor, 0, *shortfall, 2)	^kernel_definedness_test$
 unsigned-remainder-within-dividend	kernel/src/linear.cpp	return constrain(*within, 0);	return constrain(*within, 1);	^kernel_definedness_test$
 remainder-sign-of-nonnegative-dividend	kernel/src/linear.cpp	either(*dividend, 1, negated(remainder), 0)	either(*dividend, 1, negated(remainder), 1)	^kernel_definedness_test$
+refined-binder-membership	compiler/obligations/src/generate.cpp	body = suppose_membership(program, quantified->binders, std::move(*body), location);	(void)0;	^negative_quantified_propositions$|^unit_quantified_propositions_test$
+refined-parameter-membership	compiler/obligations/src/generate.cpp	auto ranged = suppose_membership(program, types, std::move(body), {}, &unstated);	auto ranged = ((void)program, std::expected<kernel::Proposition, Failure>(std::move(body)));	^negative_quantified_propositions$|^unit_quantified_propositions_test$
+forall-binder-refinement-kept	clang/src/bridge.cpp	binder_type.refinements = std::move(*refined);	(void)refined;	^negative_quantified_propositions$|^e2e_refined_quantifiers$
+equality-operand-refinement-kept	clang/src/bridge.cpp	equality.operand_type.refinements = std::move(*refined);	(void)refined;	^negative_quantified_propositions$
+formal-equality-refinement-refused	compiler/obligations/src/generate.cpp	if (carries_refinement(equality->operand_type)) {	if (false && carries_refinement(equality->operand_type)) {	^negative_quantified_propositions$|^unit_quantified_propositions_test$
 MUTATIONS
 )
 

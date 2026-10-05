@@ -441,3 +441,108 @@ CPPL_TEST(conjunction_identity_tracks_definitions_reached_from_either_side) {
         CPPL_CHECK(!(identity(right, 0) == identity(right, 1)));
     }
 }
+
+namespace {
+// `type Small = unsigned where (self < 10u);`, and `position < 10u`.
+v::Expr below_ten(std::uint32_t position) {
+    v::Expr ten;
+    ten.type = integer;
+    ten.node = v::IntLiteral{10};
+    v::Expr result;
+    result.type = v::Type::boolean();
+    result.node = v::Binary{v::BinaryOp::Less, {value(position), std::move(ten)}};
+    return result;
+}
+
+v::Type small() {
+    v::Type refined = integer;
+    refined.refinements.push_back(v::Refinement{"Small", {}, {}});
+    return refined;
+}
+
+// A law over `parameter` stating `proposition`, in a unit that declares Small
+// unless `declared` is false.
+cppl::obligations::Program refined(v::Type parameter, v::Expr proposition, cppl::diagnostics::Engine& engine,
+                                   bool declared = true) {
+    cppl::elaboration::Result elaborated;
+    if (declared) {
+        v::RefinementDeclaration declaration;
+        declaration.name = "Small";
+        declaration.base = integer;
+        declaration.predicate = below_ten(0);
+        elaborated.module.refinements.push_back(std::move(declaration));
+    }
+    v::Law law;
+    law.name = "ranged";
+    law.parameters = {{"x", std::move(parameter)}};
+    law.proposition = std::move(proposition);
+    elaborated.module.laws.push_back(std::move(law));
+    return cppl::obligations::generate(elaborated.module, elaborated, engine);
+}
+} // namespace
+
+// SPEC: FORALL-001
+// `forall (Small y) { y < 10u }` ranges over the values of Small: it is the
+// kernel's `forall u32. y < 10 -> y < 10`, and so it holds. Over every unsigned
+// it would be false.
+CPPL_TEST(a_refined_binder_ranges_over_the_values_of_its_refinement) {
+    cppl::diagnostics::Engine engine;
+    const auto program = refined(integer, universal({small()}, below_ten(1)), engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK_EQ(program.obligations.size(), std::size_t{1});
+    const auto& parameter = std::get<k::Forall>(program.obligations.at(0).goal.node);
+    const auto& binder = std::get<k::Forall>(parameter.body->node);
+    const auto& membership = std::get<k::Implies>(binder.body->node);
+    CPPL_CHECK(*membership.premise == *membership.conclusion);
+    const auto checked = cppl::automation::verify(program, engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK(checked.at(0).verdict.is_proven());
+}
+
+// A law's own refined parameter is quantified exactly as a binder is.
+CPPL_TEST(a_refined_parameter_ranges_over_the_values_of_its_refinement) {
+    cppl::diagnostics::Engine engine;
+    const auto program = refined(small(), below_ten(0), engine);
+    CPPL_CHECK(!engine.has_errors());
+    const auto& parameter = std::get<k::Forall>(program.obligations.at(0).goal.node);
+    const auto& membership = std::get<k::Implies>(parameter.body->node);
+    CPPL_CHECK(*membership.premise == *membership.conclusion);
+    const auto checked = cppl::automation::verify(program, engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK(checked.at(0).verdict.is_proven());
+}
+
+// Unrefined binders state no premise, so their propositions are unchanged.
+CPPL_TEST(an_unrefined_binder_states_no_membership) {
+    cppl::diagnostics::Engine engine;
+    const auto program = refined(integer, universal({integer}, below_ten(1)), engine);
+    const auto& parameter = std::get<k::Forall>(program.obligations.at(0).goal.node);
+    const auto& binder = std::get<k::Forall>(parameter.body->node);
+    CPPL_CHECK(std::holds_alternative<k::Eq>(binder.body->node));
+    const auto checked = cppl::automation::verify(program, engine);
+    CPPL_CHECK(!checked.at(0).verdict.is_proven());
+}
+
+// A refinement the unit states no predicate for gives a binder no range, so
+// the proposition is refused rather than quantified over the base type.
+CPPL_TEST(a_binder_of_an_unstated_refinement_is_refused) {
+    for (const bool binder : {true, false}) {
+        cppl::diagnostics::Engine engine;
+        const auto program = binder ? refined(integer, universal({small()}, below_ten(1)), engine, false)
+                                    : refined(small(), below_ten(0), engine, false);
+        CPPL_CHECK(engine.has_errors());
+        CPPL_CHECK(program.obligations.empty());
+    }
+}
+
+// `Eq<Small>(a, b)` equates values of Small whose operands are not shown to be
+// any, so it is refused.
+CPPL_TEST(a_formal_equality_at_a_refinement_type_is_refused) {
+    cppl::diagnostics::Engine engine;
+    v::Expr goal;
+    goal.type = v::Type::proposition();
+    goal.node = v::FormalEquality{small(), {value(0), value(0)}};
+    const auto program = refined(integer, std::move(goal), engine);
+    CPPL_CHECK(engine.has_errors());
+    CPPL_CHECK(program.obligations.empty());
+}

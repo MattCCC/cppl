@@ -707,6 +707,8 @@ Formal equality and logical connectives are checked by the logical TCB, while th
 
 **[TCB-LOGIC-006]** `exact`, `apply`, `rewrite`, `cases`, `decompose`, `induction` and automation MUST ultimately produce evidence checked against the intended goal or invoke another explicitly trusted checker defined by this trust model.
 
+The range of a binder is correspondence TCB. The kernel quantifies over core types, which carry no refinement, so a binder or a parameter of a refinement type is stated with that refinement's membership as a premise (`SPEC.md` FORALL-001), and whether every such binder is so stated is not something the kernel can see. The bridge recovers the refinement from the binder's written type and obligation construction states it (36.3).
+
 ---
 
 # 19. Case analysis, decomposition and representation models
@@ -1432,6 +1434,15 @@ No path turns a failure to prove into a site: an unproved refinement crossing is
 - a span parameter passed on to a writing call kept its elements' old values in the same way.
 
 `handed_storage` (`clang/src/bridge.cpp`) now follows a copied span to the storage the copied span designates. Every case is a permanent regression in `negative_sequence_boundaries` (`x_span_local_*`, `x_span_param_passed_on`, `c_span_local_writable_call`), and the mutation entry `span-copy-hands-storage` restores the defect and must be caught.
+
+**Finding, fixed: a soundness defect in quantifier lowering.** A binder of a refinement type ranges over that refinement's values (`SPEC.md` FORALL-001), and instantiating it at a term owes the term's membership (8.1, REFINE-003). The bridge read a `forall` binder's type canonicalized, so `forall (Small s) { P }` with `Small = unsigned where (self < 10u)` reached the kernel as `forall u32. P`, and a law's or proof's refined parameter was quantified the same way. Where such a quantifier is a premise it states more than was written, so a law could be proven from a true premise and be false:
+
+- `expects (forall (Small s) { twice(s) < 20u }) proves (twice(n) < 20u)`, closed by `exact bounded(n)`, was PROVEN assumption-free and is false at `n = 10`;
+- `expects (forall (Small s) { s < 10u }) proves (1u == 2u)`, closed by `contradiction h(10u)`, was PROVEN assumption-free;
+- a true `trusted law small_below(Small s) proves (s < 10u)` was assumed of every `unsigned`, so `1u == 2u` was PROVEN relative to it;
+- `Eq<Small>(20u, 20u)` was PROVEN by `refl`, an equality between values of `Small` whose operands are not values of it.
+
+The bridge now recovers a binder's refinement from its written type, as it does a parameter's, and so the refinement an equality's operand type names. Obligation construction (`suppose_membership`, `compiler/obligations/src/generate.cpp`) states each refined binder's and parameter's membership as a premise after its group of binders, by the one membership a refined function parameter uses (`refinement_membership`), so an instantiation states the membership its term owes and the kernel checks the evidence for it; an unrefined binder states nothing, so no other proposition changed. `Eq<R>` at a type that carries a refinement is refused. No kernel rule, axiom or assumption was added; the verification semantics is `cppl-verification-4`. Every case is a permanent regression in `negative_quantified_propositions` (`refined_binder_*`, `refined_parameter_*`, `refined_formal_equality*`) and `unit_quantified_propositions_test`, with valid uses proven in `e2e_refined_quantifiers` and its refused twin. Mutation entries: `refined-binder-membership`, `refined-parameter-membership`, `forall-binder-refinement-kept`, `equality-operand-refinement-kept`, `formal-equality-refinement-refused`.
 
 **Findings, fixed: completeness and diagnostics.** None of these could produce a false PROVEN; each refused a program without saying why or where, and the first two are refused, on purpose, with a diagnostic of their own.
 
