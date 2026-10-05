@@ -21,6 +21,7 @@ namespace {
 // CPPL_TEST_JOBS, read as tests/support/parallel.sh reads it: unset or empty
 // is one thread per processor, and anything but a positive count is one.
 std::size_t jobs() {
+    // NOLINTNEXTLINE(concurrency-mt-unsafe): read before any worker thread starts.
     const char* named = std::getenv("CPPL_TEST_JOBS");
     if (named == nullptr || *named == '\0') {
         const unsigned processors = std::thread::hardware_concurrency();
@@ -79,11 +80,12 @@ void for_each_index(std::size_t count, const std::function<void(std::size_t)>& b
     // that did start and to this thread, which takes them until none are left.
     std::vector<std::thread> workers;
     workers.reserve(threads - 1);
-    try {
-        for (std::size_t worker = 1; worker < threads; ++worker) {
+    for (std::size_t worker = 1; worker < threads; ++worker) {
+        try {
             workers.emplace_back(work);
+        } catch (const std::system_error&) {
+            break;
         }
-    } catch (const std::system_error&) {
     }
     work();
     for (std::thread& worker : workers) {

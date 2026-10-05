@@ -1,7 +1,6 @@
 #include "cppl/lsp/server.hpp"
 #include "cppl/lsp/transport.hpp"
 
-#include <cstdlib>
 #include <exception>
 #include <iostream>
 #include <string>

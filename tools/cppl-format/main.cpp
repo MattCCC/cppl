@@ -1,7 +1,6 @@
 #include "cppl/formatter/format.hpp"
 
 #include <algorithm>
-#include <cstdlib>
 #include <exception>
 #include <fstream>
 #include <iostream>
