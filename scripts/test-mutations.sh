@@ -86,6 +86,9 @@ library-model-closure-through-calls	compiler/obligations/src/trust.cpp	changed =
 container-stale-view	clang/src/bridge.cpp	if (root.version == entry.borrows->version) {	if (true) {	^negative_containers$|^negative_integration_ledger$|^negative_cross_feature$|^negative_sequence_attacks$
 container-element-generation	clang/src/bridge.cpp	return !entry.formed_at.has_value() ||	return true ||	^negative_containers$|^negative_sequence_attacks$
 sequence-mutator-new-generation	clang/src/bridge.cpp	effects.push_back(new_generation(state[*root], where));	(void)where;	^negative_containers$|^negative_sequence_attacks$
+call-two-writable-views	clang/src/bridge.cpp	for (const std::size_t other : written_roots) {	for (const std::size_t other : std::vector<std::size_t>{}) {	^negative_sequence_boundaries$
+call-span-parameter-written-twice	clang/src/bridge.cpp	if (std::ranges::any_of(written_span_parameters, [&](CXCursor written_parameter) {	if (false && std::ranges::any_of(written_span_parameters, [&](CXCursor written_parameter) {	^negative_sequence_boundaries$
+call-statement-temporaries-mutator-only	clang/src/bridge.cpp	if (clang_getCursorKind(inner) == CXCursor_CallExpr && sequence_call(inner).has_value()) {	if (clang_getCursorKind(inner) == CXCursor_CallExpr) {	^negative_sequence_generations$
 unsafe-block-new-generation	clang/src/bridge.cpp	new_generation(state[index], "the unsafe block at " + at);	(void)state[index];	^negative_containers$|^negative_sequence_attacks$
 container-span-capability	clang/src/bridge.cpp	if (region->parameter.has_value() && !granted(*region->parameter, required)) {	if (false && region->parameter.has_value() && !granted(*region->parameter, required)) {	^negative_containers$
 container-call-disjointness	clang/src/bridge.cpp	if (other == root || may_alias(state[other], state[root])) {	if (false && (other == root || may_alias(state[other], state[root]))) {	^negative_containers$

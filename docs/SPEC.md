@@ -6667,6 +6667,9 @@ verified callee's (VERIFIED-013), and its facts hold on the operation's normal r
 A mutator is modeled only as a statement of its own. Every other member of a modeled sequence is
 refused. A sequence handed to a verified call by value is copied into the parameter under the
 copy summary and is unchanged by the call; one handed by `const` reference is unchanged by it.
+Such a call is modeled where its result initializes a local or is returned. A call made as a
+statement of its own whose arguments are temporaries destroyed at the statement's end is refused
+unless it is a mutator of a modeled sequence.
 
 [STDMODEL-014] A span local views a whole `vector` or `string` the body tracks, is formed only
 by the initializer of its declaration, and is never assigned, formed from another span, passed by
@@ -6729,7 +6732,10 @@ call that may write through a span or data pointer it is handed leaves every ele
 container unknown afterwards, and its length unchanged. A call handed, besides such a span or
 data pointer, an element of the same container by mutable reference is refused where it is
 made: the callee could write that element through either argument, and one storage written
-through two arguments of one call has no single post-state.
+through two arguments of one call has no single post-state. For the same reason, a call handed
+two spans or data pointers through which it may write, over one container or over storage the
+common alias model does not keep apart, or handed one span parameter twice as a view it may
+write, is refused where it is made.
 
 [STDMODEL-018] Every claim resting on a verified function that uses a modeled sequence, in its
 contract, its body or the body of a function it calls, is proven relative to what that model

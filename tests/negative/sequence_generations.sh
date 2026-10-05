@@ -2737,6 +2737,31 @@ verified unsigned placement_ref_after_fill_call()
 }
 
 CPP
+# A call statement that copies a container into a by-value parameter stands
+# inside the node destroying that temporary, and only a container mutator is
+# modeled there (STDMODEL-023). The accepted twins bind the call's result.
+refused placement_copy_call_statement "a call statement whose arguments are temporaries destroyed at the statement's end is modeled only for a container mutator" <<'CPP'
+verified unsigned placement_copy_call_statement()
+    ensures (result == 1u)
+{
+    std::vector<unsigned> v{1u, 2u};
+    unsigned& r = v[0];
+    keep_copy(v);
+    return r;
+}
+
+CPP
+refused placement_copy_call_statement_span "a call statement whose arguments are temporaries destroyed at the statement's end is modeled only for a container mutator" <<'CPP'
+verified unsigned placement_copy_call_statement_span()
+    ensures (result == 1u)
+{
+    std::vector<unsigned> v{1u, 2u};
+    std::span<unsigned> s(v);
+    keep_copy(v);
+    return s[0];
+}
+
+CPP
 check
 
 echo 'every use of a view or element reference after its storage may have changed is refused'

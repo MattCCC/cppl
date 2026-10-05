@@ -784,13 +784,47 @@ verified unsigned x_data_outside_call()
 }
 
 CPP
-refused x_two_writable_same_elements "return path 'x_two_writable_same_elements path" <<'CPP'
+refused x_two_writable_same_elements "'v' is handed to 'two_writable' through two views or data pointers the callee may write" <<'CPP'
 verified unsigned x_two_writable_same_elements()
     ensures (result == 1u)
 {
     std::vector<unsigned> v{1u, 2u};
     two_writable(v, v);
     return v[0];
+}
+
+CPP
+# One storage written through two arguments of one call has no single
+# post-state (STDMODEL-017), whatever the caller reads afterwards. Accepted
+# twin: `x_two_writable_distinct`.
+refused x_two_writable_same "'v' is handed to 'two_writable' through two views or data pointers the callee may write" <<'CPP'
+verified unsigned x_two_writable_same()
+    ensures (result == 2u)
+{
+    std::vector<unsigned> v{1u, 2u};
+    two_writable(v, v);
+    return static_cast<unsigned>(v.size());
+}
+
+CPP
+refused x_two_writable_span_local_and_container "'v' is handed to 'two_writable' through two views or data pointers the callee may write" <<'CPP'
+verified unsigned x_two_writable_span_local_and_container()
+    ensures (result == 2u)
+{
+    std::vector<unsigned> v{1u, 2u};
+    std::span<unsigned> s(v);
+    two_writable(s, v);
+    return static_cast<unsigned>(v.size());
+}
+
+CPP
+refused x_two_writable_span_parameter_twice "span parameter 's' is handed to 'two_writable' twice as a view the callee may write" <<'CPP'
+verified unsigned x_two_writable_span_parameter_twice(std::span<unsigned> s)
+    expects (writable(s))
+    ensures (result == result)
+{
+    two_writable(s, s);
+    return static_cast<unsigned>(s.size());
 }
 
 CPP

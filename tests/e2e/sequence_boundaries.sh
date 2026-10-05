@@ -500,12 +500,13 @@ verified unsigned x_data_empty_zero()
 }
 
 CPP
-accepted x_two_writable_same 2 <<'CPP'
-verified unsigned x_two_writable_same()
+accepted x_two_writable_distinct 2 <<'CPP'
+verified unsigned x_two_writable_distinct()
     ensures (result == 2u)
 {
     std::vector<unsigned> v{1u, 2u};
-    two_writable(v, v);
+    std::vector<unsigned> w{3u};
+    two_writable(v, w);
     return static_cast<unsigned>(v.size());
 }
 

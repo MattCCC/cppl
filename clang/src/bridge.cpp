@@ -5266,6 +5266,7 @@ struct BodyLowering {
                 reallocatable.push_back(*root);
             }
         }
+        std::vector<CXCursor> written_span_parameters;
         for (std::size_t index = 0; index < formals.size(); ++index) {
             const CXCursor argument = clang_Cursor_getArgument(call, static_cast<unsigned>(index));
             const CXType written = clang_getCanonicalType(clang_getCursorType(formals[index]));
@@ -5305,10 +5306,13 @@ struct BodyLowering {
                            "satisfying '" +
                            state[root].sequence->element.refinements.front().name + "'";
                 }
-                // A second writable view of the same container leaves nothing
-                // more unknown than the first.
-                if (std::ranges::find(written_roots, root) != written_roots.end()) {
-                    continue;
+                for (const std::size_t other : written_roots) {
+                    if (root == other || may_alias(state[root], state[other])) {
+                        return "'" + state[root].spelling + "' is handed to '" +
+                               qualified_name_of(clang_getCursorReferenced(call)) +
+                               "' through two views or data pointers the callee may write; one storage written "
+                               "through two arguments of one call has no single post-state (SPEC.md STDMODEL-017)";
+                    }
                 }
                 written_roots.push_back(root);
                 // Every element place of the container is unknown after the
@@ -5326,6 +5330,15 @@ struct BodyLowering {
                     }
                 }
             } else if (handed->span_parameter.has_value() && writes) {
+                if (std::ranges::any_of(written_span_parameters, [&](CXCursor written_parameter) {
+                        return clang_equalCursors(written_parameter, *handed->span_parameter) != 0;
+                    })) {
+                    return "span parameter '" + take(clang_getCursorSpelling(*handed->span_parameter)) +
+                           "' is handed to '" + qualified_name_of(clang_getCursorReferenced(call)) +
+                           "' twice as a view the callee may write; one storage written through two arguments of "
+                           "one call has no single post-state (SPEC.md STDMODEL-017)";
+                }
+                written_span_parameters.push_back(*handed->span_parameter);
                 for (std::size_t other = 0; other < state.size(); ++other) {
                     if (state[other].referent.has_value() ||
                         clang_equalCursors(state[other].declaration, *handed->span_parameter) == 0 ||
@@ -5917,14 +5930,16 @@ struct BodyLowering {
         }
         if (kind == CXCursor_CallExpr)
             return lower_call(statement, next, locals, depth);
-        // A call with a temporary argument, such as a container mutator's
-        // argument or a container copied into a by-value parameter, stands
-        // inside the node Clang adds to destroy that temporary at the
-        // statement's end.
+        // A container mutator whose argument is a temporary stands inside the
+        // node Clang adds to destroy that temporary at the statement's end.
         if (kind == CXCursor_UnexposedExpr) {
             const CXCursor inner = strip_parens(statement);
-            if (clang_getCursorKind(inner) == CXCursor_CallExpr) {
+            if (clang_getCursorKind(inner) == CXCursor_CallExpr && sequence_call(inner).has_value()) {
                 return lower_call(inner, next, locals, depth);
+            }
+            if (clang_getCursorKind(inner) == CXCursor_CallExpr) {
+                return reject("a call statement whose arguments are temporaries destroyed at the statement's end is "
+                              "modeled only for a container mutator (SPEC.md STDMODEL-023)");
             }
         }
         if (kind == CXCursor_NullStmt)

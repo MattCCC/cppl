@@ -72,7 +72,7 @@ void grow_string(std::string& s) { s += 'z'; }
 verified void touch(std::vector<unsigned>& x) ensures (true) { x.push_back(0u); }
 verified void touch_string(std::string& x) ensures (true) { x += 'q'; }
 verified void keep(const std::vector<unsigned>& x) ensures (true) { }
-verified void keep_copy(std::vector<unsigned> x) ensures (true) { x.push_back(1u); }
+verified std::size_t keep_copy(std::vector<unsigned> x) ensures (true) { x.push_back(1u); return x.size(); }
 verified void look(std::span<const unsigned> s) expects (readable(s)) ensures (true) { }
 verified void fill(std::span<unsigned> s) expects (writable(s)) ensures (true) { if (0ul < s.size()) { s[0] = 0u; } }
 CPP
@@ -352,7 +352,7 @@ verified unsigned vector_kept_copy_call__reference()
     std::vector<unsigned> w{4u};
     std::vector<unsigned> z{7u};
     unsigned& r = v[0];
-    keep_copy(v);
+    const std::size_t copied = keep_copy(v);
     return r;
 }
 
@@ -365,7 +365,7 @@ verified unsigned vector_kept_copy_call__const_reference()
     std::vector<unsigned> w{4u};
     std::vector<unsigned> z{7u};
     const unsigned& r = v[0];
-    keep_copy(v);
+    const std::size_t copied = keep_copy(v);
     return r;
 }
 
@@ -378,7 +378,7 @@ verified unsigned vector_kept_copy_call__reference_write()
     std::vector<unsigned> w{4u};
     std::vector<unsigned> z{7u};
     unsigned& r = v[0];
-    keep_copy(v);
+    const std::size_t copied = keep_copy(v);
     r = 5u;
     return v[0];
 }
@@ -392,7 +392,7 @@ verified unsigned vector_kept_copy_call__span()
     std::vector<unsigned> w{4u};
     std::vector<unsigned> z{7u};
     std::span<unsigned> s(v);
-    keep_copy(v);
+    const std::size_t copied = keep_copy(v);
     return s[0];
 }
 
@@ -405,7 +405,7 @@ verified unsigned vector_kept_copy_call__span_write()
     std::vector<unsigned> w{4u};
     std::vector<unsigned> z{7u};
     std::span<unsigned> s(v);
-    keep_copy(v);
+    const std::size_t copied = keep_copy(v);
     s[0] = 5u;
     return v[0];
 }
@@ -419,7 +419,7 @@ verified unsigned vector_kept_copy_call__const_span()
     std::vector<unsigned> w{4u};
     std::vector<unsigned> z{7u};
     std::span<const unsigned> s(v);
-    keep_copy(v);
+    const std::size_t copied = keep_copy(v);
     return s[0];
 }
 
@@ -432,7 +432,7 @@ verified unsigned vector_kept_copy_call__span_copy_initialized()
     std::vector<unsigned> w{4u};
     std::vector<unsigned> z{7u};
     std::span<unsigned> s = v;
-    keep_copy(v);
+    const std::size_t copied = keep_copy(v);
     return s[0];
 }
 
@@ -445,7 +445,7 @@ verified unsigned vector_kept_copy_call__span_braced()
     std::vector<unsigned> w{4u};
     std::vector<unsigned> z{7u};
     std::span<unsigned> s{v};
-    keep_copy(v);
+    const std::size_t copied = keep_copy(v);
     return s[0];
 }
 
@@ -458,7 +458,7 @@ verified unsigned vector_kept_copy_call__span_size()
     std::vector<unsigned> w{4u};
     std::vector<unsigned> z{7u};
     std::span<unsigned> s(v);
-    keep_copy(v);
+    const std::size_t copied = keep_copy(v);
     return static_cast<unsigned>(s.size());
 }
 
@@ -471,7 +471,7 @@ verified unsigned vector_kept_copy_call__span_empty()
     std::vector<unsigned> w{4u};
     std::vector<unsigned> z{7u};
     std::span<unsigned> s(v);
-    keep_copy(v);
+    const std::size_t copied = keep_copy(v);
     return s.empty() ? 1u : 0u;
 }
 
