@@ -12,6 +12,12 @@
 # genuine test failure counts as catching a mutation.
 #
 # Usage: scripts/test-mutations.sh [--only <name>]... [--jobs <n>] [--list]
+#                                   [--reuse <run directory>]
+#
+# --reuse builds in the copy an earlier run left, brought up to date with the
+# checkout, rather than in a new one: the build is incremental, and no second
+# copy is written. A file the copy holds that the checkout no longer does is
+# refused, since the copy would then not be the checkout.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -407,11 +413,13 @@ jobs=4
 # rather than passing silently.
 ctest_timeout=120
 list_only=0
+reuse=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --only) only+=("$2"); shift 2 ;;
         --jobs) jobs="$2"; shift 2 ;;
         --list) list_only=1; shift ;;
+        --reuse) reuse="$2"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -511,7 +519,15 @@ fi
 
 artifacts="$root/build/mutations"
 mkdir -p "$artifacts"
-run=$(mktemp -d "$artifacts/run-XXXXXX")
+if [ -n "$reuse" ]; then
+    run=$(cd "$reuse" && pwd)
+    if [ ! -d "$run/source" ] || [ ! -d "$run/build" ]; then
+        echo "$reuse is not a mutation run directory" >&2
+        exit 2
+    fi
+else
+    run=$(mktemp -d "$artifacts/run-XXXXXX")
+fi
 source_copy="$run/source"
 build="$run/build"
 
@@ -522,10 +538,22 @@ echo "Mutation artifacts: $run"
 # its mode, times and links. Both are on every POSIX host; rsync, which this
 # once used, is not, and the Linux CI image does not install it.
 mkdir -p "$source_copy"
-(cd "$root" && find . \( -name .git -o -name build -o -name 'build-*' -o -name tmp \
+copied() {
+    find . \( -name .git -o -name build -o -name 'build-*' -o -name tmp \
         -o -name .code-review-graph -o -name .claude -o -name .codex \) -prune \
-        -o ! -name . -print0 | tar --null --no-recursion -T - -cf -) |
+        -o ! -name . "$@"
+}
+(cd "$root" && copied -print0 | tar --null --no-recursion -T - -cf -) |
     (cd "$source_copy" && tar -xf -)
+if [ -n "$reuse" ]; then
+    stale_files=$(comm -13 <(cd "$root" && copied -print | LC_ALL=C sort) \
+                           <(cd "$source_copy" && copied -print | LC_ALL=C sort))
+    if [ -n "$stale_files" ]; then
+        echo "The reused copy holds files the checkout does not:" >&2
+        echo "$stale_files" >&2
+        exit 2
+    fi
+fi
 
 # A green control run establishes that a later test failure was introduced by
 # the mutation rather than being there all along. An LLVM_ROOT the caller
