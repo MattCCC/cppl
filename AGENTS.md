@@ -810,7 +810,9 @@ names a rule of the proof system that nothing is testing.
 
 Its anchors are exact source strings. Reformatting the code one names stops
 that check from being tested, so the run refuses to start on a stale anchor
-rather than reporting it as a pass.
+rather than reporting it as a pass. `docs/MUTATION_TESTING.md` is the policy:
+when an entry is required, how it is written, and what may count as an
+equivalent mutant.
 
 ---
 
@@ -1005,6 +1007,9 @@ STATUS.md
 
 docs/DEVELOPER_GUIDE.md
     how to work in the language and extend the compiler
+
+docs/MUTATION_TESTING.md
+    mutation-testing policy: entries, outcomes, equivalent mutants
 
 tools/<tool>/README.md
     how to build, run and test one tool, and its own non-goals
