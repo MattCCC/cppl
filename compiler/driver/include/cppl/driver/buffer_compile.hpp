@@ -70,12 +70,23 @@ struct ObligationRecord {
     std::string reason;
     // What produced the evidence the kernel accepted, when it did.
     std::string strategy;
-    // The trusted Laws a proven claim rests on, by name.
+    // The trusted Laws a proven claim rests on, by name: those its own evidence
+    // names and those that reach it through a proof it uses, a verified function
+    // it calls or a contract of another unit it was proven through (TRUST.md
+    // TCB-REPORT-002).
     std::vector<std::string> premises;
     // The contracts of other units a proven claim rests on, directly or through
     // the verified functions it calls. Such a claim is never free of
     // assumptions (SPEC.md TUBOUND-014).
     std::vector<ImportedRecord> imported;
+    // The rest of what the trust report says a proven claim rests on, each once,
+    // wherever it arrives from: the standard-library models ("std::vector"), the
+    // unsafe blocks ("file:line") and the runtime validations ("R at file:line")
+    // (SPEC.md STDMODEL-018, RUNTIMECHECK-014; TRUST.md TCB-REPORT-004,
+    // TCB-REPORT-005).
+    std::vector<std::string> models;
+    std::vector<std::string> unsafe;
+    std::vector<std::string> validations;
     // For a Law's obligation: the written proof whose evidence was submitted
     // for it, which the verdict accepted or refused, and every proof that names
     // the Law. Such a proof has no obligation of its own; the Law's verdict is

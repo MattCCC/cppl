@@ -50,15 +50,47 @@ std::string listed(const std::vector<std::string>& names) {
 }
 
 // What a proven claim rests on, as the trust report names it: its trusted Laws,
-// and the contracts of other units it was proven through (SPEC.md TUBOUND-014).
-std::string relative_to(const std::vector<std::string>& premises, const std::vector<std::string>& imported) {
-    std::string relative;
-    if (!premises.empty()) {
-        relative = " relative to trusted " + listed(premises);
+// the contracts of other units it was proven through, the standard-library
+// models, the unsafe blocks and the runtime validations, each kind apart and
+// whether it arrives directly or through what the claim uses (SPEC.md
+// TUBOUND-014, STDMODEL-018, RUNTIMECHECK-014; TRUST.md TCB-REPORT-002,
+// TCB-REPORT-004, TCB-REPORT-005).
+struct RestsOn {
+    std::vector<std::string> premises;
+    std::vector<std::string> imported;
+    std::vector<std::string> models;
+    std::vector<std::string> unsafe;
+    std::vector<std::string> validations;
+};
+
+void add_each(std::vector<std::string>& to, const std::vector<std::string>& values) {
+    for (const std::string& value : values) {
+        if (std::ranges::find(to, value) == to.end()) {
+            to.push_back(value);
+        }
     }
-    if (!imported.empty()) {
-        relative += (relative.empty() ? " relative to the imported " : " and the imported ") +
-                    std::string(imported.size() == 1 ? "contract of " : "contracts of ") + listed(imported);
+}
+
+std::string relative_to(const RestsOn& rests) {
+    std::vector<std::string> parts;
+    const auto part = [&parts](const std::vector<std::string>& names, const std::string& one, const std::string& many) {
+        if (!names.empty()) {
+            parts.push_back((names.size() == 1 ? one : many) + listed(names));
+        }
+    };
+    part(rests.premises, "trusted ", "trusted ");
+    part(rests.imported, "the imported contract of ", "the imported contracts of ");
+    std::vector<std::string> models;
+    models.reserve(rests.models.size());
+    for (const std::string& model : rests.models) {
+        models.push_back("the " + model + " model");
+    }
+    part(models, "", "");
+    part(rests.unsafe, "the unsafe block at ", "the unsafe blocks at ");
+    part(rests.validations, "the runtime validation of ", "the runtime validations of ");
+    std::string relative;
+    for (const std::string& each : parts) {
+        relative += (relative.empty() ? " relative to " : " and ") + each;
     }
     return relative;
 }
@@ -87,21 +119,17 @@ std::string summary(const Document& document, const CpplDeclaration& declaration
     if (records.empty()) {
         return "UNRESOLVED: no obligation was produced for it; the diagnostics say why";
     }
-    std::vector<std::string> premises;
-    std::vector<std::string> imported;
+    RestsOn rests;
     for (const driver::ObligationRecord* record : records) {
-        for (const std::string& premise : record->premises) {
-            if (std::ranges::find(premises, premise) == premises.end()) {
-                premises.push_back(premise);
-            }
-        }
+        add_each(rests.premises, record->premises);
         for (const driver::ImportedRecord& contract : record->imported) {
-            if (std::ranges::find(imported, contract.name) == imported.end()) {
-                imported.push_back(contract.name);
-            }
+            add_each(rests.imported, {contract.name});
         }
+        add_each(rests.models, record->models);
+        add_each(rests.unsafe, record->unsafe);
+        add_each(rests.validations, record->validations);
     }
-    const std::string relative = relative_to(premises, imported);
+    const std::string relative = relative_to(rests);
     if (records.size() == 1) {
         const driver::ObligationRecord& record = *records.front();
         std::string title = obligations::describe(record.status);
@@ -244,12 +272,12 @@ std::string verification_markdown(const Document& document, const CpplDeclaratio
     for (std::size_t index = 0; index < records.size() && index < kShown; ++index) {
         const driver::ObligationRecord& record = *records[index];
         markdown += "**" + obligations::describe(record.status) + "** " + obligations::describe(record.origin);
-        std::vector<std::string> imported;
-        imported.reserve(record.imported.size());
+        RestsOn rests{record.premises, {}, record.models, record.unsafe, record.validations};
+        rests.imported.reserve(record.imported.size());
         for (const driver::ImportedRecord& contract : record.imported) {
-            imported.push_back(contract.name + " (from `" + contract.origin + "`)");
+            rests.imported.push_back(contract.name + " (from `" + contract.origin + "`)");
         }
-        if (const std::string relative = relative_to(record.premises, imported); !relative.empty()) {
+        if (const std::string relative = relative_to(rests); !relative.empty()) {
             markdown += "," + relative;
         }
         markdown += "  \n";
@@ -266,6 +294,13 @@ std::string verification_markdown(const Document& document, const CpplDeclaratio
     }
     if (records.size() > kShown) {
         markdown += "and " + std::to_string(records.size() - kShown) + " more\n";
+    }
+    // Every PROVEN claim is also relative to the translation from C++ to the
+    // core, as the trust report states (TRUST.md 7 to 17, 29).
+    if (std::ranges::any_of(records, [](const driver::ObligationRecord* record) {
+            return record->status == obligations::Status::Proven;
+        })) {
+        markdown += "\nPROVEN relative to the translation from C++ to the core, which is trusted and not verified.\n";
     }
     while (!markdown.empty() && (markdown.back() == '\n' || markdown.back() == ' ')) {
         markdown.pop_back();
