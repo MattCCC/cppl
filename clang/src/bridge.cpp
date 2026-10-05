@@ -5211,7 +5211,9 @@ struct BodyLowering {
                 if (const std::optional<std::size_t> root = owning_root(call->arguments.front(), state)) {
                     return HandedStorage{root, std::nullopt, source::RepresentationKind::Span};
                 }
-                return std::nullopt;
+                // A span passed by value is a copy of a span local or
+                // parameter, and hands on the storage that one designates.
+                return handed_storage(call->arguments.front(), state);
             }
             if (!call->constructor && call->name == "data" && source::is_sequence(call->family)) {
                 stripped = strip_parens(call->object);
