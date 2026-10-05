@@ -85,6 +85,8 @@ opencode.jsonc
 docs/local/
 settings.local.json
 .roo
+.kilo
+kilo.jsonc
 
 # Editor extension build outputs
 editors/vscode/node_modules/
