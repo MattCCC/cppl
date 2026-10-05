@@ -8,6 +8,8 @@
 #include "cppl/kernel/types.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <compare>
+
 namespace {
 namespace k = cppl::kernel;
 const auto u32 = k::Type::integer(32, k::Signedness::Unsigned);
@@ -57,8 +59,8 @@ CPPL_TEST(projection_substitution_is_capture_safe_and_normalization_is_structura
     CPPL_CHECK_EQ(k::shift(field, 2), shifted);
     CPPL_CHECK_EQ(k::instantiate(field, k::Term::variable({2})), shifted);
     CPPL_CHECK_EQ(*k::normalize({}, field), field);
-    CPPL_CHECK(k::compare(field, k::Term::project(object, 0, variable)) != 0);
-    CPPL_CHECK(k::compare(field, field) == 0);
+    CPPL_CHECK(std::is_neq(k::compare(field, k::Term::project(object, 0, variable))));
+    CPPL_CHECK(std::is_eq(k::compare(field, field)));
 }
 
 // Indexed observation (FOUNDATIONS.md 45). The index is a term, so these tests
@@ -125,13 +127,13 @@ CPPL_TEST(indexed_observation_admits_neither_injectivity_nor_extensionality) {
     // TRUST.md TCB-CORE-016).
     const auto first = k::Term::element(indexed, variable, zero);
     const auto second = k::Term::element(indexed, variable, one);
-    CPPL_CHECK(k::compare(first, second) != 0);
+    CPPL_CHECK(std::is_neq(k::compare(first, second)));
     CPPL_CHECK(!k::check({}, k::Proposition::for_all(indexed, k::Proposition::equality(u32, first, second)),
                          k::ProofTerm::forall_introduction(indexed, k::ProofTerm::reflexivity()), {}));
     // Equal observations do not prove equal subjects: reflexivity closes a goal
     // only when the two sides are already the same term.
-    CPPL_CHECK(k::compare(first, k::Term::element(indexed, variable, zero)) == 0);
-    CPPL_CHECK(k::compare(first, k::Term::element(indexed, k::Term::variable({1}), zero)) != 0);
+    CPPL_CHECK(std::is_eq(k::compare(first, k::Term::element(indexed, variable, zero))));
+    CPPL_CHECK(std::is_neq(k::compare(first, k::Term::element(indexed, k::Term::variable({1}), zero))));
 }
 
 CPPL_TEST(indexed_observation_substitution_reaches_subject_and_index) {

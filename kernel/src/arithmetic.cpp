@@ -48,7 +48,7 @@ Wide highest(const IntType& type) {
 }
 
 std::strong_ordering compare_types(const IntType& lhs, const IntType& rhs) {
-    if (const auto order = lhs.width <=> rhs.width; order != 0) {
+    if (const auto order = lhs.width <=> rhs.width; std::is_neq(order)) {
         return order;
     }
     return static_cast<std::uint8_t>(lhs.signedness) <=> static_cast<std::uint8_t>(rhs.signedness);
@@ -57,7 +57,7 @@ std::strong_ordering compare_types(const IntType& lhs, const IntType& rhs) {
 std::strong_ordering compare_lists(const std::vector<Term>& lhs, const std::vector<Term>& rhs) {
     const std::size_t common = std::min(lhs.size(), rhs.size());
     for (std::size_t index = 0; index < common; ++index) {
-        if (const auto order = compare(lhs[index], rhs[index]); order != 0) {
+        if (const auto order = compare(lhs[index], rhs[index]); std::is_neq(order)) {
             return order;
         }
     }
@@ -70,7 +70,7 @@ struct FactorOrder {
         if (lhs.size() != rhs.size()) {
             return lhs.size() < rhs.size();
         }
-        return compare_lists(lhs, rhs) < 0;
+        return std::is_lt(compare_lists(lhs, rhs));
     }
 };
 
@@ -161,7 +161,7 @@ class Reader {
                 std::vector<Term> factors;
                 factors.reserve(left_factors.size() + right_factors.size());
                 std::ranges::merge(left_factors, right_factors, std::back_inserter(factors),
-                                   [](const Term& a, const Term& b) { return compare(a, b) < 0; });
+                                   [](const Term& a, const Term& b) { return std::is_lt(compare(a, b)); });
                 if (auto added = accumulate(result, factors, left_coefficient * right_coefficient); !added) {
                     return std::unexpected(added.error());
                 }
@@ -293,7 +293,7 @@ Term representability(PrimOp op, const IntType& type, std::vector<Term> operands
     }
     // A sum and a product of values do not depend on the order of the values,
     // so their operands are kept in term order and either spelling is one term.
-    if (op != PrimOp::SubFits && compare(operands[1], operands[0]) < 0) {
+    if (op != PrimOp::SubFits && std::is_lt(compare(operands[1], operands[0]))) {
         std::swap(operands[0], operands[1]);
     }
     return Term::primitive(op, type, std::move(operands));
@@ -310,7 +310,7 @@ Term conversion(const IntType& type, Term operand) {
 } // namespace
 
 std::strong_ordering compare(const Term& lhs, const Term& rhs) {
-    if (const auto order = lhs.node.index() <=> rhs.node.index(); order != 0) {
+    if (const auto order = lhs.node.index() <=> rhs.node.index(); std::is_neq(order)) {
         return order;
     }
     return std::visit(
@@ -320,19 +320,19 @@ std::strong_ordering compare(const Term& lhs, const Term& rhs) {
             if constexpr (std::is_same_v<Node, Var>) {
                 return left.index.value <=> right.index.value;
             } else if constexpr (std::is_same_v<Node, Literal>) {
-                if (const auto order = compare_types(left.type, right.type); order != 0) {
+                if (const auto order = compare_types(left.type, right.type); std::is_neq(order)) {
                     return order;
                 }
                 return left.value <=> right.value;
             } else if constexpr (std::is_same_v<Node, Call>) {
-                if (const auto order = left.callee.value <=> right.callee.value; order != 0) {
+                if (const auto order = left.callee.value <=> right.callee.value; std::is_neq(order)) {
                     return order;
                 }
                 return compare_lists(left.arguments, right.arguments);
             } else if constexpr (std::is_same_v<Node, Projection>) {
-                if (const auto order = describe(left.domain) <=> describe(right.domain); order != 0)
+                if (const auto order = describe(left.domain) <=> describe(right.domain); std::is_neq(order))
                     return order;
-                if (const auto order = left.index <=> right.index; order != 0)
+                if (const auto order = left.index <=> right.index; std::is_neq(order))
                     return order;
                 return compare_lists(left.arguments, right.arguments);
             } else if constexpr (std::is_same_v<Node, Element>) {
@@ -340,15 +340,15 @@ std::strong_ordering compare(const Term& lhs, const Term& rhs) {
                 // order by their index terms and are equal only when those
                 // terms are identical. Nothing here decides whether two
                 // different index terms denote the same element.
-                if (const auto order = describe(left.domain) <=> describe(right.domain); order != 0)
+                if (const auto order = describe(left.domain) <=> describe(right.domain); std::is_neq(order))
                     return order;
                 return compare_lists(left.arguments, right.arguments);
             } else {
                 if (const auto order = static_cast<std::uint8_t>(left.op) <=> static_cast<std::uint8_t>(right.op);
-                    order != 0) {
+                    std::is_neq(order)) {
                     return order;
                 }
-                if (const auto order = compare_types(left.type, right.type); order != 0) {
+                if (const auto order = compare_types(left.type, right.type); std::is_neq(order)) {
                     return order;
                 }
                 return compare_lists(left.arguments, right.arguments);
@@ -499,9 +499,10 @@ std::expected<Term, CoreError> normalize_primitive(PrimOp op, IntType type, std:
             if (!polynomial.monomials.empty()) {
                 Term positive = render(polynomial);
                 Term opposite = render(negated(polynomial));
-                equal = Term::primitive(PrimOp::Equal, type,
-                                        {compare(positive, opposite) <= 0 ? std::move(positive) : std::move(opposite),
-                                         literal_of(type, 0u)});
+                equal = Term::primitive(
+                    PrimOp::Equal, type,
+                    {std::is_lteq(compare(positive, opposite)) ? std::move(positive) : std::move(opposite),
+                     literal_of(type, 0u)});
             }
             return op == PrimOp::Equal ? equal : negate(std::move(equal));
         }

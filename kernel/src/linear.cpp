@@ -7,6 +7,7 @@
 #include "cppl/kernel/term.hpp"
 #include "cppl/kernel/types.hpp"
 
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -71,7 +72,7 @@ struct TypedTermOrder {
         if (lhs.type.signedness != rhs.type.signedness) {
             return lhs.type.signedness < rhs.type.signedness;
         }
-        return compare(lhs.term, rhs.term) < 0;
+        return std::is_lt(compare(lhs.term, rhs.term));
     }
 };
 
