@@ -28,6 +28,9 @@ states no results: a run's numbers belong to the run.
 3. **Proves the control green.** The copy is configured with warnings as
    errors, built, and its whole test suite run. A failure here stops the run: a
    later failure must be the mutation's doing, not something already broken.
+   The copy is compiled as `RelWithDebInfo` is, at `-O2` with `NDEBUG`, but
+   without debug information, which no test reads and which is most of what
+   relinking costs.
 4. **Applies each mutation alone.** The anchor is replaced, the copy rebuilt
    incrementally, and the entry's tests run with a timeout of 120 seconds each;
    then the file is restored before the next entry.
@@ -183,6 +186,18 @@ the checkout does not is refused. Every file whose content or time differs from
 the checkout's is touched after the copy, so no object built from a mutation an
 interrupted run left applied, or restored without rebuilding, survives; the copy
 is written in pax format, which keeps each time to the nanosecond, so an
-unchanged file keeps its time and is not rebuilt. The control run is repeated on
-every invocation, so a run interrupted part way is resumed soundly by running,
-with `--reuse` and `--only`, the entries that have no outcome yet.
+unchanged file keeps its time and is not rebuilt. A run interrupted part way is
+resumed soundly by running, with `--reuse` and `--only`, the entries that have
+no outcome yet.
+
+The control run is repeated on every invocation unless its inputs are byte for
+byte those of a green control run of the same copy. After the control build,
+the runner digests every file of the copy, every file the build wrote under
+`bin/` and `lib/` (the binaries themselves, so none of them can be stale), the
+build's configuration, the programs it found outside the tree, the headers its
+Clang reads, the libraries the compiler loads, the tools running the
+experiment and the environment the tests see. A green control run records that
+digest in `control.passed`; a later invocation whose digest is the same does
+not run the suite again, and says so. Any difference, or any input that cannot
+be read, runs it again, and the digest is recorded only once it is green. A
+new run directory always runs it, since its binaries name their own copy.
