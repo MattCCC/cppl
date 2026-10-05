@@ -118,10 +118,13 @@ refused. The predicate is stated by the membership a refined function parameter
 already uses, so a refinement of a refinement and an indexed refinement range
 over every predicate that applies. `Eq<R>(a, b)` at a refinement type, or at a
 type with a refined component, is refused: its operands are not shown to be
-values of `R`. Until this was so, a binder ranged over the whole base type, so
-a quantified premise was stronger than written and a trusted law over a refined
-parameter was assumed of every base value; both proved false claims
-(`TRUST.md` 36.3). Evidence: `e2e_refined_quantifiers` and its refused twin,
+values of `R`. A claim in a verified body, `contradiction p(x);`, naming a proof
+over a refined parameter is refused, because nothing there establishes the
+membership the instantiation owes: a completeness limit, which fails closed.
+Until this was so, a binder ranged over the whole base type, so a quantified
+premise was stronger than written and a trusted law over a refined parameter
+was assumed of every base value; both proved false claims (`TRUST.md` 36.3).
+Evidence: `e2e_refined_quantifiers` and its refused twin,
 `negative_quantified_propositions`, `unit_quantified_propositions_test`.
 Conjunction of supported Boolean predicates is now `PROTOTYPE`: nested `&&`
 works in Laws, direct proofs, preconditions, postconditions and `assume`, under

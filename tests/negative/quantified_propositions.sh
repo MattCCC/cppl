@@ -333,6 +333,24 @@ proof one_is_two() proves (1u == 2u) {
     contradiction small_below(10u);
 }
 CPP
+# A path a verified body claims cannot occur, by a proof over a refined
+# parameter instantiated at a value the path does not show to be a member: the
+# path `x >= 10u` occurs, so the contract below is false.
+reject refined_parameter_path_claim <<'CPP'
+type Small = unsigned where (self < 10u);
+trusted law small_below(Small s) proves (s < 10u);
+proof below(Small s) proves (s < 10u) {
+    exact small_below(s);
+}
+verified unsigned below_ten(unsigned x)
+    ensures (result < 10u)
+{
+    if (x >= 10u) {
+        contradiction below(x);
+    }
+    return x;
+}
+CPP
 # `Eq<R>` equates two values of `R`. Its operands are not shown to be values of
 # it, so it is refused rather than stated of values outside the type.
 reject refined_formal_equality <<'CPP'
@@ -349,7 +367,7 @@ for name in refined_binder_instantiated_outside refined_binder_every_unsigned re
     grep -q 'does not prove what proof' "$run/$name.log"
 done
 for name in refined_binder_contradiction refined_binder_contradiction_in_implication \
-    refined_parameter_trusted_law_contradiction; do
+    refined_parameter_trusted_law_contradiction refined_parameter_path_claim; do
     grep -q 'does not establish an equality, so it cannot state a contradiction' "$run/$name.log"
 done
 grep -q "leaves a goal open" "$run/refined_binder_membership_left_open.log"
