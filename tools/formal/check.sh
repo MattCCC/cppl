@@ -26,7 +26,7 @@ cd "${out}"
 
 "${coqc}" --version
 
-for module in Syntax Semantics Typing Checker Normalize Consistency Certificate; do
+for module in Syntax Semantics Typing Checker Normalize Consistency Certificate Linear; do
     "${coqc}" -Q . CppL "${module}.v"
 done
 

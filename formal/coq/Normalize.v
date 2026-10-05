@@ -1473,7 +1473,8 @@ End Sound.
 (* check_sound, with reflexivity deciding equality by the kernel's
    normalization: every premise about normalization is discharged, and what
    remains is that the interpretation models the definitions, observations and
-   calls, and the M3 premise about linear arithmetic. *)
+   calls, and the M3 premise about linear arithmetic, which Linear.v
+   discharges (check_sound_closed). *)
 Theorem check_sound_normalized :
   forall (sig : nat -> option (list ty * ty)),
   (forall d ps R, sig d = Some (ps, R) -> ty_ok R = true) ->

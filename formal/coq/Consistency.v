@@ -8,6 +8,8 @@
    checker is rules 2 to 8 and 10 to 15 of KERNEL.md 11 exactly; the kernel
    differs from it only in deciding reflexivity by normalization (rule 1) and
    in having rule 9, whose soundness is the M2 and M3 hypotheses of Checker.v.
+   Normalize.v and Linear.v discharge those for models of the kernel's
+   normalization and arithmetic (check_sound_closed).
 
    Audit.v prints the assumptions every theorem rests on. *)
 
