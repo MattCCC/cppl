@@ -184,6 +184,31 @@ spelled_language_mode_case() {
 }
 case_run spelled_language_mode_case
 
+# SPEC: TUBOUND-005 -- a resource `#embed` reads is a file the unit was
+# preprocessed from, though no line marker names it: the interface is bound to
+# its content, and an edit to it makes the interface stale (TRUST.md
+# TCB-XTU-008).
+embedded_resource_case() {
+    mkdir -p embedded
+    printf 'A' > embedded/letter.bin
+    printf '#pragma once\n\nverified unsigned embedded()\n    ensures (result == 65u);\n' > embedded/embedded.hpp
+    printf '#include "embedded.hpp"\n\nunsigned embedded() {\n    return\n#embed "letter.bin"\n        ;\n}\n' \
+        > embedded/embedded.cpp
+    printf '#include "embedded.hpp"\n\nverified unsigned use_embedded()\n    ensures (result == 65u)\n{\n    return embedded();\n}\n' \
+        > embedded/use.cpp
+    # The build's own dependency options name another file and target, and
+    # change nothing the interface is bound to.
+    accept embedded_producer embedded/embedded.cpp -std=c++20 --cppl-emit-interface=embedded.cppli \
+        -MD -MF embedded_producer.d -MT custom_target
+    grep -q "^source [0-9a-f]* .*/embedded/letter\\.bin$" embedded.cppli ||
+        fail "the interface is not bound to the resource its unit embeds"
+    accept embedded_consumer embedded/use.cpp -std=c++20 -I embedded --cppl-import-interface=embedded.cppli
+    printf 'B' > embedded/letter.bin
+    refuse embedded_stale "it is stale: '[^']*/embedded/letter\\.bin' has changed since it was produced" \
+        embedded/use.cpp -std=c++20 -I embedded --cppl-import-interface=embedded.cppli
+}
+case_run embedded_resource_case
+
 # SPEC: TUBOUND-005 -- malformed, of another version, from another build: each
 # written out, and each refused before anything in it is read as a contract.
 case_run refuse truncated_fixture "it is truncated" client.cpp "--cppl-import-interface=$NEGATIVE/xtu_truncated.cppli"

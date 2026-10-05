@@ -12,6 +12,7 @@
 #include "cppl/obligations/interface.hpp"
 
 #include <expected>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -40,10 +41,22 @@ namespace cppl::driver::detail {
                                                 const artifact::Configuration& configuration,
                                                 diagnostics::Engine& engine);
 
+// Every file Clang's preprocessor reads to preprocess `input` under
+// `arguments`, as Clang itself lists them in a dependency rule: the input, each
+// header, a file forced in with `-include` or `-imacros`, the header a
+// precompiled header was built from, and each resource `#embed` pulls in,
+// which no line marker names (SPEC.md TUBOUND-005, TRUST.md TCB-XTU-008). The
+// arguments' own dependency options are left out, so no dependency file the
+// build asked for is written by this. `header` reads the input as a header.
+[[nodiscard]] std::expected<std::vector<std::string>, std::string> files_read(const std::string& clang,
+                                                                              const std::vector<std::string>& arguments,
+                                                                              const std::string& input, bool header,
+                                                                              const std::filesystem::path& scratch);
+
 // The files a unit was preprocessed from, each with its content now, for the
 // interface to bind to (SPEC.md TUBOUND-005). `files` are the names the
-// preprocessor's line markers gave; a name that is not a file, such as
-// `<built-in>`, is not one of them.
+// preprocessor's line markers gave and those `files_read` gave; a line-marker
+// name that is not a file, such as `<built-in>`, is not one of them.
 [[nodiscard]] std::expected<std::vector<artifact::SourceFile>, std::string> source_files(
     const std::vector<std::string>& files);
 

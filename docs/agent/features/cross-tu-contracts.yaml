@@ -97,6 +97,8 @@ implementation:
     - compiler/driver/src/options.cpp
     - compiler/driver/src/interface_io.hpp
     - compiler/driver/src/interface_io.cpp
+    - compiler/driver/include/cppl/driver/dependencies.hpp
+    - compiler/driver/src/dependencies.cpp
     - compiler/driver/src/pipeline.hpp
     - compiler/driver/src/pipeline.cpp
     - compiler/driver/src/driver.cpp
@@ -173,6 +175,7 @@ tests:
     - tests/fixtures/negative/xtu_other_semantics.cppli
   unit:
     - tests/unit/interface_test.cpp
+    - tests/unit/dependencies_test.cpp
     - tests/unit/cross_unit_contracts_test.cpp
     - tests/unit/lsp_interfaces_test.cpp
     - tests/unit/lsp_compile_commands_test.cpp

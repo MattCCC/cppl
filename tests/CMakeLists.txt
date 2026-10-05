@@ -189,6 +189,9 @@ target_link_libraries(unit_trust_closure_test PRIVATE cppl_kernel cppl_obligatio
 cppl_add_unit_test(unit_trust_report_test unit/trust_report_test.cpp)
 target_link_libraries(unit_trust_report_test PRIVATE cppl_driver cppl_lsp)
 
+cppl_add_unit_test(unit_dependencies_test unit/dependencies_test.cpp)
+target_link_libraries(unit_dependencies_test PRIVATE cppl_driver)
+
 cppl_add_unit_test(unit_contracts_test unit/contracts_test.cpp)
 target_link_libraries(unit_contracts_test PRIVATE cppl_automation)
 # Composition's search budget carries its own contract, so the test states it

@@ -3,6 +3,7 @@
 #include "cppl/artifact/interface.hpp"
 #include "cppl/clang/bridge.hpp"
 #include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/driver/dependencies.hpp"
 #include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
 #include "cppl/kernel/version.hpp"
@@ -427,6 +428,51 @@ obligations::Imports read_imports(const std::vector<std::string>& paths, const a
         imports.refused.push_back(std::move(entry));
     }
     return imports;
+}
+
+std::expected<std::vector<std::string>, std::string> files_read(const std::string& clang,
+                                                                const std::vector<std::string>& arguments,
+                                                                const std::string& input, bool header,
+                                                                const std::filesystem::path& scratch) {
+    // The build's own dependency options would name another file and another
+    // target, or write a file the build owns.
+    std::vector<std::string> query;
+    for (std::size_t index = 0; index < arguments.size(); ++index) {
+        const std::string& argument = arguments[index];
+        if (argument == "-MF" || argument == "-MT" || argument == "-MQ" || argument == "-MJ") {
+            ++index;
+            continue;
+        }
+        if (argument == "-M" || argument == "-MM" || argument == "-MD" || argument == "-MMD" || argument == "-MP" ||
+            argument == "-MG" || argument == "-MV" || argument.starts_with("-MF") || argument.starts_with("-MT") ||
+            argument.starts_with("-MQ") || argument.starts_with("-MJ")) {
+            continue;
+        }
+        query.push_back(argument);
+    }
+    if (header) {
+        query.emplace_back("-x");
+        query.emplace_back("c++-header");
+    }
+    constexpr std::string_view kTarget = "cppl-sources";
+    const std::filesystem::path rule = scratch / "sources.d";
+    query.push_back(input);
+    query.insert(query.end(), {"-M", "-MF", rule.string(), "-MT", std::string(kTarget), "-w"});
+
+    const ProcessResult listed = run_capturing_stdout(clang, query, scratch / "sources.out");
+    if (!listed.started || listed.signaled || listed.exit_code != 0) {
+        return std::unexpected("the Clang driver '" + clang + "' did not list the files it reads" +
+                               (listed.error.empty() ? std::string{} : ": " + listed.error));
+    }
+    const std::expected<std::string, std::string> text = read_bounded(rule);
+    if (!text) {
+        return std::unexpected("the list of the files it reads cannot be used: " + text.error());
+    }
+    std::expected<std::vector<std::string>, std::string> files = make_prerequisites(*text, kTarget);
+    if (!files) {
+        return std::unexpected("the list of the files it reads cannot be read: " + files.error());
+    }
+    return files;
 }
 
 std::expected<std::vector<artifact::SourceFile>, std::string> source_files(const std::vector<std::string>& files) {

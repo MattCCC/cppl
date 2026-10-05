@@ -270,6 +270,13 @@ analysis-target-compared	compiler/driver/src/pipeline.cpp	if (analyzed->unit.tar
 analysis-target-named	compiler/driver/src/target.cpp	given.push_back("--target=" + target.triple);	(void)target.triple;	^negative_analysis_target$
 analysis-configuration-read	compiler/driver/src/target.cpp	given.push_back("--config=" + file);	(void)file;	^negative_analysis_target$
 analysis-default-configuration-unread	compiler/driver/src/target.cpp	given.emplace_back("--no-default-config");	(void)given;	^negative_analysis_target$
+xtu-files-read-recorded	compiler/driver/src/driver.cpp	files.insert(files.end(), read->begin(), read->end());	(void)read;	^negative_cross_tu$
+xtu-files-read-own-rule	compiler/driver/src/interface_io.cpp	if (argument == "-MF" || argument == "-MT" || argument == "-MQ" || argument == "-MJ") {	if (false) {	^negative_cross_tu$
+dependency-rule-target	compiler/driver/src/dependencies.cpp	if (!text.starts_with(target) || text.size() == target.size() || text[target.size()] != ':') {	if (false) {	^unit_dependencies_test$
+dependency-one-rule	compiler/driver/src/dependencies.cpp	if (!blank(text[rest])) {	if (false && !blank(text[rest])) {	^unit_dependencies_test$
+dependency-escaped-space	compiler/driver/src/dependencies.cpp	name.push_back(' ');	(void)0;	^unit_dependencies_test$
+dependency-escaped-hash	compiler/driver/src/dependencies.cpp	name.push_back('#');	(void)0;	^unit_dependencies_test$
+dependency-escaped-dollar	compiler/driver/src/dependencies.cpp	name.push_back('$');	(void)0;	^unit_dependencies_test$
 lsp-machine-options-kept	src/lsp/src/compile_commands.cpp	one_of(argument, kSwitches) || machine_option(argument) ||	one_of(argument, kSwitches) || (false && machine_option(argument)) ||	^lsp_compile_commands_test$|^lsp_interfaces_test$
 lsp-architecture-kept	src/lsp/src/compile_commands.cpp	({"-target", "-arch", "-mthread-model", "--std"});	({"-target", "-mthread-model", "--std"});	^lsp_compile_commands_test$
 lsp-unpassed-frontend-options	src/lsp/src/compile_commands.cpp	if (argument == "-Xclang" || argument.starts_with("-Xarch_")) {	if (false && (argument == "-Xclang" || argument.starts_with("-Xarch_"))) {	^lsp_compile_commands_test$|^lsp_interfaces_test$

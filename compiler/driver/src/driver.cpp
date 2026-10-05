@@ -755,6 +755,19 @@ int run_driver(int argc, const char* const* argv) {
         recorded.configuration = *configuration;
         std::error_code error;
         recorded.unit = std::filesystem::absolute(options.inputs.front().path, error).lexically_normal().string();
+        // Line markers name every file text was read from but not a resource
+        // `#embed` reads, so the interface is bound to the files Clang lists as
+        // read as well: an edit to any of them makes it stale (TRUST.md
+        // TCB-XTU-008).
+        const std::expected<std::vector<std::string>, std::string> read =
+            detail::files_read(options.clang, base_arguments(options), options.inputs.front().path,
+                               options.inputs.front().is_header, scratch.path());
+        if (!read) {
+            std::cerr << "cppl: error: cannot record what '" << options.inputs.front().path
+                      << "' was verified from: " << read.error() << "\n";
+            return fail_with(1);
+        }
+        files.insert(files.end(), read->begin(), read->end());
         std::expected<std::vector<artifact::SourceFile>, std::string> sources = detail::source_files(files);
         if (error || !sources) {
             std::cerr << "cppl: error: cannot record what '" << options.inputs.front().path

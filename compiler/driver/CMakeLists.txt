@@ -6,6 +6,7 @@
 add_library(cppl_driver STATIC
     src/buffer_compile.cpp
     src/crash.cpp
+    src/dependencies.cpp
     src/driver.cpp
     src/interface_io.cpp
     src/options.cpp
