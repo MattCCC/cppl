@@ -5549,8 +5549,10 @@ struct BodyLowering {
                     continue;
                 }
                 return reject("'" + handed.spelling + "', an element of '" + state[owner].spelling +
-                              "', is passed to '" + qualified_name_of(callee) + "' by reference, and the same call "
-                              "passes '" + holder.spelling +
+                              "', is passed to '" + qualified_name_of(callee) +
+                              "' by reference, and the same call "
+                              "passes '" +
+                              holder.spelling +
                               "' by a reference through which the callee may reallocate it and end that element's "
                               "lifetime; the storage a reference designates must not be storage the callee can "
                               "replace (SPEC.md STDMODEL-016)");
