@@ -24,12 +24,13 @@ for standard in c++17 c++20 c++23; do
 
     # The canonical lowering, verified as text: a refinement declaration becomes
     # the alias for its base type and nothing else. No wrapper, no predicate, no
-    # runtime check.
-    grep -Fqx 'using NonNegative = int;' "$run/runtime.cpp"
-    grep -Fqx 'using Percentage = NonNegative;' "$run/runtime.cpp"
-    grep -Fqx 'using Small = unsigned;' "$run/runtime.cpp"
-    grep -Fqx 'template <unsigned n> using Index = unsigned;' "$run/runtime.cpp"
-    grep -Fqx 'template <unsigned n> using Short = unsigned;' "$run/runtime.cpp"
+    # runtime check. Spaces pad it to the length of the declaration's last line,
+    # so nothing written after it there moves (SPEC.md ERASE-018).
+    grep -Eqx 'using NonNegative = int; *' "$run/runtime.cpp"
+    grep -Eqx 'using Percentage = NonNegative; *' "$run/runtime.cpp"
+    grep -Eqx 'using Small = unsigned; *' "$run/runtime.cpp"
+    grep -Eqx 'template <unsigned n> using Index = unsigned; *' "$run/runtime.cpp"
+    grep -Eqx 'template <unsigned n> using Short = unsigned; *' "$run/runtime.cpp"
     ! grep -q 'where' "$run/runtime.cpp"
     ! grep -q '\bself\b' "$run/runtime.cpp"
     ! grep -q 'struct Percentage\|class Percentage' "$run/runtime.cpp"
@@ -74,7 +75,7 @@ done
 # The five declarations are consecutive in the fixture and stay consecutive here,
 # which is what keeps a Clang diagnostic on a later line pointing where the
 # author wrote it.
-first=$(awk '/^using NonNegative = int;$/ { print NR; exit }' "$run/runtime.cpp")
+first=$(awk '/^using NonNegative = int; *$/ { print NR; exit }' "$run/runtime.cpp")
 test -n "$first"
 for offset in 1 2 3 4; do
     line=$(awk -v n="$((first + offset))" 'NR == n' "$run/runtime.cpp")

@@ -120,6 +120,25 @@ case_run refuse directive_inside_expression \
 case_run refuse directive_between_contract_clauses \
     "directive_between_contract_clauses.cpp:11:9: error [cpp-semantic]: expected function body after function declarator"
 
+# refuse_alone <name> <diagnostic>: refused with that diagnostic and no other
+# error, none internal, and no name only the compiler generates.
+refuse_alone() {
+    local name="$1"
+    refuse "$@"
+    if [ "$(grep -c 'error \[' "$run/$name.log")" -ne 1 ] || grep -q 'error \[internal\]' "$run/$name.log" ||
+        grep -q '__cppl_' "$run/$name.log"; then
+        echo "$name was refused with more than its one diagnostic:" >&2
+        cat "$run/$name.log" >&2
+        exit 1
+    fi
+}
+
+# SPEC: ERASE-018
+# A lowering that cannot keep the code after it on its line in its column is
+# refused by name, rather than compiled with that code moved.
+case_run refuse_alone refinement_lowering_moves_columns \
+    "refinement_lowering_moves_columns.cpp:8:1: error [unsupported-semantics]: refinement type 'Positive' lowers to more C++ than its declaration takes on its line, so the code after it there would move"
+
 # Every refused fixture, whichever stage refuses it.
 swept=0
 for fixture in "$FIXTURES"/*.cpp; do

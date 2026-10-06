@@ -461,7 +461,10 @@ struct RefinementType {
     // The function a validation expression of this unit calls to test a value
     // against the predicate at run time (SPEC.md RUNTIMECHECK-021), empty when
     // no validation expression names this refinement. The declaration lowers to
-    // it beside its alias only then.
+    // it beside its alias only then. It is named `__cppl_v_` and the
+    // refinement's name, one character shorter than `validate<R>`, so a call of
+    // it fits where the validation's callee was written and nothing after it on
+    // its line moves (SPEC.md ERASE-018).
     std::string validator = {};
 };
 

@@ -42,6 +42,19 @@ char blanked(char original) {
     return original == '\n' ? '\n' : ' ';
 }
 
+// The column, from zero, of byte `offset` of `text`.
+std::size_t column_of(std::string_view text, std::size_t offset) {
+    const std::size_t newline = offset == 0 ? std::string_view::npos : text.rfind('\n', offset - 1);
+    return newline == std::string_view::npos ? offset : offset - newline - 1;
+}
+
+// Whether nothing but spaces follows byte `offset` of `text` on its line, so
+// that no column after it can be observed.
+bool rest_of_line_blank(std::string_view text, std::size_t offset) {
+    const std::size_t end = std::min(text.find('\n', offset), text.size());
+    return text.substr(offset, end - offset).find_first_not_of(" \t\r") == std::string_view::npos;
+}
+
 // A runtime-bearing declaration and the canonical C++ it must have become.
 struct Lowering {
     source::ByteSpan span;
@@ -137,6 +150,7 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
     bool spans_erased = std::ranges::all_of(
         erased, [&original](const source::ByteSpan& span) { return span.end() <= original.size(); });
     bool directives_kept = true;
+    bool columns_preserved = true;
     bool lowerings_canonical = true;
     // A preprocessor directive line is never C++L, so one inside a proof-only
     // span stays in the program exactly as written: a `#pragma` erased with the
@@ -215,6 +229,13 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
         report.lowered_bytes += lowering.expected.size();
         runtime_offset += lowering.expected.size();
         source_offset = lowering.span.end();
+        // What follows a lowering on its line keeps its column, which C++
+        // observes through `__builtin_COLUMN()` and `std::source_location`,
+        // unless nothing follows it there (SPEC.md ERASE-018).
+        if (column_of(runtime, runtime_offset) != column_of(original, source_offset) &&
+            !rest_of_line_blank(original, source_offset)) {
+            columns_preserved = false;
+        }
     }
     if (only_deletions && directives_kept && lowerings_canonical) {
         compare_until(original.size());
@@ -231,6 +252,7 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
     report.spans_erased = spans_erased;
     report.lowerings_canonical = lowerings_canonical;
     report.directives_kept = directives_kept;
+    report.columns_preserved = columns_preserved;
 
     if (!report.preserved()) {
         diagnostics::Diagnostic diagnostic;

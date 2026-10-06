@@ -536,6 +536,7 @@ endforeach()
 cppl_add_script_test(e2e_abi_equivalence e2e/abi_equivalence.sh)
 cppl_add_script_test(e2e_erasure_source_mapping e2e/erasure_source_mapping.sh)
 cppl_add_script_test(e2e_erasure_directives e2e/erasure_directives.sh)
+cppl_add_script_test(e2e_erasure_positions e2e/erasure_positions.sh)
 cppl_add_script_test(negative_erasure negative/erasure.sh)
 
 cppl_add_script_test(negative_broken_implementation negative/broken_implementation.sh)

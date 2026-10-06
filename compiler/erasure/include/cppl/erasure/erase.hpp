@@ -19,16 +19,18 @@ struct Report {
     std::size_t lowered_spans = 0;
     std::size_t lowered_bytes = 0;
 
-    // The checked properties. All five must hold for the runtime program to be
+    // The checked properties. All six must hold for the runtime program to be
     // accepted for code generation.
     bool only_deletions = false;      // outside a lowering, no byte was added or altered
     bool spans_erased = false;        // every proof-only span is blank, keeping only its newlines and directives
     bool directives_kept = false;     // every directive line inside a proof-only span is kept byte for byte
     bool lines_preserved = false;     // every line of the remaining program is where it was
+    bool columns_preserved = false;   // what follows a lowering on its line is at the column it was
     bool lowerings_canonical = false; // each lowering is exactly what its declaration means
 
     [[nodiscard]] bool preserved() const noexcept {
-        return only_deletions && spans_erased && directives_kept && lines_preserved && lowerings_canonical;
+        return only_deletions && spans_erased && directives_kept && lines_preserved && columns_preserved &&
+               lowerings_canonical;
     }
 };
 

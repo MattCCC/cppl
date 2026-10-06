@@ -9,11 +9,11 @@
 #include <vector>
 
 using Percentage = int;
-[[maybe_unused]] static inline bool __cppl_validate_0(int self) {
+[[maybe_unused]] static inline bool __cppl_v_Percentage(int self) {
     return static_cast<bool>(self >= 0 && self <= 100);
 }
 using Positive = int;
-[[maybe_unused]] static inline bool __cppl_validate_1(int self) {
+[[maybe_unused]] static inline bool __cppl_v_Positive(int self) {
     return static_cast<bool>(self > 0);
 }
 using Small = unsigned;
@@ -193,7 +193,7 @@ void clobber(int* target) {
 }
 
 int validated_percentage(int raw) {
-    if (__cppl_validate_0(raw)) {
+    if (__cppl_v_Percentage(raw)) {
         Percentage p = raw;
         return p;
     }
@@ -201,7 +201,7 @@ int validated_percentage(int raw) {
 }
 
 int validated_or_one(int raw) {
-    if (!__cppl_validate_1(raw)) {
+    if (!__cppl_v_Positive(raw)) {
         return 1;
     }
     Positive p = raw;
@@ -209,7 +209,7 @@ int validated_or_one(int raw) {
 }
 
 int validated_below(int raw) {
-    if (raw < 1000 && __cppl_validate_1(raw)) {
+    if (raw < 1000 && __cppl_v_Positive(raw)) {
         Positive p = raw;
         return p;
     }
@@ -217,7 +217,7 @@ int validated_below(int raw) {
 }
 
 int validated_later(int raw) {
-    const bool positive = __cppl_validate_1(raw);
+    const bool positive = __cppl_v_Positive(raw);
     if (positive) {
         Positive p = raw;
         return p;
@@ -227,11 +227,11 @@ int validated_later(int raw) {
 
 int revalidated(int raw) {
     int value = raw;
-    if (!__cppl_validate_1(value)) {
+    if (!__cppl_v_Positive(value)) {
         return 1;
     }
     value = value - 1;
-    if (!__cppl_validate_1(value)) {
+    if (!__cppl_v_Positive(value)) {
         return 2;
     }
     Positive p = value;
@@ -245,7 +245,7 @@ int through_validation(int raw) {
 int validated_halvings(int raw) {
     int x = raw;
     int steps = 0;
-    while (__cppl_validate_1(x)) {
+    while (__cppl_v_Positive(x)) {
         Positive p = x;
         x = p / 2;
         if (steps < 100) {

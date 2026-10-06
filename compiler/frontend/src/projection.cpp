@@ -61,22 +61,51 @@ void blank(std::string& buffer, const source::ByteSpan& span, const TokenStream&
 // `lowered`, the canonical C++ a runtime-bearing construct means, standing where
 // `span` was written: it occupies the span's first line, and every later line
 // of the span stays a line, holding nothing but the directive written on it if
-// it is a directive line (blank).
+// it is a directive line (blank). The span's last line is padded with spaces to
+// the length it had, so whatever follows the span on that line keeps its column
+// (SPEC.md ERASE-018). A lowering longer than a span written on one line cannot
+// be padded, and is left longer (`lowering_moves_columns`).
 std::string in_place_of(const TokenStream& stream, const source::ByteSpan& span, std::string_view lowered) {
     std::string text(lowered);
     const std::string_view written = stream.spelling(span);
+    std::size_t last_line = 0; // where the span's last line starts within it
     for (std::size_t at = 0; at < written.size(); ++at) {
         if (written[at] != '\n') {
             continue;
         }
         text += '\n';
+        last_line = at + 1;
         const std::size_t line = span.offset + at + 1;
         if (const Directive* directive = directive_at(stream, line);
             directive != nullptr && directive->span.offset == line && directive->span.end() <= span.end()) {
             text += stream.spelling(directive->span);
         }
     }
+    const std::size_t written_last = written.size() - last_line;
+    const std::size_t lowered_last = text.size() - (last_line == 0 ? 0 : text.rfind('\n') + 1);
+    if (lowered_last < written_last) {
+        text.append(written_last - lowered_last, ' ');
+    }
     return text;
+}
+
+// Whether `lowered`, standing where `span` was written, would move text written
+// after the span on its last line: it is longer than the span's last line, and
+// something other than spaces follows the span there.
+bool lowering_moves_columns(const TokenStream& stream, const source::ByteSpan& span, const std::string& lowered) {
+    const std::string_view text = stream.text();
+    const std::string_view written = stream.spelling(span);
+    const std::size_t newline = written.rfind('\n');
+    const std::size_t written_last = newline == std::string_view::npos ? written.size() : written.size() - newline - 1;
+    const std::size_t lowered_newline = lowered.rfind('\n');
+    const std::size_t lowered_last =
+        lowered_newline == std::string::npos ? lowered.size() : lowered.size() - lowered_newline - 1;
+    if (lowered_last <= written_last) {
+        return false;
+    }
+    const std::size_t line_end = std::min(text.find('\n', span.end()), text.size());
+    const std::string_view after = text.substr(span.end(), line_end - span.end());
+    return after.find_first_not_of(" \t\r") != std::string_view::npos;
 }
 
 // The directives other than line markers written within `span`, each on a line
@@ -170,19 +199,47 @@ Generated at_written_position(const TokenStream& stream, const source::ByteSpan&
     return text;
 }
 
-// A line directive and indentation after which the text resumes at the position
-// the token at `offset` was written at, so an insertion before it moves nothing
-// a diagnostic points at.
+// A line directive and indentation after which the analysis text resumes, on a
+// line of its own, with byte `offset` of the scanned text at the line and the
+// column it has there. That is where the runtime program has it too, since
+// erasure moves no byte to another line or column, so C++ that observes a
+// position after generated text -- `__builtin_LINE()`, `__builtin_COLUMN()`,
+// `std::source_location` -- observes the position the program observes, in a
+// template argument as anywhere else (SPEC.md ERASE-018).
+//
+// The column is the byte's column in the scanned text, which is what Clang
+// counts in both programs, and never the column its author wrote it at: the
+// preprocessor writes a run of spaces between tokens as one.
 std::string resume_at(const TokenStream& stream, std::size_t offset) {
+    const std::string_view text = stream.text();
+    offset = std::min(offset, text.size());
+    const std::size_t line_start = offset == 0 ? 0 : text.rfind('\n', offset - 1) + 1; // npos + 1 is 0
     const std::vector<Token>& tokens = stream.tokens();
-    const auto at = std::ranges::lower_bound(tokens, offset, {}, [](const Token& token) { return token.span.offset; });
-    if (at == tokens.end() || at->kind == TokenKind::EndOfFile) {
+    // The presumed line is a token's: the last one ending at or before the byte
+    // on its line, or else the first one starting at or after it there.
+    const Token* anchor = nullptr;
+    std::uint32_t line = 0;
+    const auto after =
+        std::ranges::lower_bound(tokens, offset, {}, [](const Token& token) { return token.span.offset; });
+    if (after != tokens.begin()) {
+        const Token& before = *std::prev(after);
+        if (before.kind != TokenKind::EndOfFile && before.span.end() <= offset && before.span.end() >= line_start) {
+            anchor = &before;
+            line = before.line + static_cast<std::uint32_t>(std::ranges::count(before.text, '\n'));
+        }
+    }
+    if (anchor == nullptr && after != tokens.end() && after->kind != TokenKind::EndOfFile &&
+        text.substr(offset, after->span.offset - offset).find('\n') == std::string_view::npos) {
+        anchor = &*after;
+        line = after->line;
+    }
+    if (anchor == nullptr) {
         return {};
     }
-    const source::SourceLocation location = stream.location_of(*at);
-    std::string text = line_directive(location.line, location.file);
-    text.append(location.column > 1 ? location.column - 1 : 0, ' ');
-    return text;
+    std::string resumed = "\n";
+    resumed += line_directive(line, stream.location_of(*anchor).file);
+    resumed.append(offset - line_start, ' ');
+    return resumed;
 }
 
 // The tokens of a span, on one line. Two tokens the author wrote adjacently stay
@@ -681,9 +738,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         std::string inserted = "\n[[maybe_unused]] bool\n";
         inserted += line_directive(block.location.line, block.location.file);
         inserted += std::string(block.location.column > 1 ? block.location.column - 1 : 0, ' ');
-        inserted += marker.name + " = true;\n";
-        inserted += line_directive(block.body_open_line, block.location.file);
-        inserted += std::string(block.body_open_column > 1 ? block.body_open_column - 1 : 0, ' ');
+        inserted += marker.name + " = true;";
+        inserted += resume_at(stream, block.body_open);
         edits.push_back(Edit{source::ByteSpan{block.body_open, 0}, std::move(inserted)});
         projection.unsafe_blocks.push_back(std::move(marker));
     }
@@ -700,9 +756,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         const std::size_t column = ghost.location.column > 1 ? ghost.location.column - 1 : 0;
         std::string inserted = "\n[[maybe_unused]] bool\n";
         inserted += line_directive(ghost.location.line, ghost.location.file);
-        inserted += std::string(column, ' ') + name + " = true;\n";
-        inserted += line_directive(ghost.location.line, ghost.location.file);
-        inserted += std::string(column + ghost.keyword.length, ' ');
+        inserted += std::string(column, ' ') + name + " = true;";
+        inserted += resume_at(stream, ghost.keyword.end());
         edits.push_back(Edit{ghost.keyword, std::move(inserted)});
     }
 
@@ -816,6 +871,22 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         const RefinementType& refinement = syntax.refinement_types[index];
         const std::string lowering = canonical_lowering(stream, refinement);
         projection.runtime_lowerings.push_back(RuntimeLowering{refinement.range.span, lowering});
+        // The alias is shorter than the declaration it lowers, but a validator
+        // beside it can be longer than a declaration written on one line, and
+        // would then move the code after it on that line (SPEC.md ERASE-018).
+        if (lowering_moves_columns(stream, refinement.range.span, lowering)) {
+            diagnostics::Diagnostic diagnostic;
+            diagnostic.severity = diagnostics::Severity::Error;
+            diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+            diagnostic.location = refinement.keyword_location;
+            diagnostic.message = "refinement type '" + refinement.name +
+                                 "' lowers to more C++ than its declaration takes on its line, so the code after it "
+                                 "there would move";
+            diagnostic.notes.push_back(
+                diagnostics::Note{"end the line after the declaration's ';', or write the declaration across lines",
+                                  refinement.keyword_location});
+            projection.diagnostics.push_back(std::move(diagnostic));
+        }
 
         const std::string suffix = std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
         RefinementProbe probe;
@@ -869,7 +940,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         }
         replacement += "); }\n";
         replacement += directives_within(stream, refinement.range.span);
-        replacement += line_directive(refinement.end_line, refinement.keyword_location.file);
+        replacement += resume_at(stream, refinement.range.span.end());
 
         // A validation runs the predicate as written, so it must be an ordinary
         // C++ expression (SPEC.md RUNTIMECHECK-020).
@@ -897,7 +968,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         const std::string suffix =
             std::to_string(validation.refinement_index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
         const std::string probe = options.generated_prefix + "refinement_" + suffix;
-        edits.push_back(Edit{validation.callee, in_place_of(stream, validation.callee, probe)});
+        edits.push_back(Edit{validation.callee, probe + resume_at(stream, validation.callee.end())});
         projection.runtime_lowerings.push_back(
             RuntimeLowering{validation.callee, lowered_validation(stream, syntax, validation)});
     }
@@ -908,14 +979,13 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // A directive written inside the declaration follows the namespace, in the
     // namespace the declaration stands in, as it does in the program.
     const auto in_formal_scope = [&stream](const std::string& opening, const Generated& declarations,
-                                           const source::ByteSpan& span, std::uint32_t end_line,
-                                           std::string_view file) {
+                                           const source::ByteSpan& span) {
         Generated scoped;
         scoped += opening;
         scoped += declarations;
         scoped += "}\n";
         scoped += directives_within(stream, span);
-        scoped += line_directive(end_line, file);
+        scoped += resume_at(stream, span.end());
         return scoped;
     };
 
@@ -945,10 +1015,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         }
 
         projected.analysis_offset += formal.laws[index].size();
-        edits.push_back(generated_edit(
-            law.range.span,
-            in_formal_scope(formal.laws[index], replacement, law.range.span, law.end_line, law.keyword_location.file),
-            projection.specification_functions.size()));
+        edits.push_back(generated_edit(law.range.span, in_formal_scope(formal.laws[index], replacement, law.range.span),
+                                       projection.specification_functions.size()));
         projection.specification_functions.push_back(std::move(projected));
     }
 
@@ -1095,8 +1163,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         emit_steps(emit_steps, proof.statements, proof_parameters);
 
         edits.push_back(
-            generated_edit(proof.range.span, in_formal_scope(formal.proofs[index], replacement, proof.range.span,
-                                                             proof.end_line, proof.keyword_location.file)));
+            generated_edit(proof.range.span, in_formal_scope(formal.proofs[index], replacement, proof.range.span)));
         projection.proof_functions.push_back(std::move(projected));
     }
 
@@ -1218,8 +1285,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             }
         }
 
-        replacement += line_directive(verified.body_end_line, verified.keyword_location.file);
-        replacement += std::string(verified.body_end_column - 1, ' ');
+        replacement += resume_at(stream, verified.body_end);
         edits.push_back(generated_edit(source::ByteSpan{verified.body_end, 0}, std::move(replacement)));
 
         // A templated function's probes are templates, and nothing has used
@@ -1259,11 +1325,9 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                     declared += parameters;
                     declared += ");";
                 }
-                declared += "\n";
-                declared += line_directive(verified.keyword_location.line, verified.keyword_location.file);
-                declared.append(verified.keyword_location.column - 1, ' ');
                 const std::size_t before =
                     verified.template_header.length != 0 ? verified.template_header.offset : verified.keyword.offset;
+                declared += resume_at(stream, before);
                 edits.push_back(Edit{source::ByteSpan{before, 0}, std::move(declared)});
 
                 if (!specialization) {
@@ -1276,9 +1340,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                                   std::to_string(position) + " = &" + projected.precondition_names[position] + "<" +
                                   *names + ">;";
                     }
-                    forced += "\n";
-                    forced += line_directive(verified.body_open_line, verified.keyword_location.file);
-                    forced.append(verified.body_open_column - 1, ' ');
+                    forced += resume_at(stream, verified.body_open);
                     edits.push_back(Edit{source::ByteSpan{verified.body_open, 0}, std::move(forced)});
                 }
             }
@@ -1354,8 +1416,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                 projection.loop_invariants.push_back(std::move(marker));
             }
         }
-        replacement += line_directive(loop.body_open_line, loop.keyword_location.file);
-        replacement += std::string(loop.body_open_column - 1, ' ');
+        replacement += resume_at(stream, loop.body_open);
         edits.push_back(generated_edit(source::ByteSpan{loop.body_open, 0}, std::move(replacement)));
     }
 
@@ -1408,8 +1469,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         blank(projection.runtime, claim.erased, stream);
         Generated replacement = claim_block(marker.name, claim.statement);
         replacement += directives_within(stream, claim.span);
-        replacement += line_directive(claim.end_line, claim.statement.location.file);
-        replacement += std::string(claim.end_column - 1, ' ');
+        replacement += resume_at(stream, claim.span.end());
         edits.push_back(generated_edit(claim.span, std::move(replacement)));
         projection.path_contradictions.push_back(std::move(marker));
     }
@@ -1556,8 +1616,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                        (options.unit_key.empty() ? "" : "_" + options.unit_key),
                    {});
         replacement += directives_within(stream, split.span);
-        replacement += line_directive(split.end_line, file);
-        replacement += std::string(split.end_column - 1, ' ');
+        replacement += resume_at(stream, split.span.end());
         edits.push_back(generated_edit(split.span, std::move(replacement)));
     }
 
@@ -1588,9 +1647,9 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                                  (options.unit_key.empty() ? "" : "_" + options.unit_key);
         std::string reference = "\n";
         reference += line_directive(instantiation.location.line, instantiation.location.file);
-        reference += "[[maybe_unused]] static auto " + name + " = &" +
-                     spelled_tokens(stream, instantiation.id_expression) + ";\n";
-        reference += line_directive(instantiation.insertion_line + 1, instantiation.location.file);
+        reference +=
+            "[[maybe_unused]] static auto " + name + " = &" + spelled_tokens(stream, instantiation.id_expression) + ";";
+        reference += resume_at(stream, instantiation.insertion_offset);
         edits.push_back(Edit{source::ByteSpan{instantiation.insertion_offset, 0}, std::move(reference)});
     }
 

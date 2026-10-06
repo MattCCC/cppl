@@ -141,16 +141,19 @@ REPORT
     # SPEC: ERASE-012, RUNTIMECHECK-009, RUNTIMECHECK-021 -- ordinary checks
     # stay as written, and each validation calls the validator its refinement
     # lowers to beside the alias; a refinement no validation names gains none.
+    # SPEC: ERASE-018 -- the validator's name is a character shorter than
+    # `validate<R>`, and a space makes up the difference, so the argument list
+    # keeps its column.
     for check in 'if (raw >= 0 && raw <= 100) {' 'if (raw <= 0) {' 'Positive p = raw > 0 ? raw : 1;' \
-        'while (i < 10u)' 'if (i >= n) {' 'if (raw < 4u) {' 'if (value <= 0) {' 'if (__cppl_validate_0(raw)) {' \
-        'if (!__cppl_validate_1(raw)) {' 'if (raw < 1000 && __cppl_validate_1(raw)) {' \
-        'const bool positive = __cppl_validate_1(raw);' 'if (!__cppl_validate_1(value)) {' \
-        'while (__cppl_validate_1(x))' 'if (is_percentage(raw)) {' \
-        'using Percentage = int; [[maybe_unused]] static inline bool __cppl_validate_0(int self) { return static_cast<bool>(self >= 0 && self <= 100); }' \
-        'using Positive = int; [[maybe_unused]] static inline bool __cppl_validate_1(int self) { return static_cast<bool>(self > 0); }'; do
+        'while (i < 10u)' 'if (i >= n) {' 'if (raw < 4u) {' 'if (value <= 0) {' 'if (__cppl_v_Percentage (raw)) {' \
+        'if (!__cppl_v_Positive (raw)) {' 'if (raw < 1000 && __cppl_v_Positive (raw)) {' \
+        'const bool positive = __cppl_v_Positive (raw);' 'if (!__cppl_v_Positive (value)) {' \
+        'while (__cppl_v_Positive (x))' 'if (is_percentage(raw)) {' \
+        'using Percentage = int; [[maybe_unused]] static inline bool __cppl_v_Percentage(int self) { return static_cast<bool>(self >= 0 && self <= 100); }' \
+        'using Positive = int; [[maybe_unused]] static inline bool __cppl_v_Positive(int self) { return static_cast<bool>(self > 0); }'; do
         grep -qF "$check" "$base.runtime.ii" || fail "erasure did not keep the runtime check '$check' ($standard)"
     done
-    grep -qx 'using Small = unsigned;' "$base.runtime.ii" || fail "a refinement no validation names gained a validator"
+    grep -Eqx 'using Small = unsigned; *' "$base.runtime.ii" || fail "a refinement no validation names gained a validator"
     if grep -q 'validate<' "$base.runtime.ii"; then
         fail "a validation expression reached the runtime program unlowered ($standard)"
     fi

@@ -52,6 +52,16 @@ list(
     "/tests/fixtures/directives/"
 )
 
+# `positions/` fixtures write ordinary C++ after a C++L construct on the same
+# line, and observe its column (SPEC.md ERASE-018); canonical layout would move
+# it to a line of its own, and the hand-erased reference keeps every column
+# where it was.
+list(
+    FILTER CPPL_L_FORMAT_FILES
+    EXCLUDE REGEX
+    "/tests/fixtures/positions/"
+)
+
 list(
     SORT CPPL_L_FORMAT_FILES
 )

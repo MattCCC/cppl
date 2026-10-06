@@ -4198,6 +4198,16 @@ occur, a case split or a validation -- MUST be refused rather than kept in one
 of the two programs and lost in the other. Between the clauses of a
 declaration, and between the statements of a proof, one is kept.
 
+[ERASE-018] Erasure and canonical lowering MUST NOT move ordinary C++ to another line or
+column of the program it stands in: what follows a C++L construct on its line
+keeps its column, so a position C++ observes there -- `__builtin_LINE()`,
+`__builtin_COLUMN()`, `std::source_location`, a diagnostic -- is the one it had
+before erasure. The program verified MUST observe the same lines and columns as
+the program run, including where a position is a template argument. A lowering
+that cannot keep what follows it on its line in its column -- a refinement's
+alias and validator written on one line, longer than the declaration, with
+code after it there -- MUST be refused.
+
 ---
 
 ## 36.1 Erasure must preserve runtime behavior

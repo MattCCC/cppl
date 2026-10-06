@@ -1918,6 +1918,18 @@ expression or a statement C++L states is refused. `cppl-format` does not yet
 keep a directive written inside a C++L declaration when it lays the declaration
 out again, so the fixtures that hold one are excluded from the format check.
 
+Erasure keeps every column as well as every line: a refinement's lowering is
+padded to its declaration's length, a validation calls a validator whose name
+fits where `validate<R>` was written, and the validator refuses a runtime
+program in which code after a lowering moved; a refinement whose validator
+cannot fit before code on its line is refused. The analysed program resumes
+ordinary C++ after everything it generates at the line and column the program
+has it at, so a position C++ observes, as a template argument included, is the
+same in the program verified and the program run
+(`tests/e2e/erasure_positions.sh`, `SPEC.md` `ERASE-018`). Columns are those of
+the preprocessed text, which writes a run of whitespace between two tokens as
+one; that is a known limitation for a unit using C++L (`COMPATIBILITY.md` 13).
+
 The analysed text declares no Law where ordinary C++ can find it: each Law and
 proof is projected into a formal namespace with a reserved name, which only
 Laws and proofs look into (`SPEC.md` `LAW-008`). A Law that would otherwise be

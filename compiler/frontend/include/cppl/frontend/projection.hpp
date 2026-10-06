@@ -177,7 +177,8 @@ struct RuntimeLowering {
 // compiles cannot drift apart (ARCHITECTURE.md 8, 10).
 //
 // Blanking preserves every byte position and every line of the text that
-// remains. A canonical lowering preserves every line, so no line number moves,
+// remains. A canonical lowering preserves every line and the column of what
+// follows it, so no position moves,
 // and introduces only the declaration C++ already has a spelling for, which is
 // what keeps a C++17 target C++17 (COMPATIBILITY.md).
 struct BindingProbe {
@@ -258,13 +259,15 @@ struct ProjectionOptions {
 //
 // Deterministic and derived from the declaration alone, so erasure can check the
 // runtime program against it without trusting the projector. The result carries
-// one newline per newline in the declaration, so no line moves. An index written
+// one newline per newline in the declaration and every directive line in it, and
+// its last line is padded to the declaration's, so no line, directive or column
+// after it moves (SPEC.md ERASE-017, ERASE-018). An index written
 // without a type takes the base type.
 [[nodiscard]] std::string canonical_lowering(const TokenStream& stream, const RefinementType& refinement);
 
 // The canonical C++ a validation expression's `validate<R>` lowers to: the name
 // of the validator R's declaration lowers to (SPEC.md RUNTIMECHECK-021), with a
-// newline for each one the spelling had.
+// newline for each one the spelling had, padded to the spelling's length.
 [[nodiscard]] std::string lowered_validation(const TokenStream& stream, const Syntax& syntax,
                                              const ValidationExpression& validation);
 

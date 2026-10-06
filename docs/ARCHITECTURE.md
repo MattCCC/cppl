@@ -595,8 +595,16 @@ file to Clang as preprocessed input. Blanking keeps every line and column, and
 every directive line inside an erased span byte for byte (`SPEC.md`
 `ERASE-017`): the preprocessor's line markers, which carry the user's file names
 and say which line comes next after a long comment, and every `#pragma`, which
-applies to the program erased as it does to the program erased by hand. Clang's
-diagnostics and `__builtin_LINE()` therefore refer to user source. The file is named
+applies to the program erased as it does to the program erased by hand. A
+lowering is padded to the length of its declaration's last line, so what
+follows it there keeps its column too (`SPEC.md` `ERASE-018`), and the analysis
+text resumes ordinary C++ after anything it generates at the line and column
+the program has it at, so the program verified observes the positions the
+program run observes. Clang's diagnostics, `__builtin_LINE()` and
+`__builtin_COLUMN()` therefore refer to user source, with one difference the
+preprocessed text itself makes: the preprocessor writes a run of whitespace
+between two tokens as one, so a column after such a run is its column in the
+preprocessed text (`COMPATIBILITY.md` 13). The file is named
 `.ii`: for preprocessed input Clang names the compile unit in debug information
 after the first line marker only when the file's extension also says it is
 preprocessed, and otherwise after the scratch path, which is removed when the
@@ -2431,7 +2439,7 @@ recognizer (recognizer.cpp)
         ↓
 projection (projection.cpp)
     analysis text: the refinement's probe __cppl_refinement_N in its place
-    runtime text:  __cppl_validate_N(e), the validator lowered beside the alias
+    runtime text:  __cppl_v_R (e), the validator lowered beside the alias
     erasure check (erase.cpp) recomputes both lowerings
         ↓
 bridge (bridge.cpp) -> vir::Call{validation = probe}

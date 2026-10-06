@@ -562,6 +562,18 @@ hand. A directive inside an expression or a statement C++L states is refused.
 `cppl-format` does not yet keep a directive written inside a C++L declaration
 when it lays the declaration out again.
 
+**Known limitation: columns in a unit that uses C++L.** Such a unit is compiled
+from its preprocessed text, and the preprocessor writes a run of spaces or tabs
+between two tokens on a line as one space (it keeps a line's indentation).
+Erasure moves nothing within that text (`SPEC.md` `ERASE-018`), but a column
+observed after such a run -- `__builtin_COLUMN()`,
+`std::source_location::column()`, the column of a Clang diagnostic or of debug
+information -- is the column in the preprocessed text, not in the file as
+written: in `{   return    __builtin_COLUMN(); }` it is the column of
+`{ return __builtin_COLUMN(); }`. Lines are not affected, and a unit with no
+C++L construct is compiled from its own source. The program verified observes
+the same columns as the program run.
+
 ---
 
 # 14. Contextual C++L vocabulary

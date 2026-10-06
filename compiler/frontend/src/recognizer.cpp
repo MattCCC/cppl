@@ -3616,7 +3616,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                        "validate against a refinement type without indices (SPEC.md RUNTIMECHECK-020)");
                 continue;
             }
-            refinement.validator = "__cppl_validate_" + std::to_string(named.front());
+            refinement.validator = "__cppl_v_" + name;
             ValidationExpression validation;
             validation.function_index = body->function;
             validation.refinement_index = named.front();

@@ -801,6 +801,119 @@ CPPL_TEST(a_directive_inside_an_expression_cpp_l_states_is_refused) {
     }
 }
 
+// SPEC: ERASE-018
+// TRUST.md TCB-ERASE-012
+CPPL_TEST(a_lowering_keeps_the_column_of_what_follows_it) {
+    static const std::string source = "# 1 \"columns.cpp\"\n"
+                                      "type Small = unsigned where (self < 10u); int after_small;\n"
+                                      "type Big = unsigned where (self >= 10u &&\n"
+                                      "    self < 1000u); int after_big;\n"
+                                      "type Positive = int where (self > 0);\n"
+                                      "verified int pick(int raw)\n"
+                                      "    ensures (result > 0)\n"
+                                      "{\n"
+                                      "    if (validate<Positive>(raw)) { return raw; } return 1;\n"
+                                      "}\n";
+    cppl::diagnostics::Engine engine;
+    const auto stream = cppl::frontend::lex(source, "columns.cpp");
+    const auto syntax = cppl::frontend::recognize(stream, engine);
+    const auto projection = cppl::frontend::project(stream, syntax, {});
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK(projection.diagnostics.empty());
+
+    // Every line after the lowerings keeps its column for each of its bytes.
+    for (const std::string_view word : {"int after_small;", "int after_big;", "(raw)) { return raw; }"}) {
+        const std::size_t written = source.find(word);
+        const std::size_t kept = projection.runtime.find(word);
+        CPPL_CHECK(written != std::string::npos);
+        CPPL_CHECK(kept != std::string::npos);
+        const auto column = [](const std::string& text, std::size_t offset) {
+            return offset - (text.rfind('\n', offset) + 1);
+        };
+        CPPL_CHECK_EQ(column(projection.runtime, kept), column(source, written));
+    }
+    cppl::diagnostics::Engine checked;
+    const auto erased = cppl::erasure::erase(stream, syntax, projection, checked);
+    CPPL_CHECK(erased.report.preserved());
+    CPPL_CHECK(erased.report.columns_preserved);
+}
+
+// SPEC: ERASE-018
+CPPL_TEST(a_lowering_that_moves_what_follows_it_is_refused) {
+    static const std::string source = "# 1 \"moved.cpp\"\n"
+                                      "type Positive = int where (self > 0); int after;\n"
+                                      "verified int pick(int raw)\n"
+                                      "    ensures (result > 0)\n"
+                                      "{\n"
+                                      "    if (validate<Positive>(raw)) { return raw; } return 1;\n"
+                                      "}\n";
+    cppl::diagnostics::Engine engine;
+    const auto stream = cppl::frontend::lex(source, "moved.cpp");
+    const auto syntax = cppl::frontend::recognize(stream, engine);
+    const auto projection = cppl::frontend::project(stream, syntax, {});
+    CPPL_CHECK(!engine.has_errors());
+    // The projector refuses it by name, and the validator, which recomputes the
+    // lowering, refuses the program it would make.
+    CPPL_CHECK_EQ(projection.diagnostics.size(), std::size_t{1});
+    cppl::diagnostics::Engine checked;
+    const auto report = cppl::erasure::erase(stream, syntax, projection, checked).report;
+    CPPL_CHECK(!report.columns_preserved);
+    CPPL_CHECK(!report.preserved());
+    CPPL_CHECK(report.lowerings_canonical);
+}
+
+// SPEC: ERASE-018
+// Ordinary C++ after a C++L construct on the same line stands, in the analysed
+// program, at the line and the column the program has it at.
+CPPL_TEST(the_analysis_resumes_where_the_program_has_the_text) {
+    static const std::string source = "# 1 \"resumed.cpp\"\n"
+                                      "law same(unsigned x) proves (x == x); int after_law;\n"
+                                      "proof same_holds(unsigned x) proves (same(x)) { refl; } int after_proof;\n"
+                                      "type Small = unsigned where (self < 10u); int after_refinement;\n"
+                                      "type Positive = int where (self > 0);\n"
+                                      "template <unsigned N>\n"
+                                      "verified unsigned at(unsigned y)\n"
+                                      "    ensures (result == N)\n"
+                                      "{ return N; } int after_body;\n"
+                                      "template unsigned at<1u>(unsigned); int after_instantiation;\n"
+                                      "verified int pick(int raw)\n"
+                                      "    ensures (result > 0)\n"
+                                      "{\n"
+                                      "    if (validate<Positive>(raw)) { return raw; } int after_validation = 1;\n"
+                                      "    unsigned i = 0u;\n"
+                                      "    while (i < 3u) invariant (i <= 3u) { int after_loop = 0; i = i + 1u; }\n"
+                                      "    ghost int seen = raw; int after_ghost = 1;\n"
+                                      "    unsafe { int after_unsafe = 0; }\n"
+                                      "    return 1;\n"
+                                      "}\n";
+    cppl::diagnostics::Engine engine;
+    const auto stream = cppl::frontend::lex(source, "resumed.cpp");
+    const auto syntax = cppl::frontend::recognize(stream, engine);
+    const auto projection = cppl::frontend::project(stream, syntax, {});
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK(projection.diagnostics.empty());
+
+    const auto analysis = cppl::frontend::lex(projection.analysis, "resumed.cpp");
+    std::size_t compared = 0;
+    for (const auto& written : stream.tokens()) {
+        if (written.kind != cppl::frontend::TokenKind::Identifier || !written.text.starts_with("after_")) {
+            continue;
+        }
+        bool found = false;
+        for (const auto& resumed : analysis.tokens()) {
+            if (resumed.text == written.text && resumed.kind == written.kind) {
+                CPPL_CHECK_EQ(resumed.line, written.line);
+                CPPL_CHECK_EQ(resumed.column, written.column);
+                found = true;
+                break;
+            }
+        }
+        CPPL_CHECK(found);
+        ++compared;
+    }
+    CPPL_CHECK_EQ(compared, std::size_t{9});
+}
+
 CPPL_TEST(a_runtime_program_changed_beyond_erasure_is_refused) {
     const ErasedUnit unit = erased_unit();
 
