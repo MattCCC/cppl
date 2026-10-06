@@ -7173,14 +7173,6 @@ struct BodyLowering {
                           "', which is not a vector, a string, a span or an array this implementation models "
                           "(SPEC.md STDMODEL-019)");
         }
-        if (range.element.kind != TypeKind::Int && range.element.kind != TypeKind::Bool) {
-            return reject("the elements of '" + range.range + "' are '" + range.element.spelling +
-                          "', which a range-based for does not bind: an integer, enumeration or Boolean element is "
-                          "modeled");
-        }
-        if (range.position_type.kind != TypeKind::Int) {
-            return reject("the length of '" + range.range + "' is not modeled");
-        }
 
         // The loop variable: a value initialized from the element, or a
         // reference bound to it (SPEC.md STMT-005).

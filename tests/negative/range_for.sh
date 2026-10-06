@@ -147,6 +147,18 @@ verified unsigned grow(std::vector<unsigned>& v) ensures (true) {
 }
 int main() { return 0; }
 CPP
+# A measure that descends does not make it defined: C++ took the end before the
+# first iteration, so the loop goes on past the last element left.
+refuse a_range_shrunk_while_iterated_under_a_measure \
+    "goes on iterating 'v' after 'std::vector::pop_back'" <<'CPP'
+#include <vector>
+verified unsigned shrink(std::vector<unsigned>& v) ensures (true) {
+    unsigned total = 0u;
+    for (unsigned x : v) decreases (v.size()) { total += x; v.pop_back(); }
+    return total;
+}
+int main() { return 0; }
+CPP
 refuse a_range_handed_to_a_writing_call "goes on iterating 'v' after passing it by mutable reference to 'refill'" <<'CPP'
 #include <vector>
 void refill(std::vector<unsigned>& v) { v.push_back(1u); }
@@ -278,6 +290,17 @@ refuse a_range_with_an_initialization_statement "a range-based for with an initi
 verified unsigned total(const std::vector<unsigned>& v) ensures (true) {
     unsigned sum = 0u;
     for (unsigned k = 1u; unsigned x : v) { sum += x + k; }
+    return sum;
+}
+int main() { return 0; }
+CPP
+# An initialization statement libclang does not expose would be a write the
+# model never saw: `total` is 5 here, never 0.
+refuse a_range_initializing_a_local "a range-based for with an initialization statement before its loop variable is not modeled" <<'CPP'
+#include <vector>
+verified unsigned total(const std::vector<unsigned>& v) ensures (result == 0u) {
+    unsigned sum = 0u;
+    for (sum = 5u; unsigned x : v) { }
     return sum;
 }
 int main() { return 0; }
