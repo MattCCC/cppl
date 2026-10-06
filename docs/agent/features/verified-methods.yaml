@@ -86,6 +86,8 @@ implementation:
     - clang/include/cppl/clang/ast.hpp
     - clang/src/access.cpp
     - clang/src/bridge.cpp
+    - clang/src/call_objects.cpp
+    - clang/src/signature.cpp
   elaboration:
     - compiler/elaboration/src/elaborate.cpp
 

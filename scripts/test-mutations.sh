@@ -258,7 +258,7 @@ runtime-check-imported-closure	compiler/obligations/src/trust.cpp	recorded.runti
 runtime-check-exported	compiler/obligations/src/interface.cpp	entry.runtime.push_back(artifact::RuntimeCheck{	(void)(artifact::RuntimeCheck{	^e2e_runtime_validation$
 runtime-check-carried-on	compiler/obligations/src/interface.cpp	entry.runtime.insert(entry.runtime.end(), imported.runtime.begin(), imported.runtime.end());	(void)imported.runtime;	^e2e_runtime_validation$
 runtime-check-interface-identity	compiler/artifact/src/interface.cpp	{"runtime", unique(entry.runtime, runtime_identity)},	{"runtime", unique(decltype(entry.runtime){}, runtime_identity)},	^unit_interface_test$|^e2e_runtime_validation$
-container-default-allocator	clang/src/bridge.cpp	if (!is_standard_template(held, "allocator") || !inert_allocator(call.arguments.back(), 0)) {	if (held.kind != CXType_Invalid || true) {	^e2e_containers$
+container-default-allocator	clang/src/sequences.cpp	if (!is_standard_template(held, "allocator") || !inert_allocator(call.arguments.back(), 0)) {	if (held.kind != CXType_Invalid || true) {	^e2e_containers$
 conjoined-capability-detected	compiler/elaboration/src/elaborate_contracts.cpp	return !function.capabilities.empty() && function.returned_value.has_value();	return function.capabilities.empty() && false;	^negative_containers$
 conjoined-capability-postcondition	compiler/elaboration/src/elaborate_detail.hpp	if (function != nullptr && !capabilities_read_apart && conjoins_capabilities(*function)) {	if (false && !capabilities_read_apart) {	^negative_containers$
 conjoined-capability-trusted-law	compiler/elaboration/src/elaborate.cpp	report_conjoined_capabilities(engine, declaration.keyword_location, "law '" + declaration.name + "'");	elaborate_memory_assumption(request, specification, declaration, *function, next_expression_id, result, engine);	^negative_containers$
@@ -350,9 +350,9 @@ xtu-dependencies-carried	compiler/obligations/src/interface.cpp	entry.depends.in
 xtu-laws-imported	compiler/obligations/src/contracts.cpp	recorded->identity,     recorded->entry.premises,	recorded->identity,     std::vector<artifact::Premise>{},	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
 member-call-writes-object	clang/src/bridge.cpp	const bool writes = (callee_receiver.has_value() && callee_receiver->writes()) ||	const bool writes = false ||	^negative_verified_methods$
 const-receiver-mutable-member	clang/src/signature.hpp	if (constant && !leaf.mutable_member) {	if (constant && (true || !leaf.mutable_member)) {	^negative_verified_methods$
-virtual-member-refused	clang/src/bridge.cpp	if (clang_CXXMethod_isVirtual(cursor) != 0) {	if (false && clang_CXXMethod_isVirtual(cursor) != 0) {	^negative_verified_methods$
+virtual-member-refused	clang/src/signature.cpp	if (clang_CXXMethod_isVirtual(cursor) != 0) {	if (false && clang_CXXMethod_isVirtual(cursor) != 0) {	^negative_verified_methods$
 virtual-call-refused	clang/src/bridge.cpp	if (clang_CXXMethod_isVirtual(referenced) != 0) {	if (false && clang_CXXMethod_isVirtual(referenced) != 0) {	^negative_verified_methods$
-member-refinement-kept	clang/src/bridge.cpp	converted.refinements = std::move(*declared);	(void)declared;	^negative_verified_methods$
+member-refinement-kept	clang/src/signature.cpp	converted.refinements = std::move(*declared);	(void)declared;	^negative_verified_methods$
 container-element-refinement-kept	clang/src/refinements.cpp	auto refinements = refinements_of(declared, element, *known);	auto refinements = decltype(refinements_of(declared, element, *known)){};	^negative_containers$|^negative_integration_ledger$
 reference-aggregate-witness	clang/src/bridge.cpp	if (parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	if (false && parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	^negative_verified_storage$
 unsafe-member-write-rooted	clang/src/bridge.cpp	return access.has_value() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	return access.has_value() && access->path.empty() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	^negative_unsafe_boundary$
@@ -365,8 +365,8 @@ loop-head-counted-valid	clang/src/bridge.cpp	"the loop at " + describe_location(
 read-only-position-kept-apart	clang/src/bridge.cpp	if (!position.writable && !reached_by_a_write(position.storage)) {	if (!position.writable && (true || !reached_by_a_write(position.storage))) {	^negative_verified_methods$|^e2e_verified_methods$
 call-effect-common-alias-model	clang/src/bridge.cpp	[&](std::size_t written) { return may_alias(state[written], state[other]); })) {	[&](std::size_t written) { return false && may_alias(state[written], state[other]); })) {	^negative_verified_methods$
 pointer-receiver-capability	clang/src/bridge.cpp	if (!granted(position, kind)) {	if (false && !granted(position, kind)) {	^negative_verified_methods$
-rvalue-receiver-is-the-object	clang/src/bridge.cpp	return strip_parens(clang_Cursor_getArgument(expression, 0));	return (void)clang_Cursor_getArgument(expression, 0), expression;	^e2e_verified_methods$
-volatile-member-function-refused	clang/src/bridge.cpp	if (volatile_member_function(cursor)) {	if (false && volatile_member_function(cursor)) {	^negative_verified_methods$
+rvalue-receiver-is-the-object	clang/src/call_objects.cpp	return strip_parens(clang_Cursor_getArgument(expression, 0));	return (void)clang_Cursor_getArgument(expression, 0), expression;	^e2e_verified_methods$
+volatile-member-function-refused	clang/src/signature.cpp	if (volatile_member_function(cursor)) {	if (false && volatile_member_function(cursor)) {	^negative_verified_methods$
 signed-overflow-owed	compiler/obligations/src/definedness.cpp	return type.is_integer() && type.integer_type().is_signed;	return false && type.is_integer();	^negative_signed_arithmetic$|^negative_integration_ledger$|^negative_cross_feature$
 zero-divisor-owed	compiler/obligations/src/definedness.cpp	site(Definedness::ZeroDivisor);	(void)0;	^negative_signed_arithmetic$
 quotient-overflow-owed	compiler/obligations/src/definedness.cpp	site(Definedness::QuotientOverflow);	(void)0;	^negative_signed_arithmetic$

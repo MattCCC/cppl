@@ -85,6 +85,7 @@ implementation:
     - clang/src/access.cpp
     - clang/src/bridge.cpp
     - clang/src/refinements.cpp
+    - clang/src/sequences.cpp
     - clang/src/types.cpp
   vir:
     - vir/include/cppl/vir/expr.hpp

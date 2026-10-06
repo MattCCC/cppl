@@ -10,6 +10,7 @@ add_library(cppl_clang STATIC
     src/aggregate_effects.cpp
     src/aggregate_values.cpp
     src/bridge.cpp
+    src/call_objects.cpp
     src/conversions.cpp
     src/cursors.cpp
     src/default_arguments.cpp
@@ -23,6 +24,8 @@ add_library(cppl_clang STATIC
     src/proof_instantiation_cursors.cpp
     src/proof_instantiation_hazards.cpp
     src/refinements.cpp
+    src/sequences.cpp
+    src/signature.cpp
     src/statements.cpp
     src/types.cpp)
 

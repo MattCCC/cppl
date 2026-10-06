@@ -2,10 +2,13 @@
 
 #include "cppl/clang/ast.hpp"
 #include "cppl/source/representation.hpp"
+#include "places.hpp"
+#include "signature.hpp"
 
 #include <clang-c/Index.h>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <optional>
 #include <string>
 #include <vector>
@@ -49,5 +52,33 @@ struct ElementRegion {
 };
 
 std::optional<SequenceCall> sequence_call(CXCursor cursor);
+
+std::string library_name(source::RepresentationKind family, const std::string& member);
+
+Expr element_observation(Expr subject, CXCursor index_cursor, const Signature& signature, const Locals& locals,
+                         unsigned depth, CXCursor cursor);
+
+std::expected<ElementRegion, std::string> element_region(CXCursor object, const Locals& locals,
+                                                         const Signature& signature);
+
+Expr region_length(const ElementRegion& region, const Locals& locals, CXCursor at);
+
+std::optional<Expr> element_index(const ResolvedAccess& access, const Type& length, const Signature& signature,
+                                  const Locals& locals);
+
+std::optional<std::size_t> find_element(const Locals& locals, const ElementRegion& region,
+                                        const std::vector<PlaceStep>& path, const Expr& index);
+
+Expr library_call(source::LibraryCall library, const Type& container, std::string name, std::vector<Expr> arguments,
+                  Type result, CXCursor at);
+
+std::optional<CXCursor> moved_operand_of(CXCursor cursor);
+
+std::optional<std::size_t> owning_root(CXCursor object, const Locals& locals);
+
+bool is_mutator(const SequenceCall& call);
+
+Expr sequence_expression(const SequenceCall& call, CXCursor cursor, const Signature& signature, const Locals& locals,
+                         unsigned depth);
 
 } // namespace cppl::clangbridge::detail

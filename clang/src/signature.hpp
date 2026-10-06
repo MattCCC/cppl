@@ -1,13 +1,16 @@
 #pragma once
 
+#include "aggregate_values.hpp"
 #include "cppl/clang/ast.hpp"
 #include "cppl/clang/bridge.hpp"
 #include "cppl/source/storage.hpp"
+#include "places.hpp"
 
 #include <algorithm>
 #include <clang-c/Index.h>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <optional>
 #include <string>
 #include <vector>
@@ -126,5 +129,28 @@ struct Signature {
         return std::nullopt;
     }
 };
+
+// A member function's standing as a verified callable: its implicit object, or
+// why this implementation does not verify it (SPEC.md CLASS-008, CLASS-014,
+// CLASS-015). A function that is not a member, and a static member, has no
+// implicit object and nothing to refuse here.
+struct MemberStanding {
+    std::optional<Receiver> receiver;
+    std::optional<std::string> rejection;
+};
+
+std::expected<Receiver, std::string> receiver_of(CXCursor method, const std::vector<Selection::Refinement>* known);
+
+aggregates::Frame frame_of(const Signature& signature);
+
+bool on_implicit_object(CXCursor cursor);
+
+std::optional<std::string> unmodeled_member(CXCursor cursor);
+
+Expr read_receiver(const ResolvedAccess& access, CXCursor cursor, const Signature& signature, const Locals& locals);
+
+std::vector<CXCursor> parameters_of(CXCursor cursor);
+
+MemberStanding member_standing(CXCursor cursor, const std::vector<Selection::Refinement>& known);
 
 } // namespace cppl::clangbridge::detail
