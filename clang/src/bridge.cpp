@@ -7547,41 +7547,17 @@ struct BodyLowering {
     }
 
     // Writes `values[at]` to `leaves[at]` and every leaf after it, one after
-    // another, each through the one write a member assignment makes (`write`),
-    // then lowers what follows.
+    // another, each through the one write a member assignment makes
+    // (`write_then`), then lowers what follows.
     std::optional<Expr> write_leaves(const std::vector<std::size_t>& leaves, std::size_t at,
                                      const std::vector<Expr>& values, CXCursor statement, const Continuation& next,
                                      const Locals& locals, unsigned depth) {
         if (at == leaves.size()) {
             return lower_statements(next, locals, depth + 1);
         }
-        const std::uint32_t version = next_version++;
-        Locals assigned = locals;
-        const std::size_t storage = locals[leaves[at]].referent.value_or(leaves[at]);
-        assigned[storage].version = version;
-        const auto invalidated = invalidate_aliases(storage, assigned);
-        std::optional<Expr> body = write_leaves(leaves, at + 1, values, statement, next, assigned, depth);
-        if (!body) {
-            return std::nullopt;
-        }
-        Type required = locals[storage].type;
-        const auto require = [&](const Type& type) {
-            for (const auto& refinement : type.refinements) {
-                if (std::ranges::find(required.refinements, refinement) == required.refinements.end()) {
-                    required.refinements.push_back(refinement);
-                }
-            }
-        };
-        valid_versions.insert(version);
-        for (const auto index : invalidated) {
-            require(locals[index].type);
-            const bool valid = valid_versions.contains(locals[index].version);
-            if (valid) {
-                valid_versions.insert(assigned[index].version);
-            }
-            body = unknown(assigned, index, std::move(*body), statement, valid);
-        }
-        return bind(version, place_of(locals, leaves[at]), values[at], std::move(*body), statement, required);
+        return write_then(leaves[at], values[at], statement, locals, [&](const Locals& assigned) {
+            return write_leaves(leaves, at + 1, values, statement, next, assigned, depth);
+        });
     }
 
     std::nullopt_t reject(std::string reason) {
@@ -10178,12 +10154,21 @@ struct BodyLowering {
 
     std::optional<Expr> write(std::size_t local, Expr value, CXCursor statement, const Continuation& next,
                               const Locals& locals, unsigned depth) {
+        return write_then(local, std::move(value), statement, locals,
+                          [&](const Locals& assigned) { return lower_statements(next, assigned, depth + 1); });
+    }
+
+    // Writes `value` to `local`, then lowers what follows the write in the
+    // state it leaves, with `rest`: what follows a statement, or the next of
+    // several writes one statement makes.
+    std::optional<Expr> write_then(std::size_t local, Expr value, CXCursor statement, const Locals& locals,
+                                   const std::function<std::optional<Expr>(const Locals&)>& rest) {
         const std::uint32_t version = next_version++;
         Locals assigned = locals;
         const std::size_t storage = locals[local].referent.value_or(local);
         assigned[storage].version = version;
         const auto invalidated = invalidate_aliases(storage, assigned);
-        std::optional<Expr> body = lower_statements(next, assigned, depth + 1);
+        std::optional<Expr> body = rest(assigned);
         if (!body) {
             return std::nullopt;
         }
