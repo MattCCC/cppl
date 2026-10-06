@@ -11,6 +11,7 @@
 #include <cctype>
 #include <clang-c/CXDiagnostic.h>
 #include <clang-c/CXErrorCode.h>
+#include <clang-c/CXFile.h>
 #include <clang-c/CXSourceLocation.h>
 #include <clang-c/CXString.h>
 #include <clang-c/Index.h>
@@ -4183,42 +4184,100 @@ bool holds_switch_label(CXCursor root, unsigned depth = 0) {
     });
 }
 
-// Whether the parenthesized head of an `if` or a `switch` holds an
-// init-statement, `if (init; condition)` (C++ [stmt.select]): a `;` directly
-// inside the parentheses that follow the keyword. libclang does not expose a
-// switch's init-statement as a child at all, so the head's tokens are read.
-// Nothing when they cannot be read, which the caller refuses rather than
-// guessing that there is none.
-std::optional<bool> holds_init_statement(CXCursor statement) {
+// Where a location is in the file its translation unit reads, so the head of
+// a statement and its parts can be compared.
+struct FilePosition {
+    CXFile file = nullptr;
+    unsigned offset = 0;
+};
+
+FilePosition file_position(CXSourceLocation location) {
+    FilePosition position;
+    clang_getFileLocation(location, &position.file, nullptr, nullptr, &position.offset);
+    return position;
+}
+
+FilePosition start_of(CXCursor cursor) {
+    return file_position(clang_getRangeStart(clang_getCursorExtent(cursor)));
+}
+
+// Whether `position` stands in `file` before `offset`.
+bool before(const FilePosition& position, CXFile file, unsigned offset) {
+    return position.file != nullptr && clang_File_isEqual(position.file, file) != 0 && position.offset < offset;
+}
+
+// Whether `position` stands in `file` at `offset`.
+bool stands_at(const FilePosition& position, CXFile file, unsigned offset) {
+    return position.file != nullptr && clang_File_isEqual(position.file, file) != 0 && position.offset == offset;
+}
+
+// The head of an `if` or a `switch`, read from its tokens (C++ [stmt.select]):
+// `if constexpr`, `if consteval`, and in the parentheses after the keyword,
+// where they open and close and the `;` that ends an init-statement directly
+// inside them. libclang does not expose a switch's init-statement as a child
+// at all, and lists an `if`'s where the condition otherwise stands, so the
+// head is what says which part is which. Nothing when it cannot be read,
+// which the caller refuses rather than guessing.
+struct SelectionHead {
+    bool constant = false;  // `if constexpr`
+    bool immediate = false; // `if consteval` or `if !consteval`, which has no parentheses
+    CXFile file = nullptr;
+    unsigned first = 0; // where the first token inside the parentheses stands
+    std::optional<unsigned> separator;
+    unsigned close = 0;
+};
+
+std::optional<SelectionHead> selection_head(CXCursor statement) {
     const std::vector<CXCursor> parts = children_of(statement);
     if (parts.empty()) {
         return std::nullopt;
     }
     CXTranslationUnit unit = clang_Cursor_getTranslationUnit(statement);
-    const CXSourceRange head = clang_getRange(clang_getRangeStart(clang_getCursorExtent(statement)),
-                                              clang_getRangeStart(clang_getCursorExtent(parts.back())));
+    const CXSourceRange range = clang_getRange(clang_getRangeStart(clang_getCursorExtent(statement)),
+                                               clang_getRangeStart(clang_getCursorExtent(parts.back())));
     CXToken* tokens = nullptr;
     unsigned count = 0;
-    clang_tokenize(unit, head, &tokens, &count);
-    std::optional<bool> found;
+    clang_tokenize(unit, range, &tokens, &count);
+    SelectionHead head;
+    bool read = false;
     std::size_t nesting = 0;
-    for (unsigned index = 0; index < count && !found.has_value(); ++index) {
+    for (unsigned index = 0; index < count && !read; ++index) {
+        const std::string spelled = take(clang_getTokenSpelling(unit, tokens[index]));
+        if (index == 1 && spelled == "constexpr") {
+            head.constant = true;
+        }
+        if ((index == 1 || index == 2) && spelled == "consteval") {
+            head.immediate = true;
+            read = true;
+            break;
+        }
+        const FilePosition at = file_position(clang_getTokenLocation(unit, tokens[index]));
+        if (nesting == 1 && head.file == nullptr) {
+            head.file = at.file;
+            head.first = at.offset;
+        }
         if (clang_getTokenKind(tokens[index]) != CXToken_Punctuation) {
             continue;
         }
-        const std::string spelled = take(clang_getTokenSpelling(unit, tokens[index]));
         if (spelled == "(" || spelled == "[" || spelled == "{") {
             ++nesting;
         } else if ((spelled == ")" || spelled == "]" || spelled == "}") && nesting > 0) {
             if (--nesting == 0) {
-                found = false;
+                head.close = at.offset;
+                read = head.file != nullptr && at.file != nullptr && clang_File_isEqual(at.file, head.file) != 0;
+                break;
             }
         } else if (spelled == ";" && nesting == 1) {
-            found = true;
+            if (!head.separator.has_value()) {
+                head.separator = at.offset;
+            }
         }
     }
     clang_disposeTokens(unit, tokens, count);
-    return found;
+    if (!read) {
+        return std::nullopt;
+    }
+    return head;
 }
 
 // Whether `statement` is `[[fallthrough]];`, an empty statement that says a
@@ -4792,6 +4851,7 @@ struct LoopFrame;
 struct LoopHeader;
 struct SwitchHeader;
 struct SwitchFrame;
+struct IfHeader;
 
 struct Continuation {
     const Continuation* outer = nullptr;
@@ -4809,6 +4869,10 @@ struct Continuation {
     // with what follows the switch, outside it.
     const SwitchHeader* dispatch = nullptr;
     const SwitchFrame* left = nullptr;
+
+    // In place of statements: an `if` whose init-statement and condition
+    // variable have run, which now decides between its branches.
+    const IfHeader* branch = nullptr;
 
     // With `statements`, the body of a switch: the positions a `case` or
     // `default` label leads into, which a jump reaches whatever stands before
@@ -4847,6 +4911,14 @@ struct SwitchHeader {
     CXCursor condition = clang_getNullCursor();
     CXCursor body = clang_getNullCursor();
     const Continuation* exit = nullptr; // what follows the switch
+};
+
+// An `if` about to decide between its branches (C++ [stmt.if]).
+struct IfHeader {
+    CXCursor statement = clang_getNullCursor();
+    std::vector<CXCursor> parts; // the condition, the branch it selects, and the other branch if written
+    const Continuation* exit = nullptr;
+    bool constant = false; // `if constexpr`
 };
 
 // A switch whose body is being lowered: where a `break` belonging to it goes.
@@ -6675,6 +6747,9 @@ struct BodyLowering {
         if (from.left != nullptr) {
             return leave_switch(*from.left, locals, depth + 1);
         }
+        if (from.branch != nullptr) {
+            return lower_branch(*from.branch, locals, depth + 1);
+        }
         if (from.index == from.statements->size()) {
             if (from.outer == nullptr) {
                 if (result_type.kind == TypeKind::Void) {
@@ -6814,22 +6889,13 @@ struct BodyLowering {
             return lower_update(statement, next, locals, depth);
         }
         const std::vector<CXCursor> parts = children_of(statement);
-        // libclang lists an `if`'s init-statement as its first child, where
-        // the condition otherwise stands: read as the condition, it would
-        // decide the branch in place of the real one.
         if (kind == CXCursor_IfStmt) {
-            const std::optional<bool> init = holds_init_statement(statement);
-            if (!init.has_value()) {
-                return reject("the head of this 'if' statement could not be read, so whether it holds an "
-                              "init-statement is not known");
-            }
-            if (*init) {
-                return reject("an 'if' statement with an init-statement is not modeled");
-            }
+            return lower_if(statement, next, locals, depth);
         }
-        if (kind == CXCursor_IfStmt && (parts.size() == 2 || parts.size() == 3) &&
-            clang_isExpression(clang_getCursorKind(parts[0])) != 0) {
-            return lower_branch(statement, parts, next, locals, depth);
+        // The condition variable of an `if` or a `switch`, which no other
+        // statement list holds.
+        if (kind == CXCursor_VarDecl) {
+            return lower_declaration(std::vector<CXCursor>{statement}, 0, next, locals, depth);
         }
         if (kind == CXCursor_WhileStmt) {
             if (parts.size() != 2 || clang_isExpression(clang_getCursorKind(parts[0])) == 0) {
@@ -7545,19 +7611,23 @@ struct BodyLowering {
         // libclang lists no init-statement among a switch's children, so one
         // left unseen would be a statement the program runs and the model
         // drops.
-        const std::optional<bool> init = holds_init_statement(statement);
-        if (!init.has_value()) {
+        const std::optional<SelectionHead> head = selection_head(statement);
+        if (!head.has_value()) {
             return reject("the head of this 'switch' statement could not be read, so whether it holds an "
                           "init-statement is not known");
         }
-        if (*init) {
+        if (head->separator.has_value()) {
             return reject("a 'switch' statement with an init-statement is not modeled");
         }
         // The condition and the body, after the condition variable if one is
-        // declared.
+        // declared. Whatever the head holds starts where its parentheses
+        // open: an init-statement no token shows, written through a macro,
+        // would put the condition later.
         const std::vector<CXCursor> parts = children_of(statement);
         const bool declares = parts.size() == 3 && clang_getCursorKind(parts[0]) == CXCursor_VarDecl;
-        if ((parts.size() != 2 && !declares) || clang_isExpression(clang_getCursorKind(parts[parts.size() - 2])) == 0) {
+        const FilePosition opening = start_of(parts.front());
+        if ((parts.size() != 2 && !declares) || clang_isExpression(clang_getCursorKind(parts[parts.size() - 2])) == 0 ||
+            !stands_at(opening, head->file, head->first)) {
             return reject("the parts of this 'switch' statement could not be resolved");
         }
         const SwitchHeader header{statement, parts[parts.size() - 2], parts.back(), &next};
@@ -7807,6 +7877,85 @@ struct BodyLowering {
         result.location = value.location;
         result.node = Conditional{{std::move(value), std::move(*taken), std::move(*untaken)}};
         return result;
+    }
+
+    // An `if` statement (C++ [stmt.if]). An init-statement runs first, in a
+    // scope enclosing the whole statement, so what it declares is visible in
+    // the condition and in both branches and ends after them; a condition
+    // variable is a local its initializer initializes, and the condition reads
+    // it. Which child is which is decided by where each stands against the
+    // head's parentheses: the parts written in them come first, and what
+    // follows them is the branches.
+    std::optional<Expr> lower_if(CXCursor statement, const Continuation& next, const Locals& locals, unsigned depth) {
+        const std::optional<SelectionHead> head = selection_head(statement);
+        if (!head.has_value()) {
+            return reject("the head of this 'if' statement could not be read");
+        }
+        if (head->immediate) {
+            return reject("an 'if consteval' statement is not modeled: which branch runs depends on whether the "
+                          "evaluation is a constant one, and a contract describes the function as it runs");
+        }
+        const std::vector<CXCursor> parts = children_of(statement);
+        std::size_t inside = 0;
+        while (inside < parts.size() && before(start_of(parts[inside]), head->file, head->close)) {
+            ++inside;
+        }
+        const std::size_t branches = parts.size() - inside;
+        if (inside == 0 || (branches != 1 && branches != 2) ||
+            !stands_at(start_of(parts[0]), head->file, head->first)) {
+            return reject("the parts of this 'if' statement could not be resolved");
+        }
+        // The parts in the parentheses: the init-statement, which ends before
+        // the head's `;`, then a condition variable, then the condition.
+        std::vector<CXCursor> prefix;
+        std::size_t condition = 0;
+        if (head->separator.has_value() && before(start_of(parts[0]), head->file, *head->separator)) {
+            prefix.push_back(parts[0]);
+            condition = 1;
+        }
+        if (condition < inside && clang_getCursorKind(parts[condition]) == CXCursor_VarDecl) {
+            prefix.push_back(parts[condition]);
+            ++condition;
+        }
+        // An init-statement no `;` in the head shows, written through a macro,
+        // is not read as the condition.
+        if (condition + 1 != inside || clang_isExpression(clang_getCursorKind(parts[condition])) == 0) {
+            return reject("the parts of this 'if' statement could not be resolved");
+        }
+        const IfHeader header{
+            statement, std::vector<CXCursor>(parts.begin() + static_cast<std::ptrdiff_t>(condition), parts.end()),
+            &next, head->constant};
+        if (prefix.empty()) {
+            return lower_branch(header, locals, depth);
+        }
+        Continuation decided;
+        decided.branch = &header;
+        return lower_statements(Continuation{&decided, &prefix, 0}, locals, depth + 1);
+    }
+
+    // The branches of an `if`. Those of `if constexpr` are selected by a
+    // constant condition Clang evaluates, and only the selected one runs: in a
+    // template the other is not even instantiated.
+    std::optional<Expr> lower_branch(const IfHeader& header, const Locals& locals, unsigned depth) {
+        if (!header.constant) {
+            return lower_branch(header.statement, header.parts, *header.exit, locals, depth);
+        }
+        CXEvalResult evaluated = clang_Cursor_Evaluate(header.parts[0]);
+        const bool known = evaluated != nullptr && clang_EvalResult_getKind(evaluated) == CXEval_Int;
+        const bool holds = known && clang_EvalResult_getAsLongLong(evaluated) != 0;
+        if (evaluated != nullptr) {
+            clang_EvalResult_dispose(evaluated);
+        }
+        if (!known) {
+            return reject("the condition of this 'if constexpr' is not a constant Clang evaluates");
+        }
+        if (holds) {
+            return lower_statement(header.parts[1], *header.exit, locals, depth + 1);
+        }
+        if (header.parts.size() == 3) {
+            return lower_statement(header.parts[2], *header.exit, locals, depth + 1);
+        }
+        return lower_statements(*header.exit, locals, depth + 1);
     }
 
     std::optional<Expr> lower_branch(CXCursor statement, const std::vector<CXCursor>& parts, const Continuation& next,

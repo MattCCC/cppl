@@ -69,12 +69,15 @@ reject short_circuit_false_route 'return path.*does not satisfy' \
 # A switch is modeled (negative/switch_statements.sh): each case is a path.
 reject switch_statement 'return path.*does not satisfy' \
     'verified unsigned f(unsigned x) ensures (result == 10u) { switch (x) { case 0: return 0u; default: return 10u; } }'
-reject if_initializer "an 'if' statement with an init-statement is not modeled" \
-    'verified unsigned f(unsigned x) ensures (result <= 10u) { if (unsigned y = x; y <= 10u) return y; return 10u; }'
+# An init-statement runs first and its declaration is the same value in the
+# condition and the branches (C++ [stmt.if]): at 10 this returns 10.
+reject if_initializer 'return path.*does not satisfy' \
+    'verified unsigned f(unsigned x) ensures (result < 10u) { if (unsigned y = x; y <= 10u) return y; return 10u; }'
 # libclang lists the init-statement first, where the condition otherwise stands,
 # and it was once read as the condition: this claim held only under that reading.
-reject if_initializer_read_as_condition "an 'if' statement with an init-statement is not modeled" \
-    'verified bool above(unsigned x) ensures (true) { return x > 3u; } verified unsigned f(unsigned x) ensures (result == 7u) { unsigned y = 7u; if (y == 7u; above(x)) { y = 0u; } return y; }'
+# Its accepted twin, `init_then_call`, is in fixtures/if_statements.cpp.
+reject if_initializer_read_as_condition 'does not satisfy its contract' \
+    'verified bool above(unsigned x) ensures (true) { return x > 3u; } verified unsigned f(unsigned x) ensures (result == 7u) { unsigned y = 1u; if (y = 7u; above(x)) { y = 0u; } return y; }'
 reject branch_call_precondition 'call-site precondition' \
     'verified unsigned g(unsigned x) expects (x <= 10u) ensures (result <= 10u) { return x; } verified unsigned f(unsigned x) ensures (result <= 10u) { if (x <= 10u) return 10u; else return g(x); }'
 reject future_guard 'call-site precondition' \

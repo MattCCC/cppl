@@ -89,7 +89,7 @@ CONSTRUCT-086	null statement	verified	x086_null_statement.cpp	error \[proof-fail
 CONSTRUCT-087	compound statement	verified	x087_compound_statement.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-088	declaration statement	verified	x088_declaration_statement.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-089	if statement	verified	x089_if_statement.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
-CONSTRUCT-090	if constexpr	verified	x090_if_constexpr.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
+CONSTRUCT-090	if constexpr	verified	x090_if_constexpr.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-091	switch statement	verified	x091_switch_statement.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
 CONSTRUCT-092	while statement	verified	x092_while_statement.cpp	error \[kernel-rejection\]: loop invariant 'probe loop at line [0-9]+ invariant [0-9]+' does not hold on entry
 CONSTRUCT-093	classic for statement	verified	x093_classic_for_statement.cpp	error \[kernel-rejection\]: loop invariant 'probe loop at line [0-9]+ invariant [0-9]+' is not preserved by an iteration

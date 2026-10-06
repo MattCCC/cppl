@@ -530,6 +530,8 @@ set_tests_properties(e2e_arithmetic_properties PROPERTIES
 cppl_add_script_test(e2e_verified_loops e2e/verified_loops.sh)
 # `switch` statements and statement-level commas (C++ [stmt.switch], [expr.comma]).
 cppl_add_script_test(e2e_switch_statements e2e/switch_statements.sh)
+# `if` with an init-statement, a condition variable or `if constexpr` (C++ [stmt.if]).
+cppl_add_script_test(e2e_if_statements e2e/if_statements.sh)
 cppl_add_script_test(e2e_verified_methods e2e/verified_methods.sh)
 
 # Contracts across translation units, through verification interfaces
@@ -578,6 +580,7 @@ cppl_add_script_test(negative_verified_paths negative/verified_paths.sh)
 cppl_add_script_test(negative_verified_locals negative/verified_locals.sh)
 cppl_add_script_test(negative_verified_loops negative/verified_loops.sh)
 cppl_add_script_test(negative_switch_statements negative/switch_statements.sh)
+cppl_add_script_test(negative_if_statements negative/if_statements.sh)
 cppl_add_script_test(negative_verified_methods negative/verified_methods.sh)
 
 cppl_add_script_test(integration_header_law integration/header_law.sh)

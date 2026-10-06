@@ -34,6 +34,7 @@ twin	equivalence/quantified_propositions.cpp	negative/twins/equivalence_quantifi
 twin	equivalence/refinements.cpp	negative/twins/equivalence_refinements.cpp	error \[proof-failure\]: verified function 'fifty' does not satisfy its contract	-	-
 twin	equivalence/rewritten_proof.cpp	negative/twins/equivalence_rewritten_proof.cpp	error \[kernel-rejection\]: proof 'identity_at_zero_holds' does not establish law 'identity_at_zero'	-	-
 twin	partial_correctness.cpp	negative/twins/partial_correctness.cpp	error \[kernel-rejection\]: return path 'loop_nodec path [0-9]+' does not satisfy its contract	-	-
+twin	if_statements.cpp	negative/twins/if_statements.cpp	error \[proof-failure\]: return path 'expression_init path [0-9]+' does not satisfy its contract	-	-
 twin	switch_statements.cpp	negative/twins/switch_statements.cpp	error \[proof-failure\]: return path 'fall_through path [0-9]+' does not satisfy its contract	-	-
 twin	positions/columns.cpp	negative/twins/positions_columns.cpp	error \[proof-failure\]: verified function 'at' does not satisfy its contract	-	-
 twin	equivalence/termination.cpp	negative/twins/equivalence_termination.cpp	error \[kernel-rejection\]: return path 'even_steps path [0-9]+' does not satisfy its contract	-	-
