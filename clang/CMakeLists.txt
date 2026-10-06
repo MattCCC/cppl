@@ -21,6 +21,7 @@ add_library(cppl_clang STATIC
     src/expressions.cpp
     src/formed_places.cpp
     src/ghost.cpp
+    src/loops.cpp
     src/lowering.cpp
     src/editor_completion.cpp
     src/editor_description.cpp

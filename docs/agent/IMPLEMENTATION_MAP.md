@@ -466,7 +466,7 @@ Normative sources: `TERMINATION-001`–`TERMINATION-007` (SPEC §22),
 | --- | --- | --- |
 | recognizer | Read `decreases` on loops and verified functions; split a measure into its lexicographic components; refuse an empty component. | `compiler/frontend/src/recognizer.cpp` (`measure_components`) |
 | projection | A measure declaration per loop component at the head of its body; a probe function of the parameters per function component. | `compiler/frontend/src/projection_declarations.cpp`, `compiler/frontend/src/projection_paths.cpp` |
-| bridge | Read every measure component in the loop head's scope; lower `do` loops, deciding at each iteration's end, and `for` without a condition. | `clang/src/bridge.cpp` (`lower_loop`, `end_iteration`) |
+| bridge | Read every measure component in the loop head's scope; lower `do` loops, deciding at each iteration's end, and `for` without a condition. | `clang/src/loops.cpp` (`lower_loop`, `end_iteration`) |
 | elaboration | Read a function's measure into `vir::Contract::measures`; refuse a template's. | `compiler/elaboration/src/elaborate_contracts.cpp` |
 | obligations | Owe a lexicographic descent on every continuing loop path and every call within a recursion group; find recursion groups; state and reserve a group before building it; refuse recursion without a measure and measures of different lengths; settle totality and refuse a `decreases` function that is not total. | `compiler/obligations/src/contracts_termination.cpp` |
 | automation | Suppose a group member's contract before it is established; establish a group whole. | `compiler/automation/src/composition.cpp` |

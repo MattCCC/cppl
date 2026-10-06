@@ -85,7 +85,7 @@ returned-arm-or-selects-false	clang/src/statements.cpp	selected.when_false = par
 returned-arm-split	clang/src/selections.cpp	if (const auto selected = signature.clause ? std::nullopt : selected_value(value)) {	if (const auto selected = std::optional<detail::SelectedValue>{}) {	^(e2e_conditions|negative_conditions)$
 returned-arm-binds-formed	clang/src/lowering.hpp	result = bind_formed_derefs(std::move(*result), at);	(void)at;	^(e2e_conditions|negative_conditions|e2e_containers|negative_containers)$
 condition-leaf-formed	clang/src/control.cpp	if (!signature.clause && !form_places(condition, state))	if (false)	^(e2e_conditions|negative_containers)$
-condition-route-loop	clang/src/bridge.cpp	decided = lower_condition(header.condition, iterate, leave, frame.head, depth + 1);	decided = lower_condition(header.condition, leave, iterate, frame.head, depth + 1);	^(e2e_conditions|e2e_verified_loops)$
+condition-route-loop	clang/src/loops.cpp	decided = lower_condition(header.condition, iterate, leave, frame.head, depth + 1);	decided = lower_condition(header.condition, leave, iterate, frame.head, depth + 1);	^(e2e_conditions|e2e_verified_loops)$
 statement-arm-split	clang/src/selections.cpp	if (!selected || chosen_for(chosen_arms, selected->selection) != nullptr) {	if (true) {	^(e2e_conditions|negative_conditions)$
 statement-arm-bound-on-route	clang/src/selections.cpp	forming(statement, [&] { return lower_statement_form(statement, next, state, depth + 1); });	lower_statement_form(statement, next, state, depth + 1);	^(e2e_conditions|negative_conditions)$
 logical-value-and-constant	clang/src/statements.cpp	selected.constant.node = IntLiteral{0};	selected.constant.node = IntLiteral{1};	^(e2e_conditions|negative_conditions)$
@@ -93,9 +93,9 @@ switch-condition-read-once	clang/src/bridge.cpp	read.node = PlaceRef{version, an
 switch-condition-effects	clang/src/bridge.cpp	body = unknown(state, changed, std::move(body), header.statement);	(void)changed;	^(e2e_switch_statements|negative_switch_statements)$
 switch-case-compares-equal	clang/src/bridge.cpp	matches.node = Binary{BinaryOp::Equal, {std::move(read), std::move(*literal)}};	matches.node = Binary{BinaryOp::NotEqual, {std::move(read), std::move(*literal)}};	^(e2e_switch_statements|negative_switch_statements|e2e_safety_subset)$
 switch-default-entered	clang/src/bridge.cpp	chain = std::move(entered[static_cast<std::size_t>(fallback - entries.begin())]);	chain = lower_statements(*header.exit, state, depth + 1);	^(e2e_switch_statements|negative_switch_statements)$
-switch-break-innermost	clang/src/bridge.cpp	if (!switch_frames.empty() && switch_frames.back()->loops_outside == frames.size()) {	if (!switch_frames.empty()) {	^(e2e_switch_statements|negative_switch_statements)$
+switch-break-innermost	clang/src/loops.cpp	if (!switch_frames.empty() && switch_frames.back()->loops_outside == frames.size()) {	if (!switch_frames.empty()) {	^(e2e_switch_statements|negative_switch_statements)$
 switch-exit-closes-frame	clang/src/bridge.cpp	switch_frames.resize(std::min(switch_frames.size(), frame.switches_outside));	(void)frame.switches_outside;	^e2e_switch_statements$
-switch-continue-closes-frames	clang/src/bridge.cpp	leave_switches_inside(frame);	(void)frame;	^e2e_switch_statements$
+switch-continue-closes-frames	clang/src/loops.cpp	leave_switches_inside(frame);	(void)frame;	^e2e_switch_statements$
 switch-label-reachable	clang/src/control.cpp	const bool labelled = next.labels != nullptr && std::ranges::contains(*next.labels, next.index);	const bool labelled = false;	^(e2e_switch_statements|e2e_safety_subset)$
 switch-labels-propagate	clang/src/control.cpp	next.labels = from.labels;	(void)from.labels;	^e2e_switch_statements$
 comma-statement-left-operand	clang/src/control.cpp	return lower_statement(operands[0], then, locals, depth + 1);	return lower_statements(then, locals, depth + 1);	^(e2e_switch_statements|negative_switch_statements|negative_verified_locals)$
@@ -215,14 +215,14 @@ probe-default-not-delimited	compiler/frontend/src/projection_declarations.cpp	if
 contract-probe-parameter-count	compiler/elaboration/src/elaborate_contracts.cpp	bool agrees = probe->parameters.size() ==	bool agrees = true || probe->parameters.size() ==	^unit_default_arguments_test$
 contract-probe-parameter-types	compiler/elaboration/src/elaborate_contracts.cpp	const clangbridge::Type& stated = probe->parameters[index].type;	const clangbridge::Type& stated = function.parameters[index].type;	^unit_default_arguments_test$
 range-for-initialization-refused	clang/src/range_for.cpp	if (range_for_initializes(statement)) {	if (false && range_for_initializes(statement)) {	^negative_range_for$
-range-for-invariant-before-variable	clang/src/bridge.cpp	named_declarations(initializer).contains(clang_hashCursor(header.range->variable))) {	false) {	^negative_range_for$
+range-for-invariant-before-variable	clang/src/loops.cpp	named_declarations(initializer).contains(clang_hashCursor(header.range->variable))) {	false) {	^negative_range_for$
 range-for-range-is-a-name	clang/src/range_for.cpp	if (clang_getCursorKind(named) != CXCursor_DeclRefExpr) {	if (false) {	^negative_range_for$|^negative_sequence_boundaries$|^negative_verified_loops$
 range-for-unmodeled-range-refused	clang/src/range_for.cpp	return reject("the range of the range-based for at " + where + " is '" + range.range + "' of type '" +	(void)std::string("the range of the range-based for at " + where + " is '" + range.range + "' of type '" +	^negative_range_for$
 range-for-aggregate-elements-refused	clang/src/range_for.cpp	held.kind != CXType_Invalid && elements.kind != TypeKind::Int && elements.kind != TypeKind::Bool) {	false) {	^negative_range_for$
 range-for-span-parameter-reference	clang/src/range_for.cpp	if (range.reference && range.sequence && !range.region.root.has_value()) {	if (false) {	^negative_range_for$
 range-for-storage-kept	clang/src/range_for.cpp	locals[root].version == frame.head[root].version) {	true) {	^negative_range_for$|^negative_sequence_attacks$
 range-for-element-alias-carried	clang/src/range_for.cpp	    if (!range.writable) {	    if (true) {	^e2e_range_for$
-range-for-generated-measure	clang/src/bridge.cpp	measures.push_back(range_measure(*header.range, frame.head));	(void)frame;	^e2e_range_for$
+range-for-generated-measure	clang/src/loops.cpp	measures.push_back(range_measure(*header.range, frame.head));	(void)frame;	^e2e_range_for$
 range-for-condition-bounds-position	clang/src/range_for.cpp	below.op = BinaryOp::Less;	below.op = BinaryOp::LessEqual;	^e2e_range_for$
 operator-parameters-after-operator	compiler/frontend/src/recognizer_declarators.cpp	return at + 2;	return name + 1;	^unit_recognizer_test$|^negative_verified_methods$
 operator-conversion-function-refused	compiler/frontend/src/recognizer_state.hpp	if (operator_function && conversion_function(tokens, *name)) {	if (false && conversion_function(tokens, *name)) {	^unit_recognizer_test$
@@ -277,7 +277,7 @@ recursion-group-established-whole	compiler/automation/src/composition.cpp	} else
 totality-unmeasured-loop	compiler/obligations/src/contracts_termination.cpp	total[index] = contract.unmeasured_loops.empty() && contract.unsafe_regions.empty();	total[index] = true;	^negative_termination$
 totality-through-callees	compiler/obligations/src/contracts_termination.cpp	            if (total[index] &&	            if (false && total[index] &&	^negative_termination$
 lexicographic-first-stays	compiler/obligations/src/contracts_termination.cpp	compare(kernel::PrimOp::Equal, index)	compare(kernel::PrimOp::GreaterEqual, index)	^negative_refused_declarations$|^negative_termination$
-do-loop-exit-decided	clang/src/bridge.cpp	    if (!frame.condition_last) {	    if (true) {	^negative_termination$
+do-loop-exit-decided	clang/src/loops.cpp	    if (!frame.condition_last) {	    if (true) {	^negative_termination$
 xtu-statement-compared	compiler/obligations/src/contracts.cpp	if (!(*plan.interface_statement == recorded->entry.statement)) {	if (false && !(*plan.interface_statement == recorded->entry.statement)) {	^negative_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-imported-established	compiler/automation/src/composition.cpp	    if (function.imported.has_value()) {	    if (function.imported.has_value() && false) {	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-imported-totality	compiler/obligations/src/contracts_termination.cpp	total[index] = contract.total;	total[index] = true;	^negative_cross_tu$|^unit_cross_unit_contracts_test$
@@ -364,7 +364,7 @@ alias-write-validity-from-prior	clang/src/bridge.cpp	const bool valid = valid_ve
 return-charges-unestablished	clang/src/lowering.cpp	if (!valid_versions.contains(locals[local].version) && carries_refinement(locals[local].type)) {	if (false) {	^negative_verified_methods$|^negative_cross_feature$
 call-effect-refinement-charged	compiler/obligations/src/contracts_evaluation.cpp	const auto required = membership(program_, effect.declared, arguments[effect.argument]);	const auto required = membership(program_, effect.declared.erased(), arguments[effect.argument]);	^negative_verified_methods$|^negative_cross_feature$
 unsafe-reach-counted-valid	clang/src/unsafe.cpp	new_generation(state[index], "the unsafe block at " + at);	new_generation(state[index], "the unsafe block at " + at); valid_versions.insert(state[index].version);	^negative_verified_methods$|^negative_cross_feature$
-loop-head-counted-valid	clang/src/bridge.cpp	"the loop at " + describe_location(header.statement) + ", which may change it");	"the loop at " + describe_location(header.statement) + ", which may change it"); valid_versions.insert(frame.head[index].version);	^negative_cross_feature$
+loop-head-counted-valid	clang/src/loops.cpp	"the loop at " + describe_location(header.statement) + ", which may change it");	"the loop at " + describe_location(header.statement) + ", which may change it"); valid_versions.insert(frame.head[index].version);	^negative_cross_feature$
 read-only-position-kept-apart	clang/src/calls.cpp	if (!position.writable && !reached_by_a_write(position.storage)) {	if (!position.writable && (true || !reached_by_a_write(position.storage))) {	^negative_verified_methods$|^e2e_verified_methods$
 call-effect-common-alias-model	clang/src/calls.cpp	[&](std::size_t written) { return may_alias(state[written], state[other]); })) {	[&](std::size_t written) { return false && may_alias(state[written], state[other]); })) {	^negative_verified_methods$
 pointer-receiver-capability	clang/src/formed_places.cpp	if (!granted(position, kind)) {	if (false && !granted(position, kind)) {	^negative_verified_methods$
