@@ -1,5 +1,6 @@
 #include "cppl/obligations/contracts.hpp"
 
+#include "aggregates.hpp"
 #include "cppl/artifact/interface.hpp"
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/kernel/context.hpp"
@@ -261,47 +262,6 @@ void collect_calls(const vir::Expr& expression, const Contracts& contracts, std:
         for (const auto& operand : region->operands)
             collect_calls(operand, contracts, calls);
     }
-}
-
-// Every struct value an expression assembles from its members, outermost first
-// and in the order they are written (TRUST.md TCB-AGGREGATE-001). One nested in
-// another is a member of it and is not collected on its own: it is stated as
-// part of the one that holds it. Every node's children are visited, so a node
-// kind added later is searched without being listed here.
-void collect_aggregates(const vir::Expr& expression, std::vector<const vir::Expr*>& sites) {
-    if (std::holds_alternative<vir::Aggregate>(expression.node)) {
-        sites.push_back(&expression);
-        return;
-    }
-    std::visit(
-        [&sites](const auto& node) {
-            if constexpr (requires { node.operands; }) {
-                for (const vir::Expr& child : node.operands)
-                    collect_aggregates(child, sites);
-            }
-            if constexpr (requires { node.arguments; }) {
-                for (const vir::Expr& child : node.arguments)
-                    collect_aggregates(child, sites);
-            }
-            if constexpr (requires { node.extent; }) {
-                for (const vir::Expr& child : node.extent)
-                    collect_aggregates(child, sites);
-            }
-            if constexpr (requires { node.body; }) {
-                for (const vir::Expr& child : node.body)
-                    collect_aggregates(child, sites);
-            }
-        },
-        expression.node);
-}
-
-// Whether a body assembles a struct value anywhere. Such a value has no term of
-// its own, so the body has no total term either: it is verified path by path,
-// where each evaluation binds the value it assembles.
-bool contains_aggregate(const vir::Expr& expression) {
-    std::vector<const vir::Expr*> sites;
-    collect_aggregates(expression, sites);
-    return !sites.empty();
 }
 
 // Whether the condition selecting a path makes a verified call. The total walk
@@ -1228,94 +1188,19 @@ class Conditions {
         return owe_definedness(expression, scope, posts);
     }
 
-    // Each struct value the expression assembles from its members, before any
-    // call it makes, since a call may take one as an argument: a fresh value of
-    // the struct's type, of which the path supposes that the projection of each
-    // scalar leaf is the member value it was assembled from (TRUST.md
-    // TCB-AGGREGATE-001). That supposes only that an object of the type with
-    // those member values exists, which holds of every type the bridge
-    // assembles. The member values are reads of places, never calls, so nothing
-    // the expression evaluates is passed over by binding them first.
+    // Binds each struct value the expression assembles, before any call it makes,
+    // as a call's result is bound (aggregates.hpp, TRUST.md TCB-AGGREGATE-001).
     std::expected<void, Failure> bind_aggregates(const vir::Expr& expression, Scope& scope) const {
-        std::vector<const vir::Expr*> sites;
-        collect_aggregates(expression, sites);
-        for (const vir::Expr* site : sites) {
-            if (scope.calls.contains(site->id.value)) {
-                continue;
-            }
-            const std::optional<kernel::Type> type = core_type(site->type);
-            if (!type.has_value() || !type->is_value()) {
-                return fail("an assembled struct value has a type the formal core does not represent as a value",
-                            site->provenance.range.begin);
-            }
-            // Stated over the scope before the fresh value, then supposed after
-            // it, where the value is the innermost binder.
-            std::vector<kernel::Proposition> supposed;
-            if (auto stated =
-                    leaf_equations(*site, *type, kernel::Term::variable(kernel::VarIndex{0}), scope, supposed);
-                !stated) {
-                return stated;
-            }
-            scope.calls.emplace(site->id.value, scope.binders.size());
-            scope.binders.push_back(*type);
-            scope.events.emplace_back(*type);
-            for (kernel::Proposition& equation : supposed) {
-                scope.events.emplace_back(std::move(equation));
-            }
-        }
-        return {};
-    }
-
-    // What `subject`, a value of `domain` stated under the fresh binder, is
-    // supposed to hold when it was assembled as `aggregate`: for each member in
-    // order, that its projection is the member value, following a member that
-    // is itself assembled into its own members. Every leaf is a scalar, so each
-    // supposition is an equality the arithmetic decides with, and none equates
-    // two struct values. A member value is lowered in `scope`, before the
-    // binder, and moved past it. Each operand must stand for the member at its
-    // position, with that member's type: one supposed of the wrong member would
-    // be a false fact.
-    std::expected<void, Failure> leaf_equations(const vir::Expr& aggregate, const kernel::Type& domain,
-                                                const kernel::Term& subject, const Scope& scope,
-                                                std::vector<kernel::Proposition>& supposed) const {
-        const source::SourceLocation& location = aggregate.provenance.range.begin;
-        const auto& members = std::get<vir::Aggregate>(aggregate.node).operands;
-        const auto& signature = std::get<kernel::ValueType>(domain.node).projections;
-        if (members.size() != signature.size()) {
-            return fail("an assembled struct value has " + std::to_string(members.size()) + " values for " +
-                            std::to_string(signature.size()) + " members",
-                        location);
-        }
-        for (std::size_t index = 0; index < signature.size(); ++index) {
-            const vir::Expr& member = members[index];
-            const std::optional<kernel::Type> type = core_type(member.type);
-            if (!type.has_value() || !(*type == signature[index])) {
-                return fail("a member value of an assembled struct value has another type than the member it stands "
-                            "for",
-                            location);
-            }
-            kernel::Term projected = kernel::Term::project(domain, static_cast<std::uint32_t>(index), subject);
-            if (std::holds_alternative<vir::Aggregate>(member.node)) {
-                if (!type->is_value()) {
-                    return fail("a member assembled from members of its own is not a struct value", location);
+        return bind_assembled(
+            expression, scope.calls, [&](const vir::Expr& member) { return lower(member, scope); },
+            [&](const vir::Expr& site, const kernel::Type& type, std::vector<kernel::Proposition> facts) {
+                scope.calls.emplace(site.id.value, scope.binders.size());
+                scope.binders.push_back(type);
+                scope.events.emplace_back(type);
+                for (kernel::Proposition& fact : facts) {
+                    scope.events.emplace_back(std::move(fact));
                 }
-                if (auto nested = leaf_equations(member, *type, projected, scope, supposed); !nested) {
-                    return nested;
-                }
-                continue;
-            }
-            if (type->is_value()) {
-                return fail("a member of an assembled struct value is itself a struct value that was not assembled "
-                            "from its members",
-                            location);
-            }
-            auto value = lower(member, scope);
-            if (!value) {
-                return std::unexpected(value.error());
-            }
-            supposed.push_back(kernel::Proposition::equality(*type, std::move(projected), kernel::shift(*value, 1)));
-        }
-        return {};
+            });
     }
 
     // Where a call's postcondition stands among a scope's events.
@@ -1898,10 +1783,8 @@ class Conditions {
         written.proof = claim.proof;
         written.evidence = claim.evidence;
         written.location = expression.provenance.range.begin;
-        // A struct value an argument assembles from its members is named the way
-        // an evaluation names it, and the claim is closed over that name too, so
-        // its arguments and its goal are stated under the same binders. Naming
-        // it runs nothing (TRUST.md TCB-AGGREGATE-001).
+        // A struct value an argument assembles is bound as an evaluation binds it,
+        // and the claim is closed over it (TRUST.md TCB-AGGREGATE-001).
         Scope scope = path;
         for (const vir::Expr& argument : claim.operands) {
             if (auto assembled = bind_aggregates(argument, scope); !assembled) {
@@ -3211,9 +3094,7 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
             // validation, whose test is supposed the same way, and a verified
             // call a condition makes, whose postcondition is a fact of the
             // path it selects. So does a struct value assembled from its
-            // members, which has no term to unfold: only what its members hold
-            // is known, supposed where the path assembles it (TRUST.md
-            // TCB-AGGREGATE-001).
+            // members, which has no term (TRUST.md TCB-AGGREGATE-001).
             const bool partial = candidate.library || candidate.validates ||
                                  requires_conditions(*candidate.returned_value) ||
                                  contains_aggregate(*candidate.returned_value) ||

@@ -352,11 +352,8 @@ class TermLowering {
             return kernel::Term::call(definition->second, std::move(arguments));
         }
 
-        // A struct value assembled from its members has no term of its own: the
-        // core builds no value from components. The path that evaluates it binds
-        // a fresh value whose projections it supposes, and that binder is what it
-        // denotes there; anywhere else it denotes nothing, and is refused rather
-        // than read as some other value (TRUST.md TCB-AGGREGATE-001).
+        // A struct value assembled from its members is the fresh value the path that
+        // evaluates it binds, and nothing anywhere else (TRUST.md TCB-AGGREGATE-001).
         if (std::holds_alternative<vir::Aggregate>(expr.node)) {
             if (calls_ != nullptr) {
                 const auto binding = calls_->find(expr.id.value);

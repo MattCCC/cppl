@@ -409,9 +409,8 @@ class ExpressionElaborator {
             result.node = vir::Projection{projection->index, {std::move(*operand)}};
             return result;
         }
-        // A struct value assembled from its members keeps one operand per
-        // component of its type, in order; anything else would suppose a
-        // member's value of another member (TRUST.md TCB-AGGREGATE-001).
+        // A struct value assembled from its members keeps one operand per component
+        // of its type, in order (TRUST.md TCB-AGGREGATE-001).
         if (const auto* aggregate = std::get_if<clangbridge::Aggregate>(&expr.node)) {
             if (!type->is_value() ||
                 aggregate->operands.size() != std::get<vir::ValueType>(type->node).projections.size()) {

@@ -4,6 +4,7 @@
 # core terms and states Laws as core propositions. It depends on the kernel;
 # the kernel does not depend on it.
 add_library(cppl_obligations STATIC
+    src/aggregates.cpp
     src/generate.cpp
     src/contracts.cpp
     src/contradiction.cpp
