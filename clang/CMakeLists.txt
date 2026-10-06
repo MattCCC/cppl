@@ -16,6 +16,7 @@ add_library(cppl_clang STATIC
     src/control.cpp
     src/conversions.cpp
     src/cursors.cpp
+    src/declarations.cpp
     src/default_arguments.cpp
     src/editor.cpp
     src/expressions.cpp
