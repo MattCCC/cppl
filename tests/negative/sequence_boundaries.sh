@@ -1501,7 +1501,7 @@ verified unsigned c_data_writable_call()
 }
 
 CPP
-refused c_after_unsafe_read "law 'c_after_unsafe_read element index' is not proven" <<'CPP'
+refused c_after_unsafe_read "may write the elements of 'v', whose elements must satisfy 'Positive'" <<'CPP'
 verified unsigned c_after_unsafe_read()
     ensures (0u < result)
 {

@@ -51,6 +51,12 @@ refuse sequence_attack_string_reference_after_append \
     "'c' refers to an element of 's', which may have been reallocated or ended by 'std::basic_string<char>::operator+='"
 refuse sequence_attack_reference_across_unsafe "'r' refers to an element of 'v', which may have been reallocated or ended by the unsafe block"
 refuse sequence_attack_view_across_unsafe "return path 'through_view path 1' does not satisfy its contract"
+refuse sequence_attack_sibling_across_unsafe "return path 'sibling_of_vector_element path 1' does not satisfy its contract"
+for sibling in sibling_of_array_element sibling_of_member; do
+    grep -qF "return path '$sibling path 1' does not satisfy its contract" \
+        "$run/sequence_attack_sibling_across_unsafe.log" || fail "$sibling was not refused"
+done
+refuse sequence_attack_refined_elements_across_unsafe "may write the elements of 'v', whose elements must satisfy 'Positive'"
 for name in sequence_attack_stale_after_reserve sequence_attack_reference_after_assign \
     sequence_attack_reference_after_move_assign sequence_attack_string_reference_after_append \
     sequence_attack_reference_across_unsafe; do

@@ -128,7 +128,12 @@ call-two-writable-views	clang/src/bridge.cpp	for (const std::size_t other : writ
 call-span-parameter-written-twice	clang/src/bridge.cpp	if (std::ranges::any_of(written_span_parameters, [&](CXCursor written_parameter) {	if (false && std::ranges::any_of(written_span_parameters, [&](CXCursor written_parameter) {	^negative_sequence_boundaries$
 call-statement-temporaries-mutator-only	clang/src/bridge.cpp	if (clang_getCursorKind(inner) == CXCursor_CallExpr && sequence_call(inner).has_value()) {	if (clang_getCursorKind(inner) == CXCursor_CallExpr) {	^negative_sequence_generations$
 call-writable-span-havocs-pointees	clang/src/bridge.cpp	return convert_type(canonical).representation.kind == source::RepresentationKind::Span &&	return false && convert_type(canonical).representation.kind == source::RepresentationKind::Span &&	^negative_sequence_boundaries$
-unsafe-reaches-viewed-container	clang/src/bridge.cpp	reached[*held->views] = true;	(void)held;	^negative_sequence_attacks$
+unsafe-reaches-viewed-container	clang/src/bridge.cpp	reach(*held->views);	(void)held;	^negative_sequence_attacks$
+unsafe-reaches-whole-object	clang/src/bridge.cpp	reach(other);	(void)other;	^negative_sequence_attacks$
+unsafe-refined-container-refused	clang/src/bridge.cpp	held.has_value() && !held->element.refinements.empty()) {	held.has_value() && false && !held->element.refinements.empty()) {	^negative_sequence_attacks$|^negative_sequence_boundaries$
+hidden-refinement-spelling-refused	clang/src/bridge.cpp	if (written.kind == CXType_Unexposed && unnamed &&	if (false && written.kind == CXType_Unexposed && unnamed &&	^negative_refinement_types$
+template-argument-default-refinement	clang/src/bridge.cpp	if (auto by_default = defaulted(named)) {	if (auto by_default = std::optional<RefinedTemplateArgument>{}) {	^negative_refinement_types$
+template-argument-decltype-refinement	clang/src/bridge.cpp	if (kind == CXCursor_DeclRefExpr && user_template.has_value()) {	if (false && kind == CXCursor_DeclRefExpr && user_template.has_value()) {	^negative_refinement_types$
 call-element-beside-reallocatable-container	clang/src/bridge.cpp	(container.storage != owner && !may_alias(holder, state[owner]))) {	true || (container.storage != owner && !may_alias(holder, state[owner]))) {	^negative_sequence_boundaries$
 deref-symbolic-index-overlaps	clang/src/bridge.cpp	if (other.has_symbolic_step() || target.has_symbolic_step()) {	if (false && (other.has_symbolic_step() || target.has_symbolic_step())) {	^negative_memory_capabilities$
 record-user-destructor-unmodeled	clang/src/bridge.cpp	if (has_user_provided_destructor(definition)) {	if (false && has_user_provided_destructor(definition)) {	^negative_verified_methods$

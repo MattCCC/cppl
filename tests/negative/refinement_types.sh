@@ -774,6 +774,67 @@ verified int boxed(int raw) ensures (result == raw) {
 }
 CPP
 
+# Nor by a default template argument, or through `decltype` of a refined name.
+refined_argument a_class_template_defaulting_to_a_refinement Dflt <<'CPP'
+type Positive = int where (self > 0);
+template <class T = Positive> struct Dflt { T value; };
+verified int boxed(int raw) ensures (result == raw) {
+    Dflt<> box{raw};
+    return box.value;
+}
+CPP
+
+refined_argument a_class_template_at_decltype_of_a_refined_name Box <<'CPP'
+type Positive = int where (self > 0);
+template <class T> struct Box { T value; };
+verified int boxed(Positive p, int raw) ensures (result == raw) {
+    Box<decltype(p)> box{raw};
+    return box.value;
+}
+CPP
+
+# SPEC: FORALL-001, STDMODEL-020
+# A type spelled so that its refinement cannot be followed -- through
+# `decltype`, or an alias template such as `std::type_identity_t` or
+# `std::remove_cv_t` -- is refused wherever it is read, rather than read as its
+# base type: as a quantifier's binder, a law's or trusted law's parameter, the
+# type of a formal equality, or a local.
+hidden_refinement() {
+    reject "$1"
+    grep -qF "which may name a refinement through a spelling this implementation does not follow" "$run/$1.log" ||
+        { cat "$run/$1.log" >&2; echo "$1 was not refused for its hidden refinement" >&2; exit 1; }
+}
+hidden_refinement a_binder_through_an_alias_template <<'CPP'
+#include <type_traits>
+type Small = unsigned where (self < 10u);
+law small_premise(unsigned n)
+    expects (forall (std::remove_cv_t<Small> s) { s < 10u })
+    proves (n == n);
+CPP
+
+hidden_refinement a_binder_through_decltype <<'CPP'
+type Small = unsigned where (self < 10u);
+verified Small make_small() ensures (result == 3u) { return 3u; }
+law small_premise(unsigned n)
+    expects (forall (decltype(make_small()) s) { s < 10u })
+    proves (n == n);
+CPP
+
+hidden_refinement a_trusted_parameter_through_remove_cv <<'CPP'
+#include <type_traits>
+type Small = unsigned where (self < 10u);
+trusted law small_below(std::remove_cv_t<Small> s) proves (s < 10u);
+CPP
+
+hidden_refinement a_local_through_an_alias_template <<'CPP'
+#include <type_traits>
+type Positive = int where (self > 0);
+verified int hold(int raw) ensures (result == raw) {
+    std::remove_cv_t<Positive> p = raw;
+    return p;
+}
+CPP
+
 # The twin at the base type states nothing to charge, and is proven.
 accept a_class_template_local_at_the_base_type <<'CPP'
 template <class T> struct Box { T value; };

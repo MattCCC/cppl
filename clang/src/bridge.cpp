@@ -715,8 +715,23 @@ std::expected<std::vector<Refinement>, std::string> refinements_of(CXCursor decl
             declaration = *alias;
         }
         const CXCursorKind kind = clang_getCursorKind(declaration);
-        if (kind != CXCursor_TypeAliasDecl && kind != CXCursor_TypedefDecl && kind != CXCursor_TypeAliasTemplateDecl)
+        if (kind != CXCursor_TypeAliasDecl && kind != CXCursor_TypedefDecl && kind != CXCursor_TypeAliasTemplateDecl) {
+            // A spelling this cannot follow to the declaration it names --
+            // `decltype(...)`, or the member an alias template like
+            // `std::type_identity_t` reaches -- may stand for a refinement,
+            // and reading it as its base type would drop the predicate it
+            // names (SPEC.md STDMODEL-020, FORALL-001). A substituted template
+            // parameter spells its canonical type and is followed as it.
+            const bool unnamed = clang_Cursor_isNull(declaration) != 0 || kind == CXCursor_NoDeclFound ||
+                                 kind == CXCursor_TemplateTypeParameter;
+            if (written.kind == CXType_Unexposed && unnamed &&
+                take(clang_getTypeSpelling(written)) != take(clang_getTypeSpelling(clang_getCanonicalType(written)))) {
+                return std::unexpected("a type written as '" + take(clang_getTypeSpelling(written)) +
+                                       "', which may name a refinement through a spelling this implementation does "
+                                       "not follow; write the refinement or its base type directly");
+            }
             return found;
+        }
         if (std::ranges::any_of(visited, [&](CXCursor previous) { return clang_equalCursors(previous, declaration); }))
             return std::unexpected("cyclic refinement alias metadata");
         visited.push_back(declaration);
@@ -6145,13 +6160,37 @@ struct BodyLowering {
                 reached[storage] = true;
             }
         }
-        // A view reached is a way to write the container it views, though the
-        // block never names that container (STDMODEL-014, TCB-UNSAFE-002).
-        for (std::size_t index = 0; index < locals.size(); ++index) {
-            const std::optional<Local::Sequence>& held = locals[index].sequence;
-            if (reached[index] && held.has_value() && held->views.has_value() && *held->views < reached.size() &&
-                !locals[*held->views].binder.has_value()) {
-                reached[*held->views] = true;
+        // A place an unsafe block reaches gives it the address of the whole
+        // object the place is part of, and pointer arithmetic from there is
+        // valid C++ (TCB-UNSAFE-002): a view reached reaches the container it
+        // views, and an element or member reached reaches every place of the
+        // same object, the container itself included. This repeats until
+        // nothing new is reached, since each step can lead to another.
+        for (bool grew = true; grew;) {
+            grew = false;
+            const auto reach = [&](std::size_t target) {
+                if (target < reached.size() && !reached[target] && !locals[target].binder.has_value()) {
+                    reached[target] = true;
+                    grew = true;
+                }
+            };
+            for (std::size_t index = 0; index < locals.size(); ++index) {
+                if (!reached[index]) {
+                    continue;
+                }
+                const Local& entry = locals[index];
+                if (const std::optional<Local::Sequence>& held = entry.sequence;
+                    held.has_value() && held->views.has_value()) {
+                    reach(*held->views);
+                }
+                if (!entry.is_deref() && !entry.path.empty()) {
+                    for (std::size_t other = 0; other < locals.size(); ++other) {
+                        if (!locals[other].referent.has_value() && !locals[other].is_deref() &&
+                            clang_equalCursors(locals[other].declaration, entry.declaration) != 0) {
+                            reach(other);
+                        }
+                    }
+                }
             }
         }
         std::vector<std::size_t> found;
@@ -6209,6 +6248,18 @@ struct BodyLowering {
 
         Locals state = locals;
         const std::vector<std::size_t> reached = unsafe_reach(state);
+        // A refined element type is a content invariant of the container's
+        // storage, and nothing obliges the block to leave only such values in
+        // it (STDMODEL-020, TCB-UNSAFE-003).
+        for (const std::size_t index : reached) {
+            if (const std::optional<Local::Sequence>& held = state[index].sequence;
+                held.has_value() && !held->element.refinements.empty()) {
+                return reject("the unsafe block at " + at + " may write the elements of '" + state[index].spelling +
+                              "', whose elements must satisfy '" + held->element.refinements.front().name +
+                              "'; nothing obliges it to leave only such values there, so a container whose element "
+                              "type is refined is not reached by an unsafe block");
+            }
+        }
         for (const std::size_t index : reached) {
             // The block may have replaced or ended a container's storage: every
             // view of it formed before is stale (STDMODEL-015).
@@ -8369,19 +8420,54 @@ std::optional<RefinedTemplateArgument> refined_template_argument(CXCursor cursor
         return std::nullopt;
     }
     std::optional<std::string> user_template;
+    // A refinement a template's own parameter takes by default reaches every
+    // use that leaves that argument out.
+    const auto defaulted = [&](CXCursor named_template) -> std::optional<RefinedTemplateArgument> {
+        for (const CXCursor parameter : children_of(named_template)) {
+            if (clang_getCursorKind(parameter) != CXCursor_TemplateTypeParameter) {
+                continue;
+            }
+            for (const CXCursor argument : children_of(parameter)) {
+                if (clang_getCursorKind(argument) != CXCursor_TypeRef) {
+                    continue;
+                }
+                if (auto refinement = refinement_use(clang_getCursorReferenced(argument), selection)) {
+                    return RefinedTemplateArgument{std::move(*refinement), qualified_name_of(named_template)};
+                }
+            }
+        }
+        return std::nullopt;
+    };
     const CXCursor referenced = clang_getCursorReferenced(cursor);
     if (clang_isExpression(clang_getCursorKind(cursor)) != 0 && clang_Cursor_isNull(referenced) == 0) {
         const CXCursor primary = clang_getSpecializedCursorTemplate(referenced);
         if (clang_Cursor_isNull(primary) == 0 && !in_namespace_std(primary)) {
             user_template = qualified_name_of(primary);
+            if (auto by_default = defaulted(primary)) {
+                return by_default;
+            }
         }
     }
+    const CXCursor initializer = clang_Cursor_getVarDeclInitializer(cursor);
     for (const CXCursor child : children_of(cursor)) {
+        if (clang_Cursor_isNull(initializer) == 0 && clang_equalCursors(child, initializer) != 0) {
+            break;
+        }
         const CXCursorKind kind = clang_getCursorKind(child);
         if (kind == CXCursor_TemplateRef) {
             const CXCursor named = clang_getCursorReferenced(child);
             if (!user_template.has_value() && !in_namespace_std(named)) {
                 user_template = qualified_name_of(named);
+                if (auto by_default = defaulted(named)) {
+                    return by_default;
+                }
+            }
+            continue;
+        }
+        // `Box<decltype(p)>` names `p`'s type through `p`.
+        if (kind == CXCursor_DeclRefExpr && user_template.has_value()) {
+            if (auto refinement = refinement_use(clang_getCursorReferenced(child), selection)) {
+                return RefinedTemplateArgument{std::move(*refinement), *user_template};
             }
             continue;
         }
