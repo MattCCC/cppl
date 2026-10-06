@@ -617,17 +617,21 @@ Existing C++ projects are not required to rename files.
 The compatibility contract covers ordinary source/header extensions including:
 
 ```text
-.cpp
-.cc
-.cxx
-.c++
+.cpp  .CPP
+.cc   .CC
+.cp
+.cxx  .CXX
+.c++  .C++
 .C
 .h
 .hpp
 .hh
 ```
 
-where the selected platform/toolchain treats the extension as C++.
+where the selected platform/toolchain treats the extension as C++. Every source
+of these is read for C++L and verified when it holds C++L. Any other input, a
+`.c` source, an object or a library, is handed to Clang beside them unchanged,
+which compiles or links it as it would without C++L.
 
 The dedicated extension:
 
@@ -1643,6 +1647,25 @@ This includes, where supported:
 
 **[COMPAT-ARGS-001]** C++L MUST NOT analyze one effective compiler configuration
 and generate code under another incompatible configuration.
+
+This implementation preprocesses each C++ source with the build's own
+arguments, every other input left out, and compiles the runtime program of each
+unit holding C++L as preprocessed text in that source's place, with the language
+reset for whatever input follows it, a source, an object or a library alike.
+What only preprocessing reads is then read as Clang would read it for the
+source:
+
+- when no input of the compile is left that Clang preprocesses, the options
+  only preprocessing reads (include paths, forced includes, macro undefinitions,
+  dependency options and, when nothing is linked, `-isysroot`, `-F` and
+  `-stdlib=`) were read with each unit and are left out of the compile, which
+  would otherwise report them unused, so a `-Werror` build builds; an option
+  Clang would report unused for the source is still reported;
+- `-MD` and `-MMD` write the dependency file where Clang would for the build's
+  command, `-MF` or else beside the output, naming the target Clang would name,
+  `-MT` or `-MQ` or else the output;
+- an output Clang names after its input when no `-o` names it, such as the
+  object of `-c`, is named after the source.
 
 ---
 

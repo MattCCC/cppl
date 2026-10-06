@@ -279,6 +279,16 @@ dependency-one-rule	compiler/driver/src/dependencies.cpp	if (!blank(text[rest]))
 dependency-escaped-space	compiler/driver/src/dependencies.cpp	name.push_back(' ');	(void)0;	^unit_dependencies_test$
 dependency-escaped-hash	compiler/driver/src/dependencies.cpp	name.push_back('#');	(void)0;	^unit_dependencies_test$
 dependency-escaped-dollar	compiler/driver/src/dependencies.cpp	name.push_back('$');	(void)0;	^unit_dependencies_test$
+driver-language-reset-for-any-input	compiler/driver/src/driver.cpp	std::ranges::any_of(options.positional, [index](std::size_t later) { return later > index; });	std::ranges::any_of(options.inputs, [index](const Input& later) { return later.argument_index > index; });	^integration_driver_inputs$
+driver-every-input-out-of-preprocessing	compiler/driver/src/driver.cpp	if (index < is_input.size()) {	if (index < is_input.size() && std::ranges::any_of(options.inputs, [index](const Input& input) { return input.argument_index == index; })) {	^integration_driver_inputs$
+driver-every-cpp-extension	compiler/driver/src/options.cpp	{".cpp", ".CPP", ".cc", ".CC", ".cp", ".cxx", ".CXX", ".c++", ".C++", ".C", ".cppl"}	{".cpp", ".cc", ".cxx", ".c++", ".C", ".cppl"}	^integration_driver_inputs$
+driver-preprocessing-options-unread	compiler/driver/src/driver.cpp	if (!replacements.empty() && !preprocessing) {	if (false && !replacements.empty() && !preprocessing) {	^integration_driver_inputs$
+driver-preprocessing-options-kept-for-sources	compiler/driver/src/driver.cpp	return !replacements.contains(index) && !unpreprocessed_input(options.arguments[index]);	return false && !replacements.contains(index) && !unpreprocessed_input(options.arguments[index]);	^integration_driver_inputs$
+driver-unpreprocessed-inputs	compiler/driver/src/driver.cpp	return path.find(".so.") != std::string_view::npos ||	return false && path.find(".so.") != std::string_view::npos &&	^integration_driver_inputs$
+driver-search-options-unread-without-link	compiler/driver/src/driver.cpp	if (separate(kSeparate) || (compile_only && separate(kSearchSeparate))) {	if (separate(kSeparate) || (false && compile_only && separate(kSearchSeparate))) {	^integration_driver_inputs$
+driver-dependency-file-named	compiler/driver/src/driver.cpp	if (!named_file) {	if (false) {	^integration_driver_inputs$
+driver-dependency-target-named	compiler/driver/src/driver.cpp	if (!named_target) {	if (false) {	^integration_driver_inputs$
+driver-runtime-named-after-source	compiler/driver/src/pipeline.cpp	request.scratch / (std::filesystem::path(request.stem).stem().string() + ".ii");	request.scratch / (request.stem + ".runtime.ii");	^integration_driver_inputs$
 lsp-machine-options-kept	src/lsp/src/compile_commands.cpp	one_of(argument, kSwitches) || machine_option(argument) ||	one_of(argument, kSwitches) || (false && machine_option(argument)) ||	^lsp_compile_commands_test$|^lsp_interfaces_test$
 lsp-architecture-kept	src/lsp/src/compile_commands.cpp	({"-target", "-arch", "-mthread-model", "--std"});	({"-target", "-mthread-model", "--std"});	^lsp_compile_commands_test$
 lsp-unpassed-frontend-options	src/lsp/src/compile_commands.cpp	if (argument == "-Xclang" || argument.starts_with("-Xarch_")) {	if (false && (argument == "-Xclang" || argument.starts_with("-Xarch_"))) {	^lsp_compile_commands_test$|^lsp_interfaces_test$

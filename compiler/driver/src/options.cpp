@@ -15,31 +15,51 @@ namespace {
 
 // Options whose value is a separate argument. Their value must never be
 // mistaken for an input file.
-constexpr std::array<std::string_view, 25> kValueOptions = {"-o",
-                                                            "-I",
-                                                            "-isystem",
-                                                            "-iquote",
-                                                            "-idirafter",
-                                                            "-include",
-                                                            "-imacros",
-                                                            "-F",
-                                                            "-framework",
-                                                            "-L",
-                                                            "-l",
-                                                            "-D",
-                                                            "-U",
-                                                            "-x",
-                                                            "-Xclang",
-                                                            "-Xlinker",
-                                                            "-Xpreprocessor",
-                                                            "-MF",
-                                                            "-MT",
-                                                            "-MQ",
-                                                            "-target",
-                                                            "-arch",
-                                                            "-isysroot",
-                                                            "--sysroot",
-                                                            "--std"};
+constexpr auto kValueOptions = std::to_array<std::string_view>({"-o",
+                                                                "-I",
+                                                                "-isystem",
+                                                                "-iquote",
+                                                                "-idirafter",
+                                                                "-include",
+                                                                "-imacros",
+                                                                "-F",
+                                                                "-framework",
+                                                                "-L",
+                                                                "-l",
+                                                                "-D",
+                                                                "-U",
+                                                                "-x",
+                                                                "-Xclang",
+                                                                "-Xlinker",
+                                                                "-Xpreprocessor",
+                                                                "-Xassembler",
+                                                                "-MF",
+                                                                "-MT",
+                                                                "-MQ",
+                                                                "-MJ",
+                                                                "-target",
+                                                                "-arch",
+                                                                "-isysroot",
+                                                                "--sysroot",
+                                                                "--std",
+                                                                "-include-pch",
+                                                                "-iprefix",
+                                                                "-iwithprefix",
+                                                                "-iwithprefixbefore",
+                                                                "-isystem-after",
+                                                                "-cxx-isystem",
+                                                                "-iframework",
+                                                                "-iwithsysroot",
+                                                                "-iframeworkwithsysroot",
+                                                                "-ivfsoverlay",
+                                                                "-mllvm",
+                                                                "-mthread-model",
+                                                                "-B",
+                                                                "-z",
+                                                                "-T",
+                                                                "-u",
+                                                                "-e",
+                                                                "--param"});
 
 // The language standard one argument selects with its value joined, as Clang
 // accepts it: `-std=c++20` or `--std=c++20`.
@@ -73,8 +93,11 @@ bool has_extension(std::string_view path, std::string_view extension) {
 } // namespace
 
 bool is_source_path(std::string_view path) {
-    return has_extension(path, ".cpp") || has_extension(path, ".cc") || has_extension(path, ".cxx") ||
-           has_extension(path, ".c++") || has_extension(path, ".cppl") || has_extension(path, ".C");
+    // Every extension Clang reads as C++ source, in each spelling it accepts.
+    constexpr auto kExtensions = std::to_array<std::string_view>(
+        {".cpp", ".CPP", ".cc", ".CC", ".cp", ".cxx", ".CXX", ".c++", ".C++", ".C", ".cppl"});
+    return std::ranges::any_of(kExtensions,
+                               [path](std::string_view extension) { return has_extension(path, extension); });
 }
 
 bool is_header_path(std::string_view path) {
@@ -157,6 +180,9 @@ Options parse(int argc, const char* const* argv) {
 
         if (skip_value) {
             skip_value = false;
+            if (options.arguments[options.arguments.size() - 2] == "-o") {
+                options.output = argument;
+            }
             continue;
         }
 
@@ -170,9 +196,14 @@ Options parse(int argc, const char* const* argv) {
             if (argument == "-x") {
                 options.explicit_language = true;
             }
+            if (argument == "-c" || argument == "-S" || argument == "-fsyntax-only") {
+                options.compile_only = true;
+            }
             continue;
         }
 
+        // Every input, whatever it is: a source, an object, a library.
+        options.positional.push_back(options.arguments.size() - 1);
         if (is_source_path(argument) || is_header_path(argument)) {
             options.inputs.push_back(Input{argument, options.arguments.size() - 1, is_header_path(argument)});
         }

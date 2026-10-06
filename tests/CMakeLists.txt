@@ -554,6 +554,7 @@ cppl_add_script_test(integration_source_identity integration/source_identity.sh)
 cppl_add_script_test(integration_determinism integration/determinism.sh)
 cppl_add_script_test(integration_parallel_verification integration/parallel_verification.sh)
 cppl_add_script_test(integration_signalled_compiler integration/signalled_compiler.sh)
+cppl_add_script_test(integration_driver_inputs integration/driver_inputs.sh)
 
 add_test(NAME architecture_dependency_boundaries
          COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/architecture/dependency_boundaries.sh"

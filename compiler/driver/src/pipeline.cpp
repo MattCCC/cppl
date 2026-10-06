@@ -602,7 +602,13 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
     // after the source its first line marker names, the user's own file, rather
     // than after this scratch file, which is gone once the build ends and whose
     // random directory would differ in every object built (ARCH-ERASE-003).
-    const std::filesystem::path runtime_path = request.scratch / (request.stem + ".runtime.ii");
+    //
+    // It is named after the source's own stem, in a directory of its own, so an
+    // output Clang names after its input when no `-o` names one, such as the
+    // object of `-c`, is named as the source's would be: `main.o`, not
+    // `main.cpp.runtime.o`.
+    const std::filesystem::path runtime_path =
+        request.scratch / (std::filesystem::path(request.stem).stem().string() + ".ii");
     if (!write_scratch_file(runtime_path, erased.runtime)) {
         report(engine, diagnostics::Category::Internal, "could not write the runtime program");
         outcome.failed = true;

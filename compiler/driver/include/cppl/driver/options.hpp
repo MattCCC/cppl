@@ -21,6 +21,10 @@ struct Input {
 struct Options {
     std::vector<std::string> arguments;
     std::vector<Input> inputs;
+    // The position in `arguments` of every input, whatever it is -- a source
+    // C++L reads, another source, an object, a library -- in order: each
+    // argument that is neither an option nor an option's value.
+    std::vector<std::size_t> positional;
     std::string clang;
     bool trust_report = false;
     // Where to write the trust report as a JSON document, for tools rather
@@ -38,6 +42,8 @@ struct Options {
     bool version = false;           // print what verification results are bound to, and stop
     bool passthrough = false;       // the command does not compile anything
     bool explicit_language = false; // -x was given
+    bool compile_only = false;      // -c, -S or -fsyntax-only: nothing is linked
+    std::string output;             // the last -o's value, or empty
     std::string standard;           // the selected standard (`selected_standard`)
     std::vector<std::string> errors;
 };

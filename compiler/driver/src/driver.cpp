@@ -21,6 +21,8 @@
 #include "version.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdlib>
 #include <expected>
 #include <filesystem>
@@ -31,6 +33,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -74,12 +77,15 @@ std::optional<std::string> read_file(const std::filesystem::path& path) {
 
 // The user's command line with the parts that select output and inputs removed,
 // so the same configuration can drive preprocessing and semantic analysis.
-// Everything that affects C++ meaning is kept (ARCHITECTURE.md 80).
+// Every input goes, whatever it is: another source, an object or a library is
+// no part of how one unit reads, and preprocessing it beside the unit would ask
+// for an output each. Everything that affects C++ meaning is kept
+// (ARCHITECTURE.md 80).
 std::vector<std::string> base_arguments(const Options& options) {
     std::vector<bool> is_input(options.arguments.size(), false);
-    for (const Input& input : options.inputs) {
-        if (input.argument_index < is_input.size()) {
-            is_input[input.argument_index] = true;
+    for (const std::size_t index : options.positional) {
+        if (index < is_input.size()) {
+            is_input[index] = true;
         }
     }
 
@@ -99,6 +105,147 @@ std::vector<std::string> base_arguments(const Options& options) {
             continue;
         }
         arguments.push_back(argument);
+    }
+    return arguments;
+}
+
+// The options that have the preprocessing of `input` write the dependency file
+// the build asked for with `-MD` or `-MMD` where Clang would write it for the
+// build's own command, naming the target Clang would name. Preprocessing writes
+// a scratch file, which Clang would otherwise name as the target and derive the
+// dependency file's name from; and the runtime program compiled afterwards is
+// already preprocessed, so its compile writes none. Nothing when none was asked
+// for.
+std::vector<std::string> dependency_output(const Options& options, const Input& input) {
+    bool wanted = false;
+    bool named_file = false;
+    bool named_target = false;
+    for (const std::string& argument : options.arguments) {
+        wanted = wanted || argument == "-MD" || argument == "-MMD";
+        named_file = named_file || argument.starts_with("-MF");
+        named_target = named_target || argument.starts_with("-MT") || argument.starts_with("-MQ");
+    }
+    std::vector<std::string> added;
+    if (!wanted) {
+        return added;
+    }
+    const std::filesystem::path given(input.path);
+    // As Clang names them: after the output when there is one, else after the
+    // input, in the current directory.
+    if (!named_file) {
+        std::filesystem::path file = options.output.empty()
+                                         ? std::filesystem::path(given.stem().string() + ".d")
+                                         : std::filesystem::path(options.output).replace_extension(".d");
+        added.emplace_back("-MF");
+        added.push_back(file.string());
+    }
+    if (!named_target) {
+        std::filesystem::path target =
+            options.output.empty() ? given.filename().replace_extension(".o") : std::filesystem::path(options.output);
+        added.emplace_back("-MQ");
+        added.push_back(target.string());
+    }
+    return added;
+}
+
+// Whether Clang compiles an input of this name without preprocessing it: an
+// object, a library, or text already preprocessed. Any other input may be
+// preprocessed, and needs the options only preprocessing reads.
+bool unpreprocessed_input(std::string_view path) {
+    constexpr auto kExtensions = std::to_array<std::string_view>(
+        {".o", ".obj", ".a", ".lib", ".so", ".dylib", ".tbd", ".dll", ".ii", ".i", ".mii", ".mi", ".bc", ".ll", ".s"});
+    return path.find(".so.") != std::string_view::npos ||
+           std::ranges::any_of(kExtensions, [path](std::string_view extension) {
+               return path.size() > extension.size() && path.ends_with(extension);
+           });
+}
+
+// How many arguments, from `index`, an option spans that only preprocessing
+// reads, and that a compile of preprocessed text alone reports unused; 0 for
+// any other. The search paths and the standard library a link also reads are
+// among them only when nothing is linked.
+std::size_t preprocessing_only(const std::vector<std::string>& arguments, std::size_t index, bool compile_only) {
+    constexpr auto kSeparate = std::to_array<std::string_view>({"-I",
+                                                                "-isystem",
+                                                                "-iquote",
+                                                                "-idirafter",
+                                                                "-include",
+                                                                "-imacros",
+                                                                "-U",
+                                                                "-MF",
+                                                                "-MT",
+                                                                "-MQ",
+                                                                "-iprefix",
+                                                                "-iwithprefix",
+                                                                "-iwithprefixbefore",
+                                                                "-isystem-after",
+                                                                "-cxx-isystem",
+                                                                "-iframework",
+                                                                "-iwithsysroot",
+                                                                "-iframeworkwithsysroot",
+                                                                "-include-pch",
+                                                                "-Xpreprocessor"});
+    constexpr auto kJoined =
+        std::to_array<std::string_view>({"-I", "-U", "-isystem", "-iquote", "-idirafter", "-imacros", "-MF", "-MT",
+                                         "-MQ", "-iframework", "--embed-dir=", "-Wp,"});
+    constexpr auto kSwitches = std::to_array<std::string_view>({"-MD", "-MMD", "-MP", "-MG", "-MV", "-nostdinc++"});
+    constexpr auto kSearchSeparate = std::to_array<std::string_view>({"-isysroot", "-F"});
+    constexpr auto kSearchJoined = std::to_array<std::string_view>({"-isysroot", "-F", "-stdlib="});
+    const std::string_view argument = arguments[index];
+    const auto separate = [&](const auto& options) {
+        return std::ranges::find(options, argument) != options.end();
+    };
+    const auto joined = [&](const auto& options) {
+        return std::ranges::any_of(options, [argument](std::string_view option) {
+            return argument.size() > option.size() && argument.starts_with(option);
+        });
+    };
+    const std::size_t value = index + 1 < arguments.size() ? 2 : 1;
+    if (separate(kSeparate) || (compile_only && separate(kSearchSeparate))) {
+        return value;
+    }
+    if (separate(kSwitches) || joined(kJoined) || (compile_only && joined(kSearchJoined))) {
+        return 1;
+    }
+    return 0;
+}
+
+// The command the C++ compiler runs: the build's own, with each verified unit
+// replaced by its runtime program. The program is preprocessed text, so the
+// language is selected for it and reset for whatever input follows, an object
+// or a library as much as a source. When no input is left that is
+// preprocessed, the options only preprocessing reads were read when each unit
+// was, and are left out rather than reported unused.
+std::vector<std::string> compile_arguments(const Options& options,
+                                           const std::map<std::size_t, std::string>& replacements) {
+    const bool preprocessing =
+        options.explicit_language || std::ranges::any_of(options.positional, [&](std::size_t index) {
+            return !replacements.contains(index) && !unpreprocessed_input(options.arguments[index]);
+        });
+    std::vector<std::string> arguments;
+    arguments.reserve(options.arguments.size());
+    for (std::size_t index = 0; index < options.arguments.size(); ++index) {
+        if (!replacements.empty() && !preprocessing) {
+            if (const std::size_t spanned = preprocessing_only(options.arguments, index, options.compile_only);
+                spanned != 0) {
+                index += spanned - 1;
+                continue;
+            }
+        }
+        const auto replacement = replacements.find(index);
+        if (replacement == replacements.end()) {
+            arguments.push_back(options.arguments[index]);
+            continue;
+        }
+        const bool more_inputs_follow =
+            std::ranges::any_of(options.positional, [index](std::size_t later) { return later > index; });
+        arguments.emplace_back("-x");
+        arguments.emplace_back("c++-cpp-output");
+        arguments.push_back(replacement->second);
+        if (more_inputs_follow) {
+            arguments.emplace_back("-x");
+            arguments.emplace_back("none");
+        }
     }
     return arguments;
 }
@@ -127,6 +274,8 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
         preprocess.emplace_back("-x");
         preprocess.emplace_back("c++-header");
     }
+    const std::vector<std::string> dependencies = dependency_output(options, input);
+    preprocess.insert(preprocess.end(), dependencies.begin(), dependencies.end());
     preprocess.push_back(input.path);
     preprocess.emplace_back("-o");
     preprocess.push_back(preprocessed_path.string());
@@ -727,29 +876,9 @@ int run_driver(int argc, const char* const* argv) {
         print_trust_report(options, summary);
     }
 
-    std::vector<std::string> arguments;
-    arguments.reserve(options.arguments.size());
-    for (std::size_t index = 0; index < options.arguments.size(); ++index) {
-        const auto replacement = replacements.find(index);
-        if (replacement == replacements.end()) {
-            arguments.push_back(options.arguments[index]);
-            continue;
-        }
-        // The verified program is the program compiled: the runtime projection
-        // is handed to Clang, already preprocessed. The language selection is
-        // reset afterwards only when another input follows it, since -x applies
-        // to the inputs after it.
-        const bool more_inputs_follow =
-            std::ranges::any_of(options.inputs, [index](const Input& later) { return later.argument_index > index; });
-
-        arguments.emplace_back("-x");
-        arguments.emplace_back("c++-cpp-output");
-        arguments.push_back(replacement->second);
-        if (more_inputs_follow) {
-            arguments.emplace_back("-x");
-            arguments.emplace_back("none");
-        }
-    }
+    // The verified program is the program compiled: the runtime projection is
+    // handed to Clang, already preprocessed.
+    const std::vector<std::string> arguments = compile_arguments(options, replacements);
 
     const Stage compiling{"running the C++ compiler"};
     const ProcessResult result = run(options.clang, arguments);
