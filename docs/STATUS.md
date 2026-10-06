@@ -3189,7 +3189,10 @@ not a guarantee for others (`COMPATIBILITY.md`).
   closure a user inherits, and what it does not claim.
 
 `tools/release.sh` and `.github/workflows/release.yml` build, test, package and
-attest Linux x86_64 only.
+attest Linux x86_64 only. The release and every Linux CI job run on
+`ubuntu-24.04`, the tested platform, rather than on whatever `ubuntu-latest`
+names, so an archive never needs a newer C library or C++ runtime than the
+platform it claims has.
 
 ---
 

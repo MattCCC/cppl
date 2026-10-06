@@ -15,7 +15,8 @@
 
 FROM ubuntu:24.04
 
-# The GitHub runner is ubuntu-latest, which installs LLVM from apt.llvm.org.
+# The GitHub runner is ubuntu-24.04, the platform a release claims (docs/STATUS.md,
+# "V1 closure: delivery"), which installs LLVM from apt.llvm.org.
 # The major version is pinned so that a local run does not silently test a
 # different compiler than CI; it is the same value as LibClang_PREFERRED_MAJOR
 # in cmake/FindLibClang.cmake.
