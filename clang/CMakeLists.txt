@@ -16,6 +16,7 @@ add_library(cppl_clang STATIC
     src/default_arguments.cpp
     src/editor.cpp
     src/expressions.cpp
+    src/formed_places.cpp
     src/ghost.cpp
     src/lowering.cpp
     src/editor_completion.cpp

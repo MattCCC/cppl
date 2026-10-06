@@ -46,6 +46,7 @@ implementation:
     # visible (record_fields, record_has_base, field_index_of).
     - clang/src/access.cpp
     - clang/src/bridge.cpp
+    - clang/src/formed_places.cpp
     - clang/src/lowering.cpp
     - clang/src/refinements.cpp
     - clang/src/types.cpp

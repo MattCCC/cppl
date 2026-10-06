@@ -84,6 +84,7 @@ implementation:
     - clang/include/cppl/clang/ast.hpp
     - clang/src/access.cpp
     - clang/src/bridge.cpp
+    - clang/src/formed_places.cpp
     - clang/src/lowering.cpp
     - clang/src/refinements.cpp
     - clang/src/sequences.cpp

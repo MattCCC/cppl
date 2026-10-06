@@ -382,6 +382,7 @@ struct BodyLowering {
     [[nodiscard]] static bool is_sequence_subscript(CXCursor cursor);
     std::optional<bool> form_pointee_receiver(CXCursor call, Locals& state);
     bool materialize_derefs(CXCursor cursor, Locals& state, unsigned depth = 0);
+    bool form_places(CXCursor cursor, Locals& state);
 
     // Which places a write may reach.
     [[nodiscard]] bool may_alias(const Local& target, const Local& other) const;
@@ -396,7 +397,6 @@ struct BodyLowering {
     std::optional<std::string> view_arguments(CXCursor call, const std::vector<CXCursor>& formals, Locals& state,
                                               std::vector<std::size_t>& invalidated,
                                               std::vector<std::size_t>& written_roots, bool unsafe_callee);
-    bool form_places(CXCursor cursor, Locals& state);
     // What `lower` returns, with the places it formed bound around it: a bound or
     // a capability such a place owes is owed on the routes reaching it and nowhere
     // else.
