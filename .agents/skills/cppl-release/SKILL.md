@@ -34,7 +34,8 @@ Confirm:
 - kernel/core versions are correct;
 - known unsupported semantics are documented;
 - trusted solver/backend/FFI dependencies are documented;
-- no known soundness issue is hidden by wording.
+- no known soundness issue is hidden by wording;
+- no C++ file exceeds 1000 lines, and `cmake/ci/oversized.txt` is gone (`AGENTS.md` 36, `ci_filelength`).
 
 ## Release metadata
 

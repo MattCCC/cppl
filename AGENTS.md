@@ -1186,6 +1186,22 @@ Avoid:
 - exception-driven normal proof flow
 - clever kernel abstractions
 
+No C++ source or header file exceeds 1000 lines: `.cpp`, `.hpp`, `.h`, `.cc`,
+`.cxx`, `.hxx`, `.ipp`, `.inl` and `.tpp`, everywhere in the repository,
+including tests, test support and fixtures. Markdown, the specification and
+other files that are not C++ are exempt. A file is split by responsibility
+before a change would take it over the limit, never by an arbitrary cut:
+
+- Each new file is named for what it holds and stays well under the limit, so
+  it has room to grow. It stays in the same directory and target; a split test
+  keeps every case under its test name.
+- What two of the new files need moves to a private header beside them, in a
+  `detail` namespace; everything else stays local to the one file that uses it.
+- Code moves verbatim. A split is never the occasion for a semantic change.
+- `ci_filelength` (`cmake/ci/CheckFileLength.cmake`) enforces the limit in every
+  test run. `cmake/ci/oversized.txt` lists files over it whose split is still
+  pending; it only shrinks, and nothing is ever added to it.
+
 Every translation unit and every header directly includes the header that
 declares each name it uses. A header compiles from its own includes alone and
 never leans on what its includers happened to include first. Both are enforced,
@@ -1233,6 +1249,8 @@ Does STATUS.md need updating?
 
 Are negative tests included?
 Are soundness regressions covered?
+
+Does any C++ file now exceed 1000 lines (section 36)?
 ```
 
 If any answer is uncertain, investigate before merging.

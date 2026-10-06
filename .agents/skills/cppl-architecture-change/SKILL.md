@@ -52,6 +52,7 @@ Determine:
 - Does the design introduce a temporary bridge?
 - Can that bridge become accidental permanent architecture?
 - Does `docs/ARCHITECTURE.md` need new diagrams?
+- Does any C++ file cross 1000 lines? Split it by responsibility first (`AGENTS.md` 36, `ci_filelength`).
 
 Prefer one authoritative path over parallel implementations.
 

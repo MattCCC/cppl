@@ -32,6 +32,7 @@ Answer concretely:
 10. Can proof erasure change runtime behavior?
 11. Can unsupported C++ behavior accidentally become verified?
 12. Can target-dependent behavior invalidate a proof?
+13. Is every C++ file the change touches still within 1000 lines, so a reviewer can read the whole of it (`AGENTS.md` 36, `ci_filelength`)?
 
 ## Test adversarially
 
