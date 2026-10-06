@@ -247,7 +247,7 @@ tests/fixtures/omitted_case.cpp           accepted omissions, and the accepted h
 tests/fixtures/contradiction.cpp          the statement under flat and structured goals
 tests/negative/contradictions.sh          every rejection, written out in tests/fixtures/negative/
 tests/unit/contradiction_test.cpp         evidence shape, corruption, and the two origins
-tests/kernel/adversarial_kernel_test.cpp  falsity elimination and how False may be established
+tests/kernel/adversarial_kernel_test_falsity.cpp  falsity elimination and how False may be established
 tests/fixtures/impossible_path.cpp        claims across branches, loops, calls, versions and an unbraced if
 tests/fixtures/contradiction_as_a_cpp_name.cpp  the claim's spelling kept as a C++ declaration
 tests/fixtures/contradiction_named_by_a_header.cpp  the same, with the word named only by a header

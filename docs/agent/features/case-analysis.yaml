@@ -178,7 +178,7 @@ tests:
     - tests/fixtures/negative/expected_error_bound_as_value.cpp
   kernel:
     - tests/kernel/value_model_test.cpp
-    - tests/kernel/adversarial_kernel_test.cpp
+    - tests/kernel/adversarial_kernel_test_falsity.cpp
   unit:
     - tests/unit/decomposition_test.cpp
     - tests/unit/scoped_enum_provider_test.cpp

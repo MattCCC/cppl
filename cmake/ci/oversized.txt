@@ -15,5 +15,4 @@ compiler/frontend/src/projection.cpp 1892
 compiler/frontend/src/recognizer.cpp 3712
 compiler/obligations/src/contracts.cpp 3031
 compiler/obligations/src/generate.cpp 3089
-tests/kernel/adversarial_kernel_test.cpp 1160
 tests/unit/projection_test.cpp 1184

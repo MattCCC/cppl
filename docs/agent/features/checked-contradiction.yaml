@@ -154,7 +154,7 @@ tests:
     - tests/fixtures/negative/impossible_path_unproven_callee.cpp
     - tests/fixtures/negative/impossible_path_outside_verified.cpp
   kernel:
-    - tests/kernel/adversarial_kernel_test.cpp
+    - tests/kernel/adversarial_kernel_test_falsity.cpp
   unit:
     - tests/unit/contradiction_test.cpp
     - tests/unit/lsp_decomposition_view_test.cpp

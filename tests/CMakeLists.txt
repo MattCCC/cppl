@@ -132,7 +132,8 @@ target_compile_definitions(kernel_check_edges_test PRIVATE
 cppl_add_unit_test(kernel_definedness_test kernel/definedness_test.cpp)
 target_link_libraries(kernel_definedness_test PRIVATE cppl_kernel)
 
-cppl_add_unit_test(kernel_adversarial_test kernel/adversarial_kernel_test.cpp)
+cppl_add_unit_test(kernel_adversarial_test kernel/adversarial_kernel_test.cpp kernel/adversarial_kernel_test_structure.cpp
+                   kernel/adversarial_kernel_test_falsity.cpp)
 target_link_libraries(kernel_adversarial_test PRIVATE cppl_kernel)
 
 cppl_add_unit_test(kernel_induction_test kernel/induction_test.cpp)
