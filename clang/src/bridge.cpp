@@ -3224,6 +3224,18 @@ std::optional<Expr> member_at(Expr whole, const std::vector<PlaceStep>& path) {
     return whole;
 }
 
+// How a member or an element of `whole` named `name` is written.
+std::string member_spelling(const std::string& whole, const std::string& name, bool element) {
+    return element ? whole + "[" + name + "]" : whole + "." + name;
+}
+
+// Why a value of `whole` cannot be assembled where its member `member` is not
+// one of the places this body tracks.
+std::string untracked_member(const std::string& member, const std::string& whole) {
+    return "'" + member + "' is not tracked where '" + whole + "' is read, so '" + whole +
+           "' is not one value this body can state";
+}
+
 // The value the object `declaration` designates at `path` holds where `at`
 // stands, assembled from the places this body tracks it as: one operand per
 // component, in component order, each a leaf's current version or, for a member
@@ -3251,7 +3263,7 @@ Expr assemble_object(const Locals& locals, const Signature& signature, CXCursor 
         reached.push_back(
             PlaceStep{array ? PlaceStep::Kind::Element : PlaceStep::Kind::Field, static_cast<std::uint32_t>(member)});
         const std::string& name = type.representation.components[member].name;
-        const std::string written = array ? spelling + "[" + name + "]" : spelling + "." + name;
+        const std::string written = member_spelling(spelling, name, array);
         const Type& member_type = type.projections[member];
         if (member_type.kind == TypeKind::Value) {
             Expr nested = assemble_object(locals, signature, declaration, reached, member_type, written, at, depth + 1);
@@ -3278,9 +3290,7 @@ Expr assemble_object(const Locals& locals, const Signature& signature, CXCursor 
         }
         if (!binding.has_value() || locals[*binding].referent.has_value() || locals[*binding].binder.has_value() ||
             !same_modeled_value(member_type, locals[*binding].type)) {
-            return unsupported_expression(at, "'" + written + "' is not tracked where '" + spelling +
-                                                  "' is read, so '" + spelling +
-                                                  "' is not one value this body can state");
+            return unsupported_expression(at, untracked_member(written, spelling));
         }
         if (std::optional<std::string> stale = stale_borrow(locals, *binding)) {
             return unsupported_expression(at, std::move(*stale));
