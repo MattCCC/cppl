@@ -48,6 +48,16 @@ struct CompileTarget {
 [[nodiscard]] std::expected<CompileTarget, std::string> compile_target(const std::string& clang,
                                                                        const std::vector<std::string>& arguments);
 
+// The environment variable, when it is set, by which the Clang driver's own
+// program edits the arguments it compiles with before it reads them, and which
+// libclang, which makes the analysis, never reads: `CCC_OVERRIDE_OPTIONS`.
+// Nothing when it is not set.
+//
+// `CL` and `_CL_` edit them too, in clang-cl mode alone. There the driver
+// writes what it preprocesses to its standard output and not to the file it is
+// asked to, so no unit is ever read, let alone analysed, in that mode.
+[[nodiscard]] std::optional<std::string> argument_editing_environment();
+
 // `arguments` as the analysis is to be given them: without the configuration
 // files they name, and followed by an instruction to read no configuration
 // file by default, the configuration files the driver reads, as it found them,

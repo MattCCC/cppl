@@ -185,4 +185,88 @@ for spelling in separate joined; do
     }
 done
 
+# ---- arguments the driver's own program edits ---------------------------------
+#
+# Before it reads its arguments, the driver's own program replaces each one
+# beginning with `@` with the arguments the response file it names holds,
+# wherever it stands, an option's value too, and applies the edits
+# CCC_OVERRIDE_OPTIONS names. libclang does neither, so a unit with C++L is
+# refused under either, whatever the file or the variable says. The twin of each
+# is the option written on the command line, `other_with_flag` above. A unit
+# without C++L is compiled as clang++ compiles it.
+sed -e 's/^verified //' -e '/^ *ensures /d' "$TARGET/$other.cpp" > ordinary.cpp
+if grep -Eq '^verified|^ *ensures' ordinary.cpp; then
+    fail "ordinary.cpp still holds C++L"
+fi
+
+# same_as_clang <name> <cppl and clang++ arguments...>: both build the program,
+# and it prints the same, which is what `char` of the other signedness prints.
+same_as_clang() {
+    local name="$1"
+    shift
+    "$CPPL" ordinary.cpp "$@" -o "$name" > "$name.out" 2> "$name.err" || {
+        tail -30 "$name.err" >&2
+        fail "$name: a unit without C++L was not compiled as clang++ compiles it"
+    }
+    "$CLANG" ordinary.cpp "$@" -o "$name.clang" 2> "$name.clang.err" || fail "$name: clang++ did not build it"
+    [ "$("./$name")" = "$("./$name.clang")" ] || fail "$name prints otherwise than clang++'s program"
+    [ "$("./$name")" = "${proven[$other]}" ] || fail "$name was not compiled with $other_char"
+}
+
+printf -- '%s\n' "$other_char" > other.rsp
+response="is not verified: its command line reads arguments from the response file '@other.rsp'"
+refuse response_host "$response" "$host" @other.rsp
+refuse response_other "$response" "$other" @other.rsp
+refuse response_as_value "$response" "$other" -Xanalyzer @other.rsp -w
+same_as_clang response_ordinary @other.rsp
+
+override="is not verified: the environment variable CCC_OVERRIDE_OPTIONS is set"
+export CCC_OVERRIDE_OPTIONS="+$other_char"
+refuse override_host "$override" "$host"
+refuse override_other "$override" "$other"
+same_as_clang override_ordinary
+export CCC_OVERRIDE_OPTIONS=""
+refuse override_empty "$override" "$other" "$other_char"
+unset CCC_OVERRIDE_OPTIONS
+
+# CL and _CL_ edit the arguments too, in clang-cl mode alone. There the driver
+# writes what it preprocesses to its standard output, not to the file it is
+# asked to, so a unit is never read in that mode, let alone analysed: it is
+# refused whatever the variables say. A clang-cl mode cppl could read would
+# have to refuse them as it refuses CCC_OVERRIDE_OPTIONS.
+ln -s "$CLANG" clang-cl
+if CL=/J _CL_=/J "$CPPL" "--cppl-clang=$run/clang-cl" -c "$TARGET/$beside_host.cpp" -o cl_mode.o \
+    --cppl-trust-report > cl_mode.out 2> cl_mode.err; then
+    fail "a unit was verified in clang-cl mode"
+fi
+[ ! -e cl_mode.o ] || fail "a unit compiled in clang-cl mode produced an object"
+grep -q "could not read the preprocessed form" cl_mode.err || {
+    tail -30 cl_mode.err >&2
+    fail "a unit in clang-cl mode was refused, but not because it could not be read"
+}
+
+# Every other variable the driver reads is read by the driver library libclang
+# runs in this process, under the same environment, or changes only what the
+# driver preprocesses, which the analysis and the program are both made from:
+# a header found through CPATH or CPLUS_INCLUDE_PATH is the program's and the
+# analysis's alike.
+mkdir -p search/one search/two
+printf '#define CHOSEN 1\n' > search/one/chosen.h
+printf '#define CHOSEN 2\n' > search/two/chosen.h
+printf '#include <chosen.h>\n#include <cstdio>\n\nverified int chosen()\n    ensures (result == 1)\n{\n    return CHOSEN;\n}\n\nint main()\n{\n    std::printf("%%d\\n", chosen());\n    return 0;\n}\n' > searched.cpp
+for variable in CPATH CPLUS_INCLUDE_PATH; do
+    env "$variable=$run/search/one" "$CPPL" -std=c++17 searched.cpp -o "searched_$variable" --cppl-trust-report \
+        > "searched_$variable.out" 2> "searched_$variable.err" || {
+        tail -30 "searched_$variable.err" >&2
+        fail "refused what should verify: searched_$variable"
+    }
+    [ "$("./searched_$variable")" = 1 ] || fail "searched_$variable does not print what was proven"
+    if env "$variable=$run/search/two" "$CPPL" -std=c++17 searched.cpp -o "searched_other_$variable" \
+        > "searched_other_$variable.out" 2> "searched_other_$variable.err"; then
+        fail "accepted what must be refused: searched_other_$variable"
+    fi
+    grep -Eq -- "$contract_false" "searched_other_$variable.err" ||
+        fail "searched_other_$variable was refused, but not because its contract is false"
+done
+
 echo "every unit is verified under the options its program is compiled with, or refused"

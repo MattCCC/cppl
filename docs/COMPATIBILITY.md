@@ -1697,6 +1697,13 @@ names a file, nor for an option, even where it reads as one (`-Xclang -c`), and
 an option left out of a command takes its values with it. A configuration file
 named by `--config` is read by the analysis where the driver found it.
 
+A unit holding C++L is not verified, and is refused, when the command line
+reads arguments from a response file (`@file`, wherever it stands) or the
+environment sets `CCC_OVERRIDE_OPTIONS`: Clang's driver compiles the program
+with what either adds, and libclang, which makes the analysis, reads neither.
+Its options are written on the command line instead. A unit without C++L is
+compiled with them as Clang compiles it.
+
 ---
 
 # 65. Argument ordering

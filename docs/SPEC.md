@@ -3936,10 +3936,12 @@ on one and unsigned on another.
 
 [ARITH-014] A claim about runtime code MUST be proven under the C++ semantics of
 the target the program is compiled for, as the native compiler that compiles it
-selects them, whatever selects them: an option, the compiler's own name or a
-configuration it reads. Where the semantics the proof was made under cannot be
-established to be that target's, verification MUST fail closed. A claim proven
-for one target is not a claim about the program compiled for another.
+selects them, whatever selects them: an option however the compiler is given
+it, on its command line, in a file it reads arguments from or through its
+environment, the compiler's own name or a configuration it reads. Where the
+semantics the proof was made under cannot be established to be that target's,
+verification MUST fail closed. A claim proven for one target is not a claim
+about the program compiled for another.
 
 ---
 

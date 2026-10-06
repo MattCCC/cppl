@@ -81,6 +81,19 @@ bool option_value(const Options& options, std::size_t index) {
     return index < options.option_value.size() && options.option_value[index];
 }
 
+// The first argument the Clang driver reads as a response file: one beginning
+// with `@`, wherever it stands, the value of an option too. The driver's own
+// program replaces it with the arguments the file holds before it reads any;
+// libclang, which makes the analysis, never does (TRUST.md TCB-CLANG-006).
+std::optional<std::string> response_file(const Options& options) {
+    const auto named =
+        std::ranges::find_if(options.arguments, [](const std::string& argument) { return argument.starts_with('@'); });
+    if (named == options.arguments.end()) {
+        return std::nullopt;
+    }
+    return *named;
+}
+
 // How many arguments the option at `index` spans with its values.
 std::size_t option_span(const Options& options, std::size_t index) {
     std::size_t end = index + 1;
@@ -340,8 +353,9 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     const bool is_header = input.is_header;
     const bool explicit_language = options.explicit_language;
     const std::string& input_path = input.path;
-    request.reject_if_cppl = [is_header, explicit_language, &input_path](
-                                 const frontend::Syntax&) -> std::optional<detail::PipelineRequest::Rejection> {
+    const std::optional<std::string> response = response_file(options);
+    request.reject_if_cppl = [is_header, explicit_language, &input_path,
+                              &response](const frontend::Syntax&) -> std::optional<detail::PipelineRequest::Rejection> {
         if (is_header) {
             return detail::PipelineRequest::Rejection{
                 "'" + input_path + "' contains C++L constructs and is being compiled directly",
@@ -351,6 +365,15 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
             return detail::PipelineRequest::Rejection{
                 "'-x' is not supported together with C++L constructs",
                 "this implementation selects the input language itself when it projects a unit"};
+        }
+        // Whatever the file holds, the program is compiled with it and the
+        // analysis would be made without it (SPEC.md ARITH-014).
+        if (response.has_value()) {
+            return detail::PipelineRequest::Rejection{
+                "'" + input_path + "' is not verified: its command line reads arguments from the response file '" +
+                    *response + "'",
+                "the Clang driver compiles the program with the arguments the file holds, and libclang, which makes "
+                "the analysis a proof is about, does not read it; write them on the command line"};
         }
         return std::nullopt;
     };

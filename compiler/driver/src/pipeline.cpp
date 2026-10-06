@@ -223,6 +223,23 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
         return outcome;
     }
 
+    // The driver's own program edits the arguments it compiles with by
+    // CCC_OVERRIDE_OPTIONS before it reads them, and libclang never reads it,
+    // so under it the analysis would be made under other options than the
+    // program is compiled with (TRUST.md TCB-CLANG-006, SPEC.md ARITH-014).
+    if (const std::optional<std::string> variable = argument_editing_environment()) {
+        report(engine, diagnostics::Category::UnsupportedSemantics,
+               "'" + request.original_path + "' is not verified: the environment variable " + *variable +
+                   " is set, and the Clang driver edits the arguments it compiles the program with by it",
+               {},
+               "libclang, which makes the analysis a proof is about, does not read it; unset it, or write the "
+               "options it adds on the command line");
+        outcome.tokens = std::make_unique<frontend::TokenStream>(stream);
+        outcome.syntax = std::make_unique<frontend::Syntax>(std::move(syntax));
+        outcome.failed = true;
+        return outcome;
+    }
+
     // The analysis is made for the target the program is compiled for, which
     // the driver decides and may decide from more than the arguments say: the
     // prefix of its own name or a configuration file. Every width, layout and

@@ -340,6 +340,8 @@ driver-option-values-recorded	compiler/driver/src/options.cpp	options.option_val
 driver-option-kept-with-values	compiler/driver/src/driver.cpp	const std::size_t span = option_span(options, index);	const std::size_t span = 1;	^negative_analysis_options$
 driver-runtime-option-kept-with-values	compiler/driver/src/driver.cpp	if (!option_value(options, index) &&	if (true &&	^negative_analysis_options$
 analysis-configuration-found-once	compiler/driver/src/target.cpp	if (!names_configuration) {	if (true || !names_configuration) {	^negative_analysis_options$
+analysis-response-file-refused	compiler/driver/src/driver.cpp	if (response.has_value()) {	if (false) {	^negative_analysis_options$
+analysis-override-environment-refused	compiler/driver/src/pipeline.cpp	if (const std::optional<std::string> variable = argument_editing_environment()) {	if (const std::optional<std::string> variable = (false ? argument_editing_environment() : std::nullopt)) {	^negative_analysis_options$
 lsp-machine-options-kept	src/lsp/src/compile_commands.cpp	one_of(argument, kSwitches) || machine_option(argument) ||	one_of(argument, kSwitches) || (false && machine_option(argument)) ||	^lsp_compile_commands_test$|^lsp_interfaces_test$
 lsp-architecture-kept	src/lsp/src/compile_commands.cpp	({"-target", "-arch", "-mthread-model", "--std"});	({"-target", "-mthread-model", "--std"});	^lsp_compile_commands_test$
 lsp-unpassed-frontend-options	src/lsp/src/compile_commands.cpp	if (argument == "-Xclang" || argument.starts_with("-Xarch_")) {	if (false && (argument == "-Xclang" || argument.starts_with("-Xarch_"))) {	^lsp_compile_commands_test$|^lsp_interfaces_test$

@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdlib>
 #include <expected>
 #include <filesystem>
 #include <fstream>
@@ -121,6 +122,16 @@ std::expected<CompileTarget, std::string> compile_target(const std::string& clan
     target.effective = *effective;
     target.configuration_files = configuration_files(*version);
     return target;
+}
+
+std::optional<std::string> argument_editing_environment() {
+    constexpr const char* kVariable = "CCC_OVERRIDE_OPTIONS";
+    // Set at all, even empty: it is the driver's to read, not this program's.
+    // NOLINTNEXTLINE(concurrency-mt-unsafe): nothing in this program writes the environment.
+    if (std::getenv(kVariable) != nullptr) {
+        return std::string(kVariable);
+    }
+    return std::nullopt;
 }
 
 std::vector<std::string> analysis_arguments(const std::vector<std::string>& arguments, const CompileTarget& target) {

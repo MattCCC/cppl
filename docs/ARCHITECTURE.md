@@ -3204,7 +3204,11 @@ Each command handed on is the build's own, with its inputs and outputs taken
 out or the unit replaced, and it is cut only between one option with all its
 values and the next. Which arguments are an option's values is read from Clang
 22's option table (`driver::separate_values`), so no option takes another
-argument as its value in the analysis and not in the compile.
+argument as its value in the analysis and not in the compile. What the
+driver's own program edits before it reads its arguments, libclang never sees:
+a unit with C++L is refused when an argument names a response file (`@file`) or
+`CCC_OVERRIDE_OPTIONS` is set, and a unit without C++L is compiled as the driver
+compiles it.
 
 ---
 
