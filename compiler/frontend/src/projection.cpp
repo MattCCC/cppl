@@ -775,69 +775,30 @@ const ProofStatement* split_statement(const Syntax& syntax, const PathSplitMarke
     return statement;
 }
 
-Projection project(const TokenStream& stream, const Syntax& syntax, const ProjectionOptions& options) {
-    const std::string_view text = stream.text();
+namespace {
+
+// What project() builds a projection in: the scanned text and its syntax,
+// the runtime text and the edits that make the analysis text, and the
+// template header the declaration being emitted stands under. Each pass is
+// one member, run in the order project() runs them.
+struct Projector {
+    Projector(const TokenStream& scanned, const Syntax& recognized, const ProjectionOptions& requested)
+        : stream(scanned),
+          syntax(recognized),
+          options(requested),
+          text(stream.text()) {
+        projection.runtime.assign(text);
+        edits.reserve(syntax.laws.size() + syntax.proofs.size() + syntax.pure_markers.size());
+    }
+
+    const TokenStream& stream;
+    const Syntax& syntax;
+    const ProjectionOptions& options;
+    const std::string_view text;
 
     Projection projection;
-    projection.runtime.assign(text);
 
     std::vector<Edit> edits;
-    edits.reserve(syntax.laws.size() + syntax.proofs.size() + syntax.pure_markers.size());
-
-    for (const PureMarker& marker : syntax.pure_markers) {
-        blank(projection.runtime, marker.keyword, stream);
-        edits.push_back(Edit{marker.keyword, std::string(marker.keyword.length, ' ')});
-    }
-
-    // `unsafe` is a marker: the word leaves both texts and the declaration or
-    // the block it marks stays ordinary C++ (SPEC.md ERASE-003, Annex M).
-    for (const UnsafeFunction& function : syntax.unsafe_functions) {
-        blank(projection.runtime, function.keyword, stream);
-        edits.push_back(Edit{function.keyword, std::string(function.keyword.length, ' ')});
-    }
-    // A block's region starts at a declaration only Clang sees, just inside its
-    // `{`, written at the position of the word it replaces, so the region's
-    // provenance is where the author wrote `unsafe`.
-    for (std::size_t index = 0; index < syntax.unsafe_blocks.size(); ++index) {
-        const UnsafeBlock& block = syntax.unsafe_blocks[index];
-        blank(projection.runtime, block.keyword, stream);
-        edits.push_back(Edit{block.keyword, std::string(block.keyword.length, ' ')});
-        if (block.nested) {
-            continue;
-        }
-        UnsafeBlockMarker marker;
-        marker.name = options.generated_prefix + "unsafe_" + std::to_string(index) +
-                      (options.unit_key.empty() ? "" : "_" + options.unit_key);
-        marker.block_index = index;
-        marker.function_index = block.function_index;
-        marker.location = block.location;
-        // The declared name, which is where Clang locates a declaration, stands
-        // exactly where `unsafe` was written.
-        std::string inserted = "\n[[maybe_unused]] bool\n";
-        inserted += line_directive(block.location.line, block.location.file);
-        inserted += std::string(block.location.column > 1 ? block.location.column - 1 : 0, ' ');
-        inserted += marker.name + " = true;";
-        inserted += resume_at(stream, block.body_open);
-        edits.push_back(Edit{source::ByteSpan{block.body_open, 0}, std::move(inserted)});
-        projection.unsafe_blocks.push_back(std::move(marker));
-    }
-
-    // A ghost declaration leaves the program whole (SPEC.md GHOST-001,
-    // ERASE-011). Clang still sees it, after a declaration only Clang sees,
-    // named where `ghost` was written, which tells the body lowering that the
-    // declaration after it is ghost state.
-    for (std::size_t index = 0; index < syntax.ghost_declarations.size(); ++index) {
-        const GhostDeclaration& ghost = syntax.ghost_declarations[index];
-        blank(projection.runtime, ghost.erased, stream);
-        const std::string name = options.generated_prefix + "ghost_" + std::to_string(index) +
-                                 (options.unit_key.empty() ? "" : "_" + options.unit_key);
-        const std::size_t column = ghost.location.column > 1 ? ghost.location.column - 1 : 0;
-        std::string inserted = "\n[[maybe_unused]] bool\n";
-        inserted += line_directive(ghost.location.line, ghost.location.file);
-        inserted += std::string(column, ' ') + name + " = true;";
-        inserted += resume_at(stream, ghost.keyword.end());
-        edits.push_back(Edit{ghost.keyword, std::move(inserted)});
-    }
 
     // The template header the declaration being emitted stands under, where it
     // has one. A contract clause may name the template's parameters, so its
@@ -863,10 +824,10 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // cannot be `static`: it is a template, and its header has to precede the
     // declaration it introduces. Nor can a probe of a member function with an
     // implicit object: it has one too.
-    const auto templated = [&template_parameters] {
+    [[nodiscard]] bool templated() const {
         return template_parameters;
-    };
-    const auto declaration_prefix = [&template_header, &templated, &implicit_object] {
+    }
+    [[nodiscard]] std::string declaration_prefix() const {
         std::string prefix;
         if (templated()) {
             prefix += template_header;
@@ -874,24 +835,23 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             return prefix;
         }
         if (implicit_object) {
-            return std::string("[[maybe_unused]] ");
+            return {"[[maybe_unused]] "};
         }
         prefix += "[[maybe_unused]] static ";
         return prefix;
-    };
+    }
     // What follows a probe's parameter list: `const` for a member function's
     // probe, which reads the implicit object and never writes it.
-    const auto probe_qualifier = [&implicit_object] {
+    [[nodiscard]] std::string probe_qualifier() const {
         return implicit_object ? std::string(" const") : std::string();
-    };
+    }
 
     // A declaration becomes an ordinary C++ function stating the proposition it
     // carries, emitted where the declaration stood. Everything after this point
     // in the analysis text is C++ that Clang resolves on its own.
-    const auto emit = [&stream, &projection, &options, &declaration_prefix, &probe_qualifier](
-                          std::string_view name, const Generated& parameters, const source::ByteSpan& expression,
-                          const source::SourceLocation& begin, std::uint32_t end_line,
-                          std::size_t* name_offset = nullptr, std::string* proposition_name = nullptr) {
+    Generated emit(std::string_view name, const Generated& parameters, const source::ByteSpan& expression,
+                   const source::SourceLocation& begin, std::uint32_t end_line, std::size_t* name_offset = nullptr,
+                   std::string* proposition_name = nullptr) {
         const std::string prefix = declaration_prefix();
         const std::string qualifier = probe_qualifier();
         Generated replacement;
@@ -939,157 +899,12 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         replacement += "); }\n";
         replacement += line_directive(end_line, begin.file);
         return replacement;
-    };
-
-    // A refinement type is runtime-bearing: the program keeps the alias it means
-    // and loses only its predicate (SPEC.md REFINE-016, TRUST.md 8.1). The analysis
-    // text gets the same alias, so every ordinary use of the name is Clang's, and
-    // a probe stating the predicate with `self` and the indices bound.
-    for (std::size_t index = 0; index < syntax.refinement_types.size(); ++index) {
-        const RefinementType& refinement = syntax.refinement_types[index];
-        const std::string lowering = canonical_lowering(stream, refinement);
-        projection.runtime_lowerings.push_back(RuntimeLowering{refinement.range.span, lowering});
-        // The alias is shorter than the declaration it lowers, but a validator
-        // beside it can be longer than a declaration written on one line, and
-        // would then move the code after it on that line (SPEC.md ERASE-018).
-        if (lowering_moves_columns(stream, refinement.range.span, lowering)) {
-            diagnostics::Diagnostic diagnostic;
-            diagnostic.severity = diagnostics::Severity::Error;
-            diagnostic.category = diagnostics::Category::UnsupportedSemantics;
-            diagnostic.location = refinement.keyword_location;
-            diagnostic.message = "refinement type '" + refinement.name +
-                                 "' lowers to more C++ than its declaration takes on its line, so the code after it "
-                                 "there would move";
-            diagnostic.notes.push_back(
-                diagnostics::Note{"end the line after the declaration's ';', or write the declaration across lines",
-                                  refinement.keyword_location});
-            projection.diagnostics.push_back(std::move(diagnostic));
-        }
-
-        const std::string suffix = std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
-        RefinementProbe probe;
-        probe.name = refinement.name;
-        probe.probe = options.generated_prefix + "refinement_" + suffix;
-        probe.refinement_index = index;
-        probe.location = refinement.predicate_location;
-
-        std::string parameters = refinement.indexed ? spelled_indices(stream, refinement) : std::string{};
-        probe.index_count = parameters.empty() ? 0 : 1 + static_cast<std::size_t>(std::ranges::count(parameters, ','));
-        if (!parameters.empty()) {
-            parameters += ", ";
-        }
-        // `self` is an ordinary parameter of the base type, which is what makes
-        // it a name Clang resolves rather than one C++L invents (SPEC.md 17.1).
-        parameters += spelled_tokens(stream, refinement.base) + " self";
-
-        Generated replacement;
-        replacement += "\n";
-        replacement += line_directive(refinement.keyword_location.line, refinement.keyword_location.file);
-        probe.alias_offset = replacement.size() + lowering.find("using ") + 6;
-        // The alias restates the base type's tokens. Where that restatement is
-        // the text as written, it is a copy of it, like any other.
-        if (const source::ByteSpan written = token_extent(stream, refinement.base);
-            written.length != 0 && spelled_tokens(stream, refinement.base) == stream.spelling(written)) {
-            const std::size_t base = lowering.find(" = ", lowering.find("using ")) + 3;
-            replacement.copies.push_back(Projection::Copy{replacement.size() + base, written});
-        }
-        replacement += lowering.substr(0, lowering.find(';') + 1); // the alias alone
-        replacement += "\n";
-        replacement += line_directive(refinement.predicate_location.line, refinement.keyword_location.file);
-        replacement += "[[maybe_unused]] static bool " + probe.probe + "(" + parameters + ")";
-
-        const auto formula = detail::project_formula(stream, refinement.predicate);
-        if (formula.failure) {
-            diagnostics::Diagnostic diagnostic;
-            diagnostic.severity = diagnostics::Severity::Error;
-            diagnostic.category = diagnostics::Category::UnsupportedSemantics;
-            diagnostic.location = refinement.predicate_location;
-            diagnostic.message = "refinement type '" + refinement.name + "': " + *formula.failure;
-            projection.diagnostics.push_back(std::move(diagnostic));
-        }
-        probe.shape = formula.shape;
-        // A plain predicate is the author's own text, so it is copied where it
-        // was written; a formal one is rewritten and has no such position.
-        replacement += " { return (";
-        if (formula.shape.kind == source::ProjectionKind::Expression) {
-            replacement += at_written_position(stream, refinement.predicate);
-        } else {
-            replacement += formula.expression;
-        }
-        replacement += "); }\n";
-        replacement += directives_within(stream, refinement.range.span);
-        replacement += resume_at(stream, refinement.range.span.end());
-
-        // A validation runs the predicate as written, so it must be an ordinary
-        // C++ expression (SPEC.md RUNTIMECHECK-020).
-        if (!refinement.validator.empty() && !formula.failure &&
-            formula.shape.kind != source::ProjectionKind::Expression) {
-            diagnostics::Diagnostic diagnostic;
-            diagnostic.severity = diagnostics::Severity::Error;
-            diagnostic.category = diagnostics::Category::UnsupportedSemantics;
-            diagnostic.location = refinement.predicate_location;
-            diagnostic.message = "refinement type '" + refinement.name +
-                                 "' states a formal predicate, which no validation can evaluate at run time";
-            projection.diagnostics.push_back(std::move(diagnostic));
-        }
-
-        projection.refinement_probes.push_back(std::move(probe));
-        edits.push_back(generated_edit(refinement.range.span, std::move(replacement), std::nullopt, index));
     }
 
-    // A validation expression calls the refinement's probe in the analysis
-    // text, so Clang resolves its argument against the base type and the bridge
-    // reads it as a test of that refinement; the runtime text calls the
-    // validator the declaration lowers to (SPEC.md RUNTIMECHECK-018,
-    // RUNTIMECHECK-021).
-    //
-    // A validation is runtime code, so one in proof-only syntax of a verified
-    // body -- a ghost declaration, a claim that a path cannot occur, a case
-    // split -- would never run, and its lowering would stand inside a span
-    // erasure blanks. It is refused by name (SPEC.md RUNTIMECHECK-019).
-    const auto within = [](const source::ByteSpan& inner, const source::ByteSpan& outer) {
-        return inner.offset >= outer.offset && inner.end() <= outer.end();
-    };
-    for (const ValidationExpression& validation : syntax.validations) {
-        const std::string suffix =
-            std::to_string(validation.refinement_index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
-        const std::string probe = options.generated_prefix + "refinement_" + suffix;
-        edits.push_back(Edit{validation.callee, probe + resume_at(stream, validation.callee.end())});
-        const bool in_ghost = std::ranges::any_of(syntax.ghost_declarations, [&](const GhostDeclaration& ghost) {
-            return within(validation.callee, ghost.erased);
-        });
-        const bool in_proof_syntax = std::ranges::any_of(syntax.path_contradictions,
-                                                         [&](const PathContradiction& claim) {
-                                                             return within(validation.callee, claim.span);
-                                                         }) ||
-                                     std::ranges::any_of(syntax.path_splits, [&](const PathCaseSplit& split) {
-                                         return within(validation.callee, split.span);
-                                     });
-        if (in_ghost || in_proof_syntax) {
-            diagnostics::Diagnostic diagnostic;
-            diagnostic.severity = diagnostics::Severity::Error;
-            diagnostic.category = diagnostics::Category::UnsupportedSemantics;
-            diagnostic.location = validation.location;
-            diagnostic.message = std::string("a validation expression is runtime code, and ") +
-                                 (in_ghost ? "a ghost declaration never runs"
-                                           : "a claim that a path cannot occur or a case split never runs");
-            diagnostic.notes.push_back(diagnostics::Note{
-                "validate the value in the verified body and name the result there (SPEC.md RUNTIMECHECK-019)",
-                validation.location});
-            projection.diagnostics.push_back(std::move(diagnostic));
-            continue;
-        }
-        projection.runtime_lowerings.push_back(
-            RuntimeLowering{validation.callee, lowered_validation(stream, syntax, validation)});
-    }
-
-    // Every Law and proof is projected into the formal namespace of the
-    // namespace it is written in, and nothing else is (formal_scopes).
-    const FormalScopes formal = formal_scopes(stream, syntax, options);
     // A directive written inside the declaration follows the namespace, in the
     // namespace the declaration stands in, as it does in the program.
-    const auto in_formal_scope = [&stream](const std::string& opening, const Generated& declarations,
-                                           const source::ByteSpan& span) {
+    [[nodiscard]] Generated in_formal_scope(const std::string& opening, const Generated& declarations,
+                                            const source::ByteSpan& span) const {
         Generated scoped;
         scoped += opening;
         scoped += declarations;
@@ -1097,454 +912,6 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         scoped += directives_within(stream, span);
         scoped += resume_at(stream, span.end());
         return scoped;
-    };
-
-    for (std::size_t index = 0; index < syntax.laws.size(); ++index) {
-        const LawDeclaration& law = syntax.laws[index];
-        blank(projection.runtime, law.range.span, stream);
-
-        const Clause* proposition = law.proposition();
-        if (proposition == nullptr) {
-            continue;
-        }
-
-        SpecificationFunction projected{law.name, index, {}};
-        Generated parameters;
-        parameters.copy(stream, law.parameters);
-        Generated replacement = emit(law.name, parameters, proposition->expression, law.keyword_location, law.end_line,
-                                     &projected.analysis_offset, &projected.proposition_probe);
-
-        // A precondition is a specification expression of the Law's own
-        // parameters, so it is projected exactly like the conclusion, under a
-        // generated name: the Law's name states what the Law concludes.
-        if (const Clause* premise = law.premise(); premise != nullptr) {
-            projected.premise_name = options.generated_prefix + "premise_" + std::to_string(index) +
-                                     (options.unit_key.empty() ? "" : "_" + options.unit_key);
-            replacement +=
-                emit(projected.premise_name, parameters, premise->expression, premise->location, law.end_line);
-        }
-
-        projected.analysis_offset += formal.laws[index].size();
-        edits.push_back(generated_edit(law.range.span, in_formal_scope(formal.laws[index], replacement, law.range.span),
-                                       projection.specification_functions.size()));
-        projection.specification_functions.push_back(std::move(projected));
-    }
-
-    // An instantiation argument is an ordinary C++ expression written in the
-    // proof's own scope, so it is projected as a function returning it. The
-    // deduced return type is the type Clang gives the expression, with no
-    // conversion imposed on the way out.
-    const auto emit_expression = [&stream](std::string_view name, const Generated& parameters,
-                                           const source::ByteSpan& expression) {
-        Generated head;
-        head += "[[maybe_unused]] static decltype(auto) ";
-        head += name;
-        head += "(";
-        head += parameters;
-        head += ") { return (";
-        head += at_written_position(stream, expression);
-        head += "); }\n";
-        return head;
-    };
-
-    for (std::size_t index = 0; index < syntax.proofs.size(); ++index) {
-        const ProofDeclaration& proof = syntax.proofs[index];
-        blank(projection.runtime, proof.range.span, stream);
-
-        const std::string suffix = std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
-
-        ProofFunction projected;
-        projected.name = options.generated_prefix + "proof_" + suffix;
-        projected.proof_index = index;
-
-        const std::string binding_helper = options.generated_prefix + "binding_type_" + suffix;
-        Generated replacement;
-        replacement += "template<class T> struct " + binding_helper + " { using type = T; };\n";
-        // Decomposing a subject needs its type complete, as a member access would
-        // (SPEC.md 20.4), but a subject reached through a reference never makes
-        // C++ instantiate a class template specialization. Asking for `sizeof` of
-        // a subject probe's result in a SFINAE context instantiates it where C++
-        // can, and answers false without an error for a type that is genuinely
-        // incomplete, which the provider then refuses by name.
-        const std::string completion_helper = options.generated_prefix + "completes_" + suffix;
-        replacement += "template<class F, class = void> struct ";
-        replacement += completion_helper;
-        replacement += " { static constexpr bool value = false; };\ntemplate<class R, class... A> struct ";
-        replacement += completion_helper;
-        replacement += "<R (*)(A...), decltype(void(sizeof(R)))> { static constexpr bool value = true; };\n";
-        Generated proof_parameters;
-        proof_parameters.copy(stream, proof.parameters);
-        replacement +=
-            emit(projected.name, proof_parameters, proof.proposition, proof.keyword_location, proof.end_line);
-
-        const auto emit_steps = [&](auto&& self, const std::vector<ProofStatement>& statements,
-                                    const Generated& parameters) -> void {
-            for (const ProofStatement& statement : statements) {
-                const auto expression_probe = [&](const source::ByteSpan& span, const source::SourceLocation& at,
-                                                  std::vector<std::string>& names, std::string_view kind) {
-                    std::string name =
-                        options.generated_prefix + std::string(kind) + suffix + "_" + std::to_string(names.size());
-                    replacement += line_directive(at.line, proof.keyword_location.file);
-                    replacement += emit_expression(name, parameters, span);
-                    replacement += line_directive(proof.end_line, proof.keyword_location.file);
-                    names.push_back(std::move(name));
-                };
-                if (statement.kind == ProofStatementKind::Cases || statement.kind == ProofStatementKind::Decompose) {
-                    expression_probe(statement.proposition, statement.location, projected.case_names, "case_");
-                    const std::string subject_probe = projected.case_names.back();
-                    replacement += "static_assert(";
-                    replacement += completion_helper;
-                    replacement += "<decltype(&";
-                    replacement += subject_probe;
-                    replacement += ")>::value || true);\n";
-                    for (const ProofArm& arm : statement.arms) {
-                        // A label that is a C++ expression is resolved by Clang,
-                        // like every other expression a proof mentions. A
-                        // reserved label names a state that has no expression,
-                        // so there is nothing to resolve.
-                        if (!arm.keyword_label)
-                            expression_probe(arm.label, arm.location, projected.case_names, "case_");
-                        Generated scoped = parameters;
-                        for (std::size_t binding = 0; binding < arm.binders.size(); ++binding) {
-                            const std::string key = options.generated_prefix + "binding_" + suffix + "_" +
-                                                    std::to_string(projection.binding_probes.size());
-                            projection.binding_probes.push_back({key, subject_probe, arm.spelling, binding,
-                                                                 statement.kind == ProofStatementKind::Decompose,
-                                                                 arm.location});
-                            if (!scoped.empty())
-                                scoped += ", ";
-                            const auto known = options.binding_types.find(key);
-                            const std::string type = known == options.binding_types.end() ? "int" : known->second;
-                            // Reference parameters ask Clang to resolve expressions without
-                            // requiring a copy, move, default constructor or runtime object.
-                            scoped += "typename ";
-                            scoped += binding_helper;
-                            scoped += "<";
-                            scoped += type;
-                            scoped += ">::type &";
-                            scoped += arm.binders[binding];
-                        }
-                        self(self, arm.statements, scoped);
-                    }
-                    continue;
-                }
-                // `induction x { ... }` (GRAMMAR.md 5.8). The subject is resolved
-                // by Clang like a case subject, so an undeclared name is Clang's
-                // error at the statement. An arm's binder, the predecessor in
-                // `successor(pred)`, is declared with the subject's own type:
-                // `decltype` of a parameter is its declared type, so nothing is
-                // converted on the way. Which labels and binders are admitted is
-                // the principle's business, decided in elaboration.
-                if (statement.kind == ProofStatementKind::Induction) {
-                    expression_probe(statement.proposition, statement.location, projected.case_names, "case_");
-                    for (const ProofArm& arm : statement.arms) {
-                        Generated scoped = parameters;
-                        for (const std::string& binder : arm.binders) {
-                            if (!scoped.empty())
-                                scoped += ", ";
-                            scoped += "typename ";
-                            scoped += binding_helper;
-                            scoped += "<decltype(";
-                            scoped += at_written_position(stream, statement.proposition);
-                            scoped += ")>::type ";
-                            scoped += binder;
-                        }
-                        self(self, arm.statements, scoped);
-                    }
-                    continue;
-                }
-                for (const ProofArgument& argument : statement.arguments)
-                    expression_probe(argument.span, argument.location, projected.argument_names, "argument_");
-                if (statement.kind != ProofStatementKind::Assume)
-                    continue;
-                std::string name = options.generated_prefix + "assumption_" + suffix + "_" +
-                                   std::to_string(projected.assumption_names.size());
-                if (detail::contains_formal_syntax(stream, statement.proposition)) {
-                    replacement +=
-                        emit(name, parameters, statement.proposition, statement.proposition_location, proof.end_line);
-                } else {
-                    replacement += line_directive(statement.proposition_location.line, proof.keyword_location.file);
-                    replacement += emit_expression(name, parameters, statement.proposition);
-                    replacement += line_directive(proof.end_line, proof.keyword_location.file);
-                }
-                projected.assumption_names.push_back(std::move(name));
-            }
-        };
-        emit_steps(emit_steps, proof.statements, proof_parameters);
-
-        edits.push_back(
-            generated_edit(proof.range.span, in_formal_scope(formal.proofs[index], replacement, proof.range.span)));
-        projection.proof_functions.push_back(std::move(projected));
-    }
-
-    // A contract is not C++, so it leaves both texts. What Clang is given
-    // instead is an ordinary function per clause, emitted after the body so
-    // that everything the contract can name is already declared. The
-    // postcondition takes one parameter more than the function does: `result`,
-    // of the declared return type.
-    for (std::size_t index = 0; index < syntax.verified_functions.size(); ++index) {
-        const VerifiedFunction& verified = syntax.verified_functions[index];
-        blank(projection.runtime, verified.keyword, stream);
-        blank(projection.runtime, verified.clause_region, stream);
-        edits.push_back(Edit{verified.keyword, std::string(verified.keyword.length, ' ')});
-        edits.push_back(Edit{verified.clause_region,
-                             projection.runtime.substr(verified.clause_region.offset, verified.clause_region.length)});
-
-        const Clause* postcondition = verified.postcondition();
-
-        // Every probe for this function is declared under the function's own
-        // template header, so a clause naming a template parameter resolves.
-        template_header = verified.template_header.length == 0 ? std::string()
-                                                               : std::string(stream.spelling(verified.template_header));
-        template_parameters = verified.template_header.length != 0 && !verified.explicit_specialization;
-        implicit_object = verified.member && !verified.static_member;
-
-        const std::string suffix = std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
-        std::string_view parameters = stream.spelling(verified.parameters);
-        const std::size_t first = parameters.find_first_not_of(" \t\r\n");
-        const std::size_t last = parameters.find_last_not_of(" \t\r\n");
-        if (first != std::string_view::npos && parameters.substr(first, last - first + 1) == "void") {
-            parameters = {};
-        }
-        const bool has_parameters = parameters.find_first_not_of(" \t\r\n") != std::string_view::npos;
-        // Every probe declares the parameters without their default arguments,
-        // which a call relying on one evaluates where it is made (SPEC.md
-        // R.16); the function's own declaration keeps them.
-        Generated parameter_list;
-        if (!parameters.empty()) {
-            ProbeParameters probe_parameters = without_default_arguments(stream, verified.parameters);
-            if (probe_parameters.ambiguous.has_value()) {
-                diagnostics::Diagnostic diagnostic;
-                diagnostic.severity = diagnostics::Severity::Error;
-                diagnostic.category = diagnostics::Category::UnsupportedSemantics;
-                diagnostic.location = *probe_parameters.ambiguous;
-                diagnostic.message = "a default argument of verified function '" + verified.function_name +
-                                     "' is not delimited: a comma after a '<' it leaves open may separate the "
-                                     "parameters or the arguments of a template-id, which only lookup decides";
-                diagnostic.notes.push_back(
-                    {"parenthesize the default argument, so the parameter it belongs to ends where it does",
-                     *probe_parameters.ambiguous});
-                projection.diagnostics.push_back(std::move(diagnostic));
-            }
-            parameter_list = std::move(probe_parameters.text);
-        }
-
-        Generated result_parameter;
-        if (has_parameters) {
-            result_parameter += parameter_list;
-            result_parameter += ", ";
-        }
-        const bool void_result =
-            options.void_functions.contains(index) || spelled_tokens(stream, verified.return_type) == "void";
-        if (void_result) {
-            result_parameter = parameter_list;
-        } else {
-            result_parameter.copy(stream, verified.return_type);
-            result_parameter += " result";
-        }
-
-        ContractFunctions projected;
-        projected.function_index = index;
-        projected.postcondition_name = options.generated_prefix + "ensures_" + suffix;
-
-        // Absence of an explicit ensures is legal only when elaboration resolves
-        // a refined result. Membership supplies the actual postcondition there.
-        Generated replacement;
-        if (postcondition != nullptr) {
-            // Entry values are specified and not implemented. Left to Clang, the
-            // form would call whatever `old` is visible and state the
-            // post-state value in place of the entry value (SPEC.md 11.4).
-            if (const auto snapshot = detail::entry_value_form(stream, postcondition->expression)) {
-                diagnostics::Diagnostic diagnostic;
-                diagnostic.severity = diagnostics::Severity::Error;
-                diagnostic.category = diagnostics::Category::UnsupportedSemantics;
-                diagnostic.location = *snapshot;
-                diagnostic.message = "'old(...)' in a postcondition denotes the entry value of its operand, and entry "
-                                     "values are not supported yet";
-                diagnostic.notes.push_back(
-                    {"within a postcondition the form is never a call to a C++ entity named 'old'; a function so named "
-                     "is called there by a qualified name, such as '::old(...)'",
-                     *snapshot});
-                projection.diagnostics.push_back(std::move(diagnostic));
-            }
-            replacement = emit(projected.postcondition_name, result_parameter, postcondition->expression,
-                               postcondition->location, verified.body_end_line);
-        } else {
-            replacement += "\n" + line_directive(verified.function_location.line, verified.function_location.file) +
-                           declaration_prefix() + "bool " + projected.postcondition_name + "(";
-            replacement += result_parameter;
-            replacement += ")" + probe_qualifier() + " { return true; }\n";
-        }
-        for (const Clause* precondition : verified.preconditions()) {
-            std::string name = options.generated_prefix + "expects_" + suffix;
-            if (!projected.precondition_names.empty()) {
-                name += "_" + std::to_string(projected.precondition_names.size());
-            }
-            replacement +=
-                emit(name, parameter_list, precondition->expression, precondition->location, verified.body_end_line);
-            projected.precondition_names.push_back(std::move(name));
-        }
-        // Each component of a `decreases` measure is a function of the
-        // parameters returning it, at the type the expression already has
-        // (SPEC.md TERMINATION-004). A function template's probes would need
-        // forcing at each specialization; its measure is left unprojected, and
-        // elaboration refuses it.
-        if (const Clause* measure = verified.measure(); measure != nullptr && !templated()) {
-            if (detail::contains_formal_syntax(stream, measure->expression)) {
-                diagnostics::Diagnostic diagnostic;
-                diagnostic.severity = diagnostics::Severity::Error;
-                diagnostic.category = diagnostics::Category::UnsupportedSemantics;
-                diagnostic.location = measure->location;
-                diagnostic.message = "formal syntax in a function measure is not supported yet";
-                projection.diagnostics.push_back(std::move(diagnostic));
-            }
-            for (const MeasureComponent& component : measure_components(stream, *measure)) {
-                std::string name = options.generated_prefix + "decreases_" + suffix + "_" +
-                                   std::to_string(projected.measure_names.size());
-                replacement += "\n";
-                replacement += line_directive(component.location.line, component.location.file);
-                replacement += declaration_prefix() + "auto " + name + "(";
-                replacement += parameter_list;
-                replacement += ")" + probe_qualifier() + " { return (";
-                replacement += at_written_position(stream, component.expression);
-                replacement += "); }\n";
-                projected.measure_names.push_back(std::move(name));
-            }
-        }
-
-        replacement += resume_at(stream, verified.body_end);
-        edits.push_back(generated_edit(source::ByteSpan{verified.body_end, 0}, std::move(replacement)));
-
-        // A templated function's probes are templates, and nothing has used
-        // them: the specializations that would carry this specialization's
-        // contract would never exist. The body names each probe at its own
-        // template arguments so that instantiating the function instantiates
-        // its contract with it, at the very arguments Clang substituted.
-        //
-        // The probes are defined after the body, so a declaration of each is
-        // emitted before the function for the body to name. The reference
-        // itself takes the probe's address into an unused variable: it calls
-        // nothing, and the runtime text never sees it (SPEC.md TEMPLATE-001).
-        if (!template_header.empty() && verified.body_open != 0) {
-            if (const auto names = template_parameter_names(stream, verified.template_header); names.has_value()) {
-                // An explicit specialization, `template <>`, declares no
-                // parameters. Its arguments are already fixed, so its probes
-                // are ordinary functions: there is no primary to specialize,
-                // and nothing has to be forced into existence because the
-                // declaration itself is the instantiation (SPEC.md
-                // TEMPLATE-001).
-                const bool specialization = !templated();
-                const std::string probe_header = specialization ? std::string{} : template_header + " ";
-                std::string declared = "\n";
-                declared += line_directive(verified.function_location.line, verified.function_location.file);
-                declared += probe_header;
-                declared += "bool ";
-                declared += projected.postcondition_name;
-                declared += "(";
-                declared += result_parameter.text;
-                declared += ");";
-                for (const std::string& precondition : projected.precondition_names) {
-                    declared += " ";
-                    declared += probe_header;
-                    declared += "bool ";
-                    declared += precondition;
-                    declared += "(";
-                    declared += parameter_list.text;
-                    declared += ");";
-                }
-                const std::size_t before =
-                    verified.template_header.length != 0 ? verified.template_header.offset : verified.keyword.offset;
-                declared += resume_at(stream, before);
-                edits.push_back(Edit{source::ByteSpan{before, 0}, std::move(declared)});
-
-                if (!specialization) {
-                    std::string forced = "\n";
-                    forced += line_directive(verified.function_location.line, verified.function_location.file);
-                    forced += "[[maybe_unused]] auto " + options.generated_prefix + "force_" + suffix + " = &" +
-                              projected.postcondition_name + "<" + *names + ">;";
-                    for (std::size_t position = 0; position < projected.precondition_names.size(); ++position) {
-                        forced += " [[maybe_unused]] auto " + options.generated_prefix + "force_" + suffix + "_" +
-                                  std::to_string(position) + " = &" + projected.precondition_names[position] + "<" +
-                                  *names + ">;";
-                    }
-                    forced += resume_at(stream, verified.body_open);
-                    edits.push_back(Edit{source::ByteSpan{verified.body_open, 0}, std::move(forced)});
-                }
-            }
-        }
-        projection.contract_functions.push_back(std::move(projected));
-    }
-    template_header.clear();
-    template_parameters = false;
-    implicit_object = false;
-
-    // A loop's clauses are not C++ either. Each invariant becomes a `bool`
-    // declaration at the start of the body, in the scope the loop head sees,
-    // and the text after the brace resumes at its own line and column.
-    for (std::size_t index = 0; index < syntax.loops.size(); ++index) {
-        const LoopSpecification& loop = syntax.loops[index];
-        blank(projection.runtime, loop.clause_region, stream);
-        edits.push_back(
-            Edit{loop.clause_region, projection.runtime.substr(loop.clause_region.offset, loop.clause_region.length)});
-
-        Generated replacement;
-        replacement += "\n";
-        for (std::size_t position = 0; position < loop.invariants.size(); ++position) {
-            if (detail::contains_formal_syntax(stream, loop.invariants[position].expression)) {
-                diagnostics::Diagnostic diagnostic;
-                diagnostic.severity = diagnostics::Severity::Error;
-                diagnostic.category = diagnostics::Category::UnsupportedSemantics;
-                diagnostic.location = loop.invariants[position].location;
-                diagnostic.message = "formal syntax in a loop invariant is not supported yet";
-                projection.diagnostics.push_back(std::move(diagnostic));
-            }
-            LoopInvariantMarker marker;
-            marker.name = options.generated_prefix + "invariant_" + std::to_string(projection.loop_invariants.size()) +
-                          (options.unit_key.empty() ? "" : "_" + options.unit_key);
-            marker.loop_index = index;
-            marker.function_index = loop.function_index;
-            marker.location = loop.invariants[position].location;
-
-            const source::SourceLocation& at = loop.expression_locations[position];
-            replacement += line_directive(at.line, loop.keyword_location.file);
-            replacement += "[[maybe_unused]] bool " + marker.name + " = (";
-            replacement += at_written_position(stream, loop.invariants[position].expression);
-            replacement += ");\n";
-            projection.loop_invariants.push_back(std::move(marker));
-        }
-        // A `decreases` measure resolves in the same scope as the invariants,
-        // and is an integer rather than a condition. `auto` gives it the type
-        // the expression already has, which the bridge reads back. A
-        // lexicographic list is one declaration per component, in order
-        // (SPEC.md TERMINATION-004).
-        if (loop.decreases.has_value()) {
-            if (detail::contains_formal_syntax(stream, loop.decreases->expression)) {
-                diagnostics::Diagnostic diagnostic;
-                diagnostic.severity = diagnostics::Severity::Error;
-                diagnostic.category = diagnostics::Category::UnsupportedSemantics;
-                diagnostic.location = loop.decreases->location;
-                diagnostic.message = "formal syntax in a loop measure is not supported yet";
-                projection.diagnostics.push_back(std::move(diagnostic));
-            }
-            for (const MeasureComponent& component : measure_components(stream, *loop.decreases)) {
-                LoopInvariantMarker marker;
-                marker.name = options.generated_prefix + "measure_" +
-                              std::to_string(projection.loop_invariants.size()) +
-                              (options.unit_key.empty() ? "" : "_" + options.unit_key);
-                marker.loop_index = index;
-                marker.function_index = loop.function_index;
-                marker.measure = true;
-                marker.location = loop.decreases->location;
-
-                replacement += line_directive(component.location.line, loop.keyword_location.file);
-                replacement += "[[maybe_unused]] auto " + marker.name + " = (";
-                replacement += at_written_position(stream, component.expression);
-                replacement += ");\n";
-                projection.loop_invariants.push_back(std::move(marker));
-            }
-        }
-        replacement += resume_at(stream, loop.body_open);
-        edits.push_back(generated_edit(source::ByteSpan{loop.body_open, 0}, std::move(replacement)));
     }
 
     // A claim that a path cannot occur is proof syntax in runtime code. The
@@ -1552,11 +919,11 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // and whatever statement it was the body of still has one. Clang is given a
     // block at the same point instead, which resolves the evidence's arguments
     // in the scope the statement sees (SPEC.md VERIFIED-023).
-    const auto claim_marker = [&options](std::size_t index) {
+    [[nodiscard]] std::string claim_marker(std::size_t index) const {
         return options.generated_prefix + "contradiction_" + std::to_string(index) +
                (options.unit_key.empty() ? "" : "_" + options.unit_key);
-    };
-    const auto claim_block = [&stream](const std::string& name, const ProofStatement& statement) {
+    }
+    [[nodiscard]] Generated claim_block(const std::string& name, const ProofStatement& statement) const {
         const std::string& file = statement.location.file;
         Generated block;
         block += "{\n";
@@ -1578,307 +945,1006 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         }
         block += "}\n";
         return block;
-    };
-    for (std::size_t index = 0; index < syntax.path_contradictions.size(); ++index) {
-        const PathContradiction& claim = syntax.path_contradictions[index];
-
-        PathContradictionMarker marker;
-        marker.name = claim_marker(index);
-        marker.claim_index = index;
-        marker.function_index = claim.function_index;
-        marker.location = claim.statement.location;
-
-        // A claim in a split's arm is erased and projected with that split.
-        if (claim.split.has_value()) {
-            projection.path_contradictions.push_back(std::move(marker));
-            continue;
-        }
-        blank(projection.runtime, claim.erased, stream);
-        Generated replacement = claim_block(marker.name, claim.statement);
-        replacement += directives_within(stream, claim.span);
-        replacement += resume_at(stream, claim.span.end());
-        edits.push_back(generated_edit(claim.span, std::move(replacement)));
-        projection.path_contradictions.push_back(std::move(marker));
     }
 
-    // A case split on a runtime path is proof syntax in runtime code too. The
-    // program keeps an empty statement where it stood, and Clang is given a
-    // block at the same point that resolves the subject, the labels and the
-    // binders in the scope the statement sees, together with every nested split
-    // and claim of its arms (SPEC.md CASE-017).
-    //
-    // A binder is declared as a reference obtained from a function that is
-    // declared and never defined: Clang needs it only to resolve what later
-    // expressions in the arm say about it, and the analysis text is never
-    // compiled into code. The bridge reads the binder back as the value its
-    // case exposes, never as storage.
-    std::set<std::size_t> helped;
-    for (std::size_t index = 0; index < syntax.path_splits.size(); ++index) {
-        const PathCaseSplit& split = syntax.path_splits[index];
-        projection.runtime_lowerings.push_back(RuntimeLowering{split.span, erased_split(stream, split)});
-
-        const std::string function_suffix =
-            std::to_string(split.function_index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
-        const std::string completes = options.generated_prefix + "split_completes_" + function_suffix;
-        const std::string binder_type = options.generated_prefix + "split_type_" + function_suffix;
-        const std::string binder_value = options.generated_prefix + "split_value_" + function_suffix;
-        // Decomposing needs the subject's type complete, as a member access
-        // would. Asking for `sizeof` in a SFINAE context instantiates a class
-        // template specialization where C++ can and answers false, without an
-        // error, for a type that is genuinely incomplete, which the provider
-        // then refuses by name.
-        if (split.function_index < syntax.verified_functions.size() && helped.insert(split.function_index).second) {
-            const VerifiedFunction& verified = syntax.verified_functions[split.function_index];
-            const std::size_t before =
-                verified.template_header.length != 0 ? verified.template_header.offset : verified.keyword.offset;
-            std::string declared = "\n";
-            declared += line_directive(verified.function_location.line, verified.function_location.file);
-            declared += "template<class T, class = void> struct ";
-            declared += completes;
-            declared += " { static constexpr bool value = false; }; template<class T> struct ";
-            declared += completes;
-            declared +=
-                "<T, decltype(void(sizeof(T)))> { static constexpr bool value = true; }; template<class T> struct ";
-            declared += binder_type;
-            // Inside a class the helper is a member, and a static one, so that a
-            // static member function's split resolves it without an object.
-            declared += verified.member ? " { using type = T; }; template<class T> static T& "
-                                        : " { using type = T; }; template<class T> T& ";
-            declared += binder_value;
-            declared += "();\n";
-            declared += resume_at(stream, before);
-            edits.push_back(Edit{source::ByteSpan{before, 0}, std::move(declared)});
+    // `pure`, `unsafe` and `ghost` markers.
+    void project_markers() {
+        for (const PureMarker& marker : syntax.pure_markers) {
+            blank(projection.runtime, marker.keyword, stream);
+            edits.push_back(Edit{marker.keyword, std::string(marker.keyword.length, ' ')});
         }
 
-        const std::string& file = split.statement.location.file;
-        std::size_t next_claim = 0;
-        Generated replacement;
-        const auto emit_split = [&](auto&& self, const ProofStatement& statement, const std::string& marker,
-                                    const std::vector<std::uint32_t>& route) -> void {
-            projection.path_splits.push_back(
-                PathSplitMarker{marker, index, route, split.function_index, statement.location});
-            replacement += "{\n";
-            replacement += line_directive(statement.location.line, file);
-            if (statement.location.column > 1) {
-                replacement += std::string(statement.location.column - 1, ' ');
+        // `unsafe` is a marker: the word leaves both texts and the declaration or
+        // the block it marks stays ordinary C++ (SPEC.md ERASE-003, Annex M).
+        for (const UnsafeFunction& function : syntax.unsafe_functions) {
+            blank(projection.runtime, function.keyword, stream);
+            edits.push_back(Edit{function.keyword, std::string(function.keyword.length, ' ')});
+        }
+        // A block's region starts at a declaration only Clang sees, just inside its
+        // `{`, written at the position of the word it replaces, so the region's
+        // provenance is where the author wrote `unsafe`.
+        for (std::size_t index = 0; index < syntax.unsafe_blocks.size(); ++index) {
+            const UnsafeBlock& block = syntax.unsafe_blocks[index];
+            blank(projection.runtime, block.keyword, stream);
+            edits.push_back(Edit{block.keyword, std::string(block.keyword.length, ' ')});
+            if (block.nested) {
+                continue;
             }
-            replacement += "[[maybe_unused]] bool ";
-            replacement += marker;
-            replacement += " = true;\n[[maybe_unused]] decltype(auto) ";
-            replacement += marker;
-            replacement += "_subject = (";
-            replacement += at_written_position(stream, statement.proposition);
-            replacement += ");\nstatic_assert(";
-            replacement += completes;
-            replacement += "<decltype(";
-            replacement += marker;
-            replacement += "_subject)>::value || true);\n";
-            for (std::size_t arm = 0; arm < statement.arms.size(); ++arm) {
-                if (statement.arms[arm].keyword_label) {
-                    continue;
-                }
-                replacement += "[[maybe_unused]] decltype(auto) ";
-                replacement += marker;
-                replacement += "_label_";
-                replacement += std::to_string(arm);
-                replacement += " = (";
-                replacement += at_written_position(stream, statement.arms[arm].label);
-                replacement += ");\n";
+            UnsafeBlockMarker marker;
+            marker.name = options.generated_prefix + "unsafe_" + std::to_string(index) +
+                          (options.unit_key.empty() ? "" : "_" + options.unit_key);
+            marker.block_index = index;
+            marker.function_index = block.function_index;
+            marker.location = block.location;
+            // The declared name, which is where Clang locates a declaration, stands
+            // exactly where `unsafe` was written.
+            std::string inserted = "\n[[maybe_unused]] bool\n";
+            inserted += line_directive(block.location.line, block.location.file);
+            inserted += std::string(block.location.column > 1 ? block.location.column - 1 : 0, ' ');
+            inserted += marker.name + " = true;";
+            inserted += resume_at(stream, block.body_open);
+            edits.push_back(Edit{source::ByteSpan{block.body_open, 0}, std::move(inserted)});
+            projection.unsafe_blocks.push_back(std::move(marker));
+        }
+
+        // A ghost declaration leaves the program whole (SPEC.md GHOST-001,
+        // ERASE-011). Clang still sees it, after a declaration only Clang sees,
+        // named where `ghost` was written, which tells the body lowering that the
+        // declaration after it is ghost state.
+        for (std::size_t index = 0; index < syntax.ghost_declarations.size(); ++index) {
+            const GhostDeclaration& ghost = syntax.ghost_declarations[index];
+            blank(projection.runtime, ghost.erased, stream);
+            const std::string name = options.generated_prefix + "ghost_" + std::to_string(index) +
+                                     (options.unit_key.empty() ? "" : "_" + options.unit_key);
+            const std::size_t column = ghost.location.column > 1 ? ghost.location.column - 1 : 0;
+            std::string inserted = "\n[[maybe_unused]] bool\n";
+            inserted += line_directive(ghost.location.line, ghost.location.file);
+            inserted += std::string(column, ' ') + name + " = true;";
+            inserted += resume_at(stream, ghost.keyword.end());
+            edits.push_back(Edit{ghost.keyword, std::move(inserted)});
+        }
+    }
+
+    void project_refinements() {
+        // A refinement type is runtime-bearing: the program keeps the alias it means
+        // and loses only its predicate (SPEC.md REFINE-016, TRUST.md 8.1). The analysis
+        // text gets the same alias, so every ordinary use of the name is Clang's, and
+        // a probe stating the predicate with `self` and the indices bound.
+        for (std::size_t index = 0; index < syntax.refinement_types.size(); ++index) {
+            const RefinementType& refinement = syntax.refinement_types[index];
+            const std::string lowering = canonical_lowering(stream, refinement);
+            projection.runtime_lowerings.push_back(RuntimeLowering{refinement.range.span, lowering});
+            // The alias is shorter than the declaration it lowers, but a validator
+            // beside it can be longer than a declaration written on one line, and
+            // would then move the code after it on that line (SPEC.md ERASE-018).
+            if (lowering_moves_columns(stream, refinement.range.span, lowering)) {
+                diagnostics::Diagnostic diagnostic;
+                diagnostic.severity = diagnostics::Severity::Error;
+                diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+                diagnostic.location = refinement.keyword_location;
+                diagnostic.message =
+                    "refinement type '" + refinement.name +
+                    "' lowers to more C++ than its declaration takes on its line, so the code after it "
+                    "there would move";
+                diagnostic.notes.push_back(
+                    diagnostics::Note{"end the line after the declaration's ';', or write the declaration across lines",
+                                      refinement.keyword_location});
+                projection.diagnostics.push_back(std::move(diagnostic));
             }
-            std::uint32_t nested = 0;
-            for (std::size_t position = 0; position < statement.arms.size(); ++position) {
-                const ProofArm& arm = statement.arms[position];
-                replacement += "{\n[[maybe_unused]] bool ";
-                replacement += marker;
-                replacement += "_arm_";
-                replacement += std::to_string(position);
-                replacement += " = true;\n";
-                for (std::size_t binding = 0; binding < arm.binders.size(); ++binding) {
-                    std::string key = marker;
-                    key += "_binding_";
-                    key += std::to_string(position);
-                    key += "_";
-                    key += std::to_string(binding);
-                    const auto known = options.binding_types.find(key);
-                    std::string type = "typename ";
-                    type += binder_type;
-                    type += "<";
-                    type += known == options.binding_types.end() ? "int" : known->second;
-                    type += ">::type";
-                    projection.binding_probes.push_back(BindingProbe{std::move(key), marker, arm.spelling, binding,
+
+            const std::string suffix = std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
+            RefinementProbe probe;
+            probe.name = refinement.name;
+            probe.probe = options.generated_prefix + "refinement_" + suffix;
+            probe.refinement_index = index;
+            probe.location = refinement.predicate_location;
+
+            std::string parameters = refinement.indexed ? spelled_indices(stream, refinement) : std::string{};
+            probe.index_count =
+                parameters.empty() ? 0 : 1 + static_cast<std::size_t>(std::ranges::count(parameters, ','));
+            if (!parameters.empty()) {
+                parameters += ", ";
+            }
+            // `self` is an ordinary parameter of the base type, which is what makes
+            // it a name Clang resolves rather than one C++L invents (SPEC.md 17.1).
+            parameters += spelled_tokens(stream, refinement.base) + " self";
+
+            Generated replacement;
+            replacement += "\n";
+            replacement += line_directive(refinement.keyword_location.line, refinement.keyword_location.file);
+            probe.alias_offset = replacement.size() + lowering.find("using ") + 6;
+            // The alias restates the base type's tokens. Where that restatement is
+            // the text as written, it is a copy of it, like any other.
+            if (const source::ByteSpan written = token_extent(stream, refinement.base);
+                written.length != 0 && spelled_tokens(stream, refinement.base) == stream.spelling(written)) {
+                const std::size_t base = lowering.find(" = ", lowering.find("using ")) + 3;
+                replacement.copies.push_back(Projection::Copy{replacement.size() + base, written});
+            }
+            replacement += lowering.substr(0, lowering.find(';') + 1); // the alias alone
+            replacement += "\n";
+            replacement += line_directive(refinement.predicate_location.line, refinement.keyword_location.file);
+            replacement += "[[maybe_unused]] static bool " + probe.probe + "(" + parameters + ")";
+
+            const auto formula = detail::project_formula(stream, refinement.predicate);
+            if (formula.failure) {
+                diagnostics::Diagnostic diagnostic;
+                diagnostic.severity = diagnostics::Severity::Error;
+                diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+                diagnostic.location = refinement.predicate_location;
+                diagnostic.message = "refinement type '" + refinement.name + "': " + *formula.failure;
+                projection.diagnostics.push_back(std::move(diagnostic));
+            }
+            probe.shape = formula.shape;
+            // A plain predicate is the author's own text, so it is copied where it
+            // was written; a formal one is rewritten and has no such position.
+            replacement += " { return (";
+            if (formula.shape.kind == source::ProjectionKind::Expression) {
+                replacement += at_written_position(stream, refinement.predicate);
+            } else {
+                replacement += formula.expression;
+            }
+            replacement += "); }\n";
+            replacement += directives_within(stream, refinement.range.span);
+            replacement += resume_at(stream, refinement.range.span.end());
+
+            // A validation runs the predicate as written, so it must be an ordinary
+            // C++ expression (SPEC.md RUNTIMECHECK-020).
+            if (!refinement.validator.empty() && !formula.failure &&
+                formula.shape.kind != source::ProjectionKind::Expression) {
+                diagnostics::Diagnostic diagnostic;
+                diagnostic.severity = diagnostics::Severity::Error;
+                diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+                diagnostic.location = refinement.predicate_location;
+                diagnostic.message = "refinement type '" + refinement.name +
+                                     "' states a formal predicate, which no validation can evaluate at run time";
+                projection.diagnostics.push_back(std::move(diagnostic));
+            }
+
+            projection.refinement_probes.push_back(std::move(probe));
+            edits.push_back(generated_edit(refinement.range.span, std::move(replacement), std::nullopt, index));
+        }
+    }
+
+    void project_validations() {
+        // A validation expression calls the refinement's probe in the analysis
+        // text, so Clang resolves its argument against the base type and the bridge
+        // reads it as a test of that refinement; the runtime text calls the
+        // validator the declaration lowers to (SPEC.md RUNTIMECHECK-018,
+        // RUNTIMECHECK-021).
+        //
+        // A validation is runtime code, so one in proof-only syntax of a verified
+        // body -- a ghost declaration, a claim that a path cannot occur, a case
+        // split -- would never run, and its lowering would stand inside a span
+        // erasure blanks. It is refused by name (SPEC.md RUNTIMECHECK-019).
+        const auto within = [](const source::ByteSpan& inner, const source::ByteSpan& outer) {
+            return inner.offset >= outer.offset && inner.end() <= outer.end();
+        };
+        for (const ValidationExpression& validation : syntax.validations) {
+            const std::string suffix =
+                std::to_string(validation.refinement_index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
+            const std::string probe = options.generated_prefix + "refinement_" + suffix;
+            edits.push_back(Edit{validation.callee, probe + resume_at(stream, validation.callee.end())});
+            const bool in_ghost = std::ranges::any_of(syntax.ghost_declarations, [&](const GhostDeclaration& ghost) {
+                return within(validation.callee, ghost.erased);
+            });
+            const bool in_proof_syntax = std::ranges::any_of(syntax.path_contradictions,
+                                                             [&](const PathContradiction& claim) {
+                                                                 return within(validation.callee, claim.span);
+                                                             }) ||
+                                         std::ranges::any_of(syntax.path_splits, [&](const PathCaseSplit& split) {
+                                             return within(validation.callee, split.span);
+                                         });
+            if (in_ghost || in_proof_syntax) {
+                diagnostics::Diagnostic diagnostic;
+                diagnostic.severity = diagnostics::Severity::Error;
+                diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+                diagnostic.location = validation.location;
+                diagnostic.message = std::string("a validation expression is runtime code, and ") +
+                                     (in_ghost ? "a ghost declaration never runs"
+                                               : "a claim that a path cannot occur or a case split never runs");
+                diagnostic.notes.push_back(diagnostics::Note{
+                    "validate the value in the verified body and name the result there (SPEC.md RUNTIMECHECK-019)",
+                    validation.location});
+                projection.diagnostics.push_back(std::move(diagnostic));
+                continue;
+            }
+            projection.runtime_lowerings.push_back(
+                RuntimeLowering{validation.callee, lowered_validation(stream, syntax, validation)});
+        }
+    }
+
+    void project_laws(const FormalScopes& formal) {
+        for (std::size_t index = 0; index < syntax.laws.size(); ++index) {
+            const LawDeclaration& law = syntax.laws[index];
+            blank(projection.runtime, law.range.span, stream);
+
+            const Clause* proposition = law.proposition();
+            if (proposition == nullptr) {
+                continue;
+            }
+
+            SpecificationFunction projected{law.name, index, {}};
+            Generated parameters;
+            parameters.copy(stream, law.parameters);
+            Generated replacement = emit(law.name, parameters, proposition->expression, law.keyword_location,
+                                         law.end_line, &projected.analysis_offset, &projected.proposition_probe);
+
+            // A precondition is a specification expression of the Law's own
+            // parameters, so it is projected exactly like the conclusion, under a
+            // generated name: the Law's name states what the Law concludes.
+            if (const Clause* premise = law.premise(); premise != nullptr) {
+                projected.premise_name = options.generated_prefix + "premise_" + std::to_string(index) +
+                                         (options.unit_key.empty() ? "" : "_" + options.unit_key);
+                replacement +=
+                    emit(projected.premise_name, parameters, premise->expression, premise->location, law.end_line);
+            }
+
+            projected.analysis_offset += formal.laws[index].size();
+            edits.push_back(generated_edit(law.range.span,
+                                           in_formal_scope(formal.laws[index], replacement, law.range.span),
+                                           projection.specification_functions.size()));
+            projection.specification_functions.push_back(std::move(projected));
+        }
+    }
+
+    void project_proofs(const FormalScopes& formal) {
+        // An instantiation argument is an ordinary C++ expression written in the
+        // proof's own scope, so it is projected as a function returning it. The
+        // deduced return type is the type Clang gives the expression, with no
+        // conversion imposed on the way out.
+        const auto emit_expression = [this](std::string_view name, const Generated& parameters,
+                                            const source::ByteSpan& expression) {
+            Generated head;
+            head += "[[maybe_unused]] static decltype(auto) ";
+            head += name;
+            head += "(";
+            head += parameters;
+            head += ") { return (";
+            head += at_written_position(stream, expression);
+            head += "); }\n";
+            return head;
+        };
+
+        for (std::size_t index = 0; index < syntax.proofs.size(); ++index) {
+            const ProofDeclaration& proof = syntax.proofs[index];
+            blank(projection.runtime, proof.range.span, stream);
+
+            const std::string suffix = std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
+
+            ProofFunction projected;
+            projected.name = options.generated_prefix + "proof_" + suffix;
+            projected.proof_index = index;
+
+            const std::string binding_helper = options.generated_prefix + "binding_type_" + suffix;
+            Generated replacement;
+            replacement += "template<class T> struct " + binding_helper + " { using type = T; };\n";
+            // Decomposing a subject needs its type complete, as a member access would
+            // (SPEC.md 20.4), but a subject reached through a reference never makes
+            // C++ instantiate a class template specialization. Asking for `sizeof` of
+            // a subject probe's result in a SFINAE context instantiates it where C++
+            // can, and answers false without an error for a type that is genuinely
+            // incomplete, which the provider then refuses by name.
+            const std::string completion_helper = options.generated_prefix + "completes_" + suffix;
+            replacement += "template<class F, class = void> struct ";
+            replacement += completion_helper;
+            replacement += " { static constexpr bool value = false; };\ntemplate<class R, class... A> struct ";
+            replacement += completion_helper;
+            replacement += "<R (*)(A...), decltype(void(sizeof(R)))> { static constexpr bool value = true; };\n";
+            Generated proof_parameters;
+            proof_parameters.copy(stream, proof.parameters);
+            replacement +=
+                emit(projected.name, proof_parameters, proof.proposition, proof.keyword_location, proof.end_line);
+
+            const auto emit_steps = [&](auto&& self, const std::vector<ProofStatement>& statements,
+                                        const Generated& parameters) -> void {
+                for (const ProofStatement& statement : statements) {
+                    const auto expression_probe = [&](const source::ByteSpan& span, const source::SourceLocation& at,
+                                                      std::vector<std::string>& names, std::string_view kind) {
+                        std::string name =
+                            options.generated_prefix + std::string(kind) + suffix + "_" + std::to_string(names.size());
+                        replacement += line_directive(at.line, proof.keyword_location.file);
+                        replacement += emit_expression(name, parameters, span);
+                        replacement += line_directive(proof.end_line, proof.keyword_location.file);
+                        names.push_back(std::move(name));
+                    };
+                    if (statement.kind == ProofStatementKind::Cases ||
+                        statement.kind == ProofStatementKind::Decompose) {
+                        expression_probe(statement.proposition, statement.location, projected.case_names, "case_");
+                        const std::string subject_probe = projected.case_names.back();
+                        replacement += "static_assert(";
+                        replacement += completion_helper;
+                        replacement += "<decltype(&";
+                        replacement += subject_probe;
+                        replacement += ")>::value || true);\n";
+                        for (const ProofArm& arm : statement.arms) {
+                            // A label that is a C++ expression is resolved by Clang,
+                            // like every other expression a proof mentions. A
+                            // reserved label names a state that has no expression,
+                            // so there is nothing to resolve.
+                            if (!arm.keyword_label)
+                                expression_probe(arm.label, arm.location, projected.case_names, "case_");
+                            Generated scoped = parameters;
+                            for (std::size_t binding = 0; binding < arm.binders.size(); ++binding) {
+                                const std::string key = options.generated_prefix + "binding_" + suffix + "_" +
+                                                        std::to_string(projection.binding_probes.size());
+                                projection.binding_probes.push_back({key, subject_probe, arm.spelling, binding,
                                                                      statement.kind == ProofStatementKind::Decompose,
                                                                      arm.location});
-                    replacement += line_directive(arm.location.line, file);
-                    replacement += "[[maybe_unused]] ";
-                    replacement += type;
-                    replacement += "& ";
-                    replacement += arm.binders[binding];
-                    replacement += " = ";
-                    replacement += binder_value;
-                    replacement += "<";
-                    replacement += type;
-                    replacement += ">();\n";
-                }
-                for (std::size_t written = 0; written < arm.statements.size(); ++written) {
-                    const ProofStatement& inner = arm.statements[written];
-                    if (inner.kind == ProofStatementKind::Contradiction) {
-                        if (next_claim < split.claims.size()) {
-                            const std::size_t claim = split.claims[next_claim++];
-                            replacement +=
-                                claim_block(claim_marker(claim), syntax.path_contradictions[claim].statement);
+                                if (!scoped.empty())
+                                    scoped += ", ";
+                                const auto known = options.binding_types.find(key);
+                                const std::string type = known == options.binding_types.end() ? "int" : known->second;
+                                // Reference parameters ask Clang to resolve expressions without
+                                // requiring a copy, move, default constructor or runtime object.
+                                scoped += "typename ";
+                                scoped += binding_helper;
+                                scoped += "<";
+                                scoped += type;
+                                scoped += ">::type &";
+                                scoped += arm.binders[binding];
+                            }
+                            self(self, arm.statements, scoped);
                         }
                         continue;
                     }
-                    std::vector<std::uint32_t> inner_route = route;
-                    inner_route.push_back(static_cast<std::uint32_t>(position));
-                    inner_route.push_back(static_cast<std::uint32_t>(written));
-                    self(self, inner, marker + "_nested_" + std::to_string(nested++), inner_route);
+                    // `induction x { ... }` (GRAMMAR.md 5.8). The subject is resolved
+                    // by Clang like a case subject, so an undeclared name is Clang's
+                    // error at the statement. An arm's binder, the predecessor in
+                    // `successor(pred)`, is declared with the subject's own type:
+                    // `decltype` of a parameter is its declared type, so nothing is
+                    // converted on the way. Which labels and binders are admitted is
+                    // the principle's business, decided in elaboration.
+                    if (statement.kind == ProofStatementKind::Induction) {
+                        expression_probe(statement.proposition, statement.location, projected.case_names, "case_");
+                        for (const ProofArm& arm : statement.arms) {
+                            Generated scoped = parameters;
+                            for (const std::string& binder : arm.binders) {
+                                if (!scoped.empty())
+                                    scoped += ", ";
+                                scoped += "typename ";
+                                scoped += binding_helper;
+                                scoped += "<decltype(";
+                                scoped += at_written_position(stream, statement.proposition);
+                                scoped += ")>::type ";
+                                scoped += binder;
+                            }
+                            self(self, arm.statements, scoped);
+                        }
+                        continue;
+                    }
+                    for (const ProofArgument& argument : statement.arguments)
+                        expression_probe(argument.span, argument.location, projected.argument_names, "argument_");
+                    if (statement.kind != ProofStatementKind::Assume)
+                        continue;
+                    std::string name = options.generated_prefix + "assumption_" + suffix + "_" +
+                                       std::to_string(projected.assumption_names.size());
+                    if (detail::contains_formal_syntax(stream, statement.proposition)) {
+                        replacement += emit(name, parameters, statement.proposition, statement.proposition_location,
+                                            proof.end_line);
+                    } else {
+                        replacement += line_directive(statement.proposition_location.line, proof.keyword_location.file);
+                        replacement += emit_expression(name, parameters, statement.proposition);
+                        replacement += line_directive(proof.end_line, proof.keyword_location.file);
+                    }
+                    projected.assumption_names.push_back(std::move(name));
+                }
+            };
+            emit_steps(emit_steps, proof.statements, proof_parameters);
+
+            edits.push_back(
+                generated_edit(proof.range.span, in_formal_scope(formal.proofs[index], replacement, proof.range.span)));
+            projection.proof_functions.push_back(std::move(projected));
+        }
+    }
+
+    void project_contracts() {
+        // A contract is not C++, so it leaves both texts. What Clang is given
+        // instead is an ordinary function per clause, emitted after the body so
+        // that everything the contract can name is already declared. The
+        // postcondition takes one parameter more than the function does: `result`,
+        // of the declared return type.
+        for (std::size_t index = 0; index < syntax.verified_functions.size(); ++index) {
+            const VerifiedFunction& verified = syntax.verified_functions[index];
+            blank(projection.runtime, verified.keyword, stream);
+            blank(projection.runtime, verified.clause_region, stream);
+            edits.push_back(Edit{verified.keyword, std::string(verified.keyword.length, ' ')});
+            edits.push_back(Edit{verified.clause_region, projection.runtime.substr(verified.clause_region.offset,
+                                                                                   verified.clause_region.length)});
+
+            const Clause* postcondition = verified.postcondition();
+
+            // Every probe for this function is declared under the function's own
+            // template header, so a clause naming a template parameter resolves.
+            template_header = verified.template_header.length == 0
+                                  ? std::string()
+                                  : std::string(stream.spelling(verified.template_header));
+            template_parameters = verified.template_header.length != 0 && !verified.explicit_specialization;
+            implicit_object = verified.member && !verified.static_member;
+
+            const std::string suffix = std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
+            std::string_view parameters = stream.spelling(verified.parameters);
+            const std::size_t first = parameters.find_first_not_of(" \t\r\n");
+            const std::size_t last = parameters.find_last_not_of(" \t\r\n");
+            if (first != std::string_view::npos && parameters.substr(first, last - first + 1) == "void") {
+                parameters = {};
+            }
+            const bool has_parameters = parameters.find_first_not_of(" \t\r\n") != std::string_view::npos;
+            // Every probe declares the parameters without their default arguments,
+            // which a call relying on one evaluates where it is made (SPEC.md
+            // R.16); the function's own declaration keeps them.
+            Generated parameter_list;
+            if (!parameters.empty()) {
+                ProbeParameters probe_parameters = without_default_arguments(stream, verified.parameters);
+                if (probe_parameters.ambiguous.has_value()) {
+                    diagnostics::Diagnostic diagnostic;
+                    diagnostic.severity = diagnostics::Severity::Error;
+                    diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+                    diagnostic.location = *probe_parameters.ambiguous;
+                    diagnostic.message = "a default argument of verified function '" + verified.function_name +
+                                         "' is not delimited: a comma after a '<' it leaves open may separate the "
+                                         "parameters or the arguments of a template-id, which only lookup decides";
+                    diagnostic.notes.push_back(
+                        {"parenthesize the default argument, so the parameter it belongs to ends where it does",
+                         *probe_parameters.ambiguous});
+                    projection.diagnostics.push_back(std::move(diagnostic));
+                }
+                parameter_list = std::move(probe_parameters.text);
+            }
+
+            Generated result_parameter;
+            if (has_parameters) {
+                result_parameter += parameter_list;
+                result_parameter += ", ";
+            }
+            const bool void_result =
+                options.void_functions.contains(index) || spelled_tokens(stream, verified.return_type) == "void";
+            if (void_result) {
+                result_parameter = parameter_list;
+            } else {
+                result_parameter.copy(stream, verified.return_type);
+                result_parameter += " result";
+            }
+
+            ContractFunctions projected;
+            projected.function_index = index;
+            projected.postcondition_name = options.generated_prefix + "ensures_" + suffix;
+
+            // Absence of an explicit ensures is legal only when elaboration resolves
+            // a refined result. Membership supplies the actual postcondition there.
+            Generated replacement;
+            if (postcondition != nullptr) {
+                // Entry values are specified and not implemented. Left to Clang, the
+                // form would call whatever `old` is visible and state the
+                // post-state value in place of the entry value (SPEC.md 11.4).
+                if (const auto snapshot = detail::entry_value_form(stream, postcondition->expression)) {
+                    diagnostics::Diagnostic diagnostic;
+                    diagnostic.severity = diagnostics::Severity::Error;
+                    diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+                    diagnostic.location = *snapshot;
+                    diagnostic.message =
+                        "'old(...)' in a postcondition denotes the entry value of its operand, and entry "
+                        "values are not supported yet";
+                    diagnostic.notes.push_back({"within a postcondition the form is never a call to a C++ entity named "
+                                                "'old'; a function so named "
+                                                "is called there by a qualified name, such as '::old(...)'",
+                                                *snapshot});
+                    projection.diagnostics.push_back(std::move(diagnostic));
+                }
+                replacement = emit(projected.postcondition_name, result_parameter, postcondition->expression,
+                                   postcondition->location, verified.body_end_line);
+            } else {
+                replacement += "\n" + line_directive(verified.function_location.line, verified.function_location.file) +
+                               declaration_prefix() + "bool " + projected.postcondition_name + "(";
+                replacement += result_parameter;
+                replacement += ")" + probe_qualifier() + " { return true; }\n";
+            }
+            for (const Clause* precondition : verified.preconditions()) {
+                std::string name = options.generated_prefix + "expects_" + suffix;
+                if (!projected.precondition_names.empty()) {
+                    name += "_" + std::to_string(projected.precondition_names.size());
+                }
+                replacement += emit(name, parameter_list, precondition->expression, precondition->location,
+                                    verified.body_end_line);
+                projected.precondition_names.push_back(std::move(name));
+            }
+            // Each component of a `decreases` measure is a function of the
+            // parameters returning it, at the type the expression already has
+            // (SPEC.md TERMINATION-004). A function template's probes would need
+            // forcing at each specialization; its measure is left unprojected, and
+            // elaboration refuses it.
+            if (const Clause* measure = verified.measure(); measure != nullptr && !templated()) {
+                if (detail::contains_formal_syntax(stream, measure->expression)) {
+                    diagnostics::Diagnostic diagnostic;
+                    diagnostic.severity = diagnostics::Severity::Error;
+                    diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+                    diagnostic.location = measure->location;
+                    diagnostic.message = "formal syntax in a function measure is not supported yet";
+                    projection.diagnostics.push_back(std::move(diagnostic));
+                }
+                for (const MeasureComponent& component : measure_components(stream, *measure)) {
+                    std::string name = options.generated_prefix + "decreases_" + suffix + "_" +
+                                       std::to_string(projected.measure_names.size());
+                    replacement += "\n";
+                    replacement += line_directive(component.location.line, component.location.file);
+                    replacement += declaration_prefix() + "auto " + name + "(";
+                    replacement += parameter_list;
+                    replacement += ")" + probe_qualifier() + " { return (";
+                    replacement += at_written_position(stream, component.expression);
+                    replacement += "); }\n";
+                    projected.measure_names.push_back(std::move(name));
+                }
+            }
+
+            replacement += resume_at(stream, verified.body_end);
+            edits.push_back(generated_edit(source::ByteSpan{verified.body_end, 0}, std::move(replacement)));
+
+            // A templated function's probes are templates, and nothing has used
+            // them: the specializations that would carry this specialization's
+            // contract would never exist. The body names each probe at its own
+            // template arguments so that instantiating the function instantiates
+            // its contract with it, at the very arguments Clang substituted.
+            //
+            // The probes are defined after the body, so a declaration of each is
+            // emitted before the function for the body to name. The reference
+            // itself takes the probe's address into an unused variable: it calls
+            // nothing, and the runtime text never sees it (SPEC.md TEMPLATE-001).
+            if (!template_header.empty() && verified.body_open != 0) {
+                if (const auto names = template_parameter_names(stream, verified.template_header); names.has_value()) {
+                    // An explicit specialization, `template <>`, declares no
+                    // parameters. Its arguments are already fixed, so its probes
+                    // are ordinary functions: there is no primary to specialize,
+                    // and nothing has to be forced into existence because the
+                    // declaration itself is the instantiation (SPEC.md
+                    // TEMPLATE-001).
+                    const bool specialization = !templated();
+                    const std::string probe_header = specialization ? std::string{} : template_header + " ";
+                    std::string declared = "\n";
+                    declared += line_directive(verified.function_location.line, verified.function_location.file);
+                    declared += probe_header;
+                    declared += "bool ";
+                    declared += projected.postcondition_name;
+                    declared += "(";
+                    declared += result_parameter.text;
+                    declared += ");";
+                    for (const std::string& precondition : projected.precondition_names) {
+                        declared += " ";
+                        declared += probe_header;
+                        declared += "bool ";
+                        declared += precondition;
+                        declared += "(";
+                        declared += parameter_list.text;
+                        declared += ");";
+                    }
+                    const std::size_t before = verified.template_header.length != 0 ? verified.template_header.offset
+                                                                                    : verified.keyword.offset;
+                    declared += resume_at(stream, before);
+                    edits.push_back(Edit{source::ByteSpan{before, 0}, std::move(declared)});
+
+                    if (!specialization) {
+                        std::string forced = "\n";
+                        forced += line_directive(verified.function_location.line, verified.function_location.file);
+                        forced += "[[maybe_unused]] auto " + options.generated_prefix + "force_" + suffix + " = &" +
+                                  projected.postcondition_name + "<" + *names + ">;";
+                        for (std::size_t position = 0; position < projected.precondition_names.size(); ++position) {
+                            forced += " [[maybe_unused]] auto " + options.generated_prefix + "force_" + suffix + "_" +
+                                      std::to_string(position) + " = &" + projected.precondition_names[position] + "<" +
+                                      *names + ">;";
+                        }
+                        forced += resume_at(stream, verified.body_open);
+                        edits.push_back(Edit{source::ByteSpan{verified.body_open, 0}, std::move(forced)});
+                    }
+                }
+            }
+            projection.contract_functions.push_back(std::move(projected));
+        }
+        template_header.clear();
+        template_parameters = false;
+        implicit_object = false;
+    }
+
+    void project_loops() {
+        // A loop's clauses are not C++ either. Each invariant becomes a `bool`
+        // declaration at the start of the body, in the scope the loop head sees,
+        // and the text after the brace resumes at its own line and column.
+        for (std::size_t index = 0; index < syntax.loops.size(); ++index) {
+            const LoopSpecification& loop = syntax.loops[index];
+            blank(projection.runtime, loop.clause_region, stream);
+            edits.push_back(Edit{loop.clause_region,
+                                 projection.runtime.substr(loop.clause_region.offset, loop.clause_region.length)});
+
+            Generated replacement;
+            replacement += "\n";
+            for (std::size_t position = 0; position < loop.invariants.size(); ++position) {
+                if (detail::contains_formal_syntax(stream, loop.invariants[position].expression)) {
+                    diagnostics::Diagnostic diagnostic;
+                    diagnostic.severity = diagnostics::Severity::Error;
+                    diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+                    diagnostic.location = loop.invariants[position].location;
+                    diagnostic.message = "formal syntax in a loop invariant is not supported yet";
+                    projection.diagnostics.push_back(std::move(diagnostic));
+                }
+                LoopInvariantMarker marker;
+                marker.name = options.generated_prefix + "invariant_" +
+                              std::to_string(projection.loop_invariants.size()) +
+                              (options.unit_key.empty() ? "" : "_" + options.unit_key);
+                marker.loop_index = index;
+                marker.function_index = loop.function_index;
+                marker.location = loop.invariants[position].location;
+
+                const source::SourceLocation& at = loop.expression_locations[position];
+                replacement += line_directive(at.line, loop.keyword_location.file);
+                replacement += "[[maybe_unused]] bool " + marker.name + " = (";
+                replacement += at_written_position(stream, loop.invariants[position].expression);
+                replacement += ");\n";
+                projection.loop_invariants.push_back(std::move(marker));
+            }
+            // A `decreases` measure resolves in the same scope as the invariants,
+            // and is an integer rather than a condition. `auto` gives it the type
+            // the expression already has, which the bridge reads back. A
+            // lexicographic list is one declaration per component, in order
+            // (SPEC.md TERMINATION-004).
+            if (loop.decreases.has_value()) {
+                if (detail::contains_formal_syntax(stream, loop.decreases->expression)) {
+                    diagnostics::Diagnostic diagnostic;
+                    diagnostic.severity = diagnostics::Severity::Error;
+                    diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+                    diagnostic.location = loop.decreases->location;
+                    diagnostic.message = "formal syntax in a loop measure is not supported yet";
+                    projection.diagnostics.push_back(std::move(diagnostic));
+                }
+                for (const MeasureComponent& component : measure_components(stream, *loop.decreases)) {
+                    LoopInvariantMarker marker;
+                    marker.name = options.generated_prefix + "measure_" +
+                                  std::to_string(projection.loop_invariants.size()) +
+                                  (options.unit_key.empty() ? "" : "_" + options.unit_key);
+                    marker.loop_index = index;
+                    marker.function_index = loop.function_index;
+                    marker.measure = true;
+                    marker.location = loop.decreases->location;
+
+                    replacement += line_directive(component.location.line, loop.keyword_location.file);
+                    replacement += "[[maybe_unused]] auto " + marker.name + " = (";
+                    replacement += at_written_position(stream, component.expression);
+                    replacement += ");\n";
+                    projection.loop_invariants.push_back(std::move(marker));
+                }
+            }
+            replacement += resume_at(stream, loop.body_open);
+            edits.push_back(generated_edit(source::ByteSpan{loop.body_open, 0}, std::move(replacement)));
+        }
+    }
+
+    void project_path_claims() {
+        for (std::size_t index = 0; index < syntax.path_contradictions.size(); ++index) {
+            const PathContradiction& claim = syntax.path_contradictions[index];
+
+            PathContradictionMarker marker;
+            marker.name = claim_marker(index);
+            marker.claim_index = index;
+            marker.function_index = claim.function_index;
+            marker.location = claim.statement.location;
+
+            // A claim in a split's arm is erased and projected with that split.
+            if (claim.split.has_value()) {
+                projection.path_contradictions.push_back(std::move(marker));
+                continue;
+            }
+            blank(projection.runtime, claim.erased, stream);
+            Generated replacement = claim_block(marker.name, claim.statement);
+            replacement += directives_within(stream, claim.span);
+            replacement += resume_at(stream, claim.span.end());
+            edits.push_back(generated_edit(claim.span, std::move(replacement)));
+            projection.path_contradictions.push_back(std::move(marker));
+        }
+    }
+
+    void project_path_splits() {
+        // A case split on a runtime path is proof syntax in runtime code too. The
+        // program keeps an empty statement where it stood, and Clang is given a
+        // block at the same point that resolves the subject, the labels and the
+        // binders in the scope the statement sees, together with every nested split
+        // and claim of its arms (SPEC.md CASE-017).
+        //
+        // A binder is declared as a reference obtained from a function that is
+        // declared and never defined: Clang needs it only to resolve what later
+        // expressions in the arm say about it, and the analysis text is never
+        // compiled into code. The bridge reads the binder back as the value its
+        // case exposes, never as storage.
+        std::set<std::size_t> helped;
+        for (std::size_t index = 0; index < syntax.path_splits.size(); ++index) {
+            const PathCaseSplit& split = syntax.path_splits[index];
+            projection.runtime_lowerings.push_back(RuntimeLowering{split.span, erased_split(stream, split)});
+
+            const std::string function_suffix =
+                std::to_string(split.function_index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
+            const std::string completes = options.generated_prefix + "split_completes_" + function_suffix;
+            const std::string binder_type = options.generated_prefix + "split_type_" + function_suffix;
+            const std::string binder_value = options.generated_prefix + "split_value_" + function_suffix;
+            // Decomposing needs the subject's type complete, as a member access
+            // would. Asking for `sizeof` in a SFINAE context instantiates a class
+            // template specialization where C++ can and answers false, without an
+            // error, for a type that is genuinely incomplete, which the provider
+            // then refuses by name.
+            if (split.function_index < syntax.verified_functions.size() && helped.insert(split.function_index).second) {
+                const VerifiedFunction& verified = syntax.verified_functions[split.function_index];
+                const std::size_t before =
+                    verified.template_header.length != 0 ? verified.template_header.offset : verified.keyword.offset;
+                std::string declared = "\n";
+                declared += line_directive(verified.function_location.line, verified.function_location.file);
+                declared += "template<class T, class = void> struct ";
+                declared += completes;
+                declared += " { static constexpr bool value = false; }; template<class T> struct ";
+                declared += completes;
+                declared +=
+                    "<T, decltype(void(sizeof(T)))> { static constexpr bool value = true; }; template<class T> struct ";
+                declared += binder_type;
+                // Inside a class the helper is a member, and a static one, so that a
+                // static member function's split resolves it without an object.
+                declared += verified.member ? " { using type = T; }; template<class T> static T& "
+                                            : " { using type = T; }; template<class T> T& ";
+                declared += binder_value;
+                declared += "();\n";
+                declared += resume_at(stream, before);
+                edits.push_back(Edit{source::ByteSpan{before, 0}, std::move(declared)});
+            }
+
+            const std::string& file = split.statement.location.file;
+            std::size_t next_claim = 0;
+            Generated replacement;
+            const auto emit_split = [&](auto&& self, const ProofStatement& statement, const std::string& marker,
+                                        const std::vector<std::uint32_t>& route) -> void {
+                projection.path_splits.push_back(
+                    PathSplitMarker{marker, index, route, split.function_index, statement.location});
+                replacement += "{\n";
+                replacement += line_directive(statement.location.line, file);
+                if (statement.location.column > 1) {
+                    replacement += std::string(statement.location.column - 1, ' ');
+                }
+                replacement += "[[maybe_unused]] bool ";
+                replacement += marker;
+                replacement += " = true;\n[[maybe_unused]] decltype(auto) ";
+                replacement += marker;
+                replacement += "_subject = (";
+                replacement += at_written_position(stream, statement.proposition);
+                replacement += ");\nstatic_assert(";
+                replacement += completes;
+                replacement += "<decltype(";
+                replacement += marker;
+                replacement += "_subject)>::value || true);\n";
+                for (std::size_t arm = 0; arm < statement.arms.size(); ++arm) {
+                    if (statement.arms[arm].keyword_label) {
+                        continue;
+                    }
+                    replacement += "[[maybe_unused]] decltype(auto) ";
+                    replacement += marker;
+                    replacement += "_label_";
+                    replacement += std::to_string(arm);
+                    replacement += " = (";
+                    replacement += at_written_position(stream, statement.arms[arm].label);
+                    replacement += ");\n";
+                }
+                std::uint32_t nested = 0;
+                for (std::size_t position = 0; position < statement.arms.size(); ++position) {
+                    const ProofArm& arm = statement.arms[position];
+                    replacement += "{\n[[maybe_unused]] bool ";
+                    replacement += marker;
+                    replacement += "_arm_";
+                    replacement += std::to_string(position);
+                    replacement += " = true;\n";
+                    for (std::size_t binding = 0; binding < arm.binders.size(); ++binding) {
+                        std::string key = marker;
+                        key += "_binding_";
+                        key += std::to_string(position);
+                        key += "_";
+                        key += std::to_string(binding);
+                        const auto known = options.binding_types.find(key);
+                        std::string type = "typename ";
+                        type += binder_type;
+                        type += "<";
+                        type += known == options.binding_types.end() ? "int" : known->second;
+                        type += ">::type";
+                        projection.binding_probes.push_back(
+                            BindingProbe{std::move(key), marker, arm.spelling, binding,
+                                         statement.kind == ProofStatementKind::Decompose, arm.location});
+                        replacement += line_directive(arm.location.line, file);
+                        replacement += "[[maybe_unused]] ";
+                        replacement += type;
+                        replacement += "& ";
+                        replacement += arm.binders[binding];
+                        replacement += " = ";
+                        replacement += binder_value;
+                        replacement += "<";
+                        replacement += type;
+                        replacement += ">();\n";
+                    }
+                    for (std::size_t written = 0; written < arm.statements.size(); ++written) {
+                        const ProofStatement& inner = arm.statements[written];
+                        if (inner.kind == ProofStatementKind::Contradiction) {
+                            if (next_claim < split.claims.size()) {
+                                const std::size_t claim = split.claims[next_claim++];
+                                replacement +=
+                                    claim_block(claim_marker(claim), syntax.path_contradictions[claim].statement);
+                            }
+                            continue;
+                        }
+                        std::vector<std::uint32_t> inner_route = route;
+                        inner_route.push_back(static_cast<std::uint32_t>(position));
+                        inner_route.push_back(static_cast<std::uint32_t>(written));
+                        self(self, inner, marker + "_nested_" + std::to_string(nested++), inner_route);
+                    }
+                    replacement += "}\n";
                 }
                 replacement += "}\n";
+            };
+            emit_split(emit_split, split.statement,
+                       options.generated_prefix + "split_" + std::to_string(index) +
+                           (options.unit_key.empty() ? "" : "_" + options.unit_key),
+                       {});
+            replacement += directives_within(stream, split.span);
+            replacement += resume_at(stream, split.span.end());
+            edits.push_back(generated_edit(split.span, std::move(replacement)));
+        }
+    }
+
+    void project_explicit_instantiations() {
+        // An explicit instantiation instantiates a body in this unit, but Clang's
+        // cursor API exposes no cursor for it, so nothing would reach the
+        // specialization that now has a contract to discharge. A reference to it
+        // supplies the same edge an ordinary use would, and the specialization is
+        // then collected exactly as every other one is (SPEC.md TEMPLATE-001).
+        //
+        // The reference is an edit, so it exists only in the analysis text. The
+        // runtime text keeps the instantiation the author wrote and gains nothing,
+        // which is what keeps this out of the emitted program (AGENTS.md 16).
+        for (std::size_t index = 0; index < syntax.explicit_instantiations.size(); ++index) {
+            const ExplicitInstantiation& instantiation = syntax.explicit_instantiations[index];
+            // Only an instantiation of a function template this unit marked
+            // verified needs the edge, and only such a unit has opted into C++L.
+            // An ordinary C++ program's instantiations are left exactly as written,
+            // so nothing about them depends on this recognition (AGENTS.md 2).
+            const bool verified_here =
+                std::ranges::any_of(syntax.verified_functions, [&](const VerifiedFunction& candidate) {
+                    return candidate.template_header.length != 0 && !candidate.explicit_specialization &&
+                           candidate.function_name == instantiation.function_name;
+                });
+            if (!verified_here) {
+                continue;
             }
-            replacement += "}\n";
-        };
-        emit_split(emit_split, split.statement,
-                   options.generated_prefix + "split_" + std::to_string(index) +
-                       (options.unit_key.empty() ? "" : "_" + options.unit_key),
-                   {});
-        replacement += directives_within(stream, split.span);
-        replacement += resume_at(stream, split.span.end());
-        edits.push_back(generated_edit(split.span, std::move(replacement)));
-    }
-
-    // An explicit instantiation instantiates a body in this unit, but Clang's
-    // cursor API exposes no cursor for it, so nothing would reach the
-    // specialization that now has a contract to discharge. A reference to it
-    // supplies the same edge an ordinary use would, and the specialization is
-    // then collected exactly as every other one is (SPEC.md TEMPLATE-001).
-    //
-    // The reference is an edit, so it exists only in the analysis text. The
-    // runtime text keeps the instantiation the author wrote and gains nothing,
-    // which is what keeps this out of the emitted program (AGENTS.md 16).
-    for (std::size_t index = 0; index < syntax.explicit_instantiations.size(); ++index) {
-        const ExplicitInstantiation& instantiation = syntax.explicit_instantiations[index];
-        // Only an instantiation of a function template this unit marked
-        // verified needs the edge, and only such a unit has opted into C++L.
-        // An ordinary C++ program's instantiations are left exactly as written,
-        // so nothing about them depends on this recognition (AGENTS.md 2).
-        const bool verified_here =
-            std::ranges::any_of(syntax.verified_functions, [&](const VerifiedFunction& candidate) {
-                return candidate.template_header.length != 0 && !candidate.explicit_specialization &&
-                       candidate.function_name == instantiation.function_name;
-            });
-        if (!verified_here) {
-            continue;
+            const std::string name = options.generated_prefix + "instantiate_" + std::to_string(index) +
+                                     (options.unit_key.empty() ? "" : "_" + options.unit_key);
+            std::string reference = "\n";
+            reference += line_directive(instantiation.location.line, instantiation.location.file);
+            reference += "[[maybe_unused]] static auto " + name + " = &" +
+                         spelled_tokens(stream, instantiation.id_expression) + ";";
+            reference += resume_at(stream, instantiation.insertion_offset);
+            edits.push_back(Edit{source::ByteSpan{instantiation.insertion_offset, 0}, std::move(reference)});
         }
-        const std::string name = options.generated_prefix + "instantiate_" + std::to_string(index) +
-                                 (options.unit_key.empty() ? "" : "_" + options.unit_key);
-        std::string reference = "\n";
-        reference += line_directive(instantiation.location.line, instantiation.location.file);
-        reference +=
-            "[[maybe_unused]] static auto " + name + " = &" + spelled_tokens(stream, instantiation.id_expression) + ";";
-        reference += resume_at(stream, instantiation.insertion_offset);
-        edits.push_back(Edit{source::ByteSpan{instantiation.insertion_offset, 0}, std::move(reference)});
     }
 
-    // The runtime text is otherwise the scanned text with proof-only spans
-    // blanked, so the lowerings are applied last and from the back, where no
-    // offset recorded above them has moved yet.
-    std::ranges::sort(projection.runtime_lowerings, [](const RuntimeLowering& lhs, const RuntimeLowering& rhs) {
-        return lhs.span.offset < rhs.span.offset;
-    });
-    for (const RuntimeLowering& lowering : std::views::reverse(projection.runtime_lowerings)) {
-        if (lowering.span.end() > projection.runtime.size()) {
-            continue;
-        }
-        projection.runtime.replace(lowering.span.offset, lowering.span.length, lowering.text);
-    }
-
-    std::ranges::sort(edits, [](const Edit& lhs, const Edit& rhs) {
-        if (lhs.span.offset != rhs.span.offset)
+    void assemble() {
+        // The runtime text is otherwise the scanned text with proof-only spans
+        // blanked, so the lowerings are applied last and from the back, where no
+        // offset recorded above them has moved yet.
+        std::ranges::sort(projection.runtime_lowerings, [](const RuntimeLowering& lhs, const RuntimeLowering& rhs) {
             return lhs.span.offset < rhs.span.offset;
-        return lhs.span.length < rhs.span.length; // insert before replacing adjacent text
-    });
-
-    std::vector<std::size_t> declarations;
-    declarations.reserve(syntax.pure_markers.size());
-    for (const auto& marker : syntax.pure_markers)
-        declarations.push_back(marker.function_offset);
-    for (const auto& function : syntax.verified_functions)
-        declarations.push_back(function.function_offset);
-    for (const auto& function : syntax.unsafe_functions)
-        declarations.push_back(function.function_offset);
-    std::ranges::sort(declarations);
-    declarations.erase(std::unique(declarations.begin(), declarations.end()), declarations.end());
-    std::size_t next_declaration = 0;
-    std::size_t cursor = 0;
-    const auto append_original = [&](std::size_t end) {
-        while (next_declaration < declarations.size() && declarations[next_declaration] < end) {
-            const auto original = declarations[next_declaration++];
-            if (original >= cursor) {
-                projection.declaration_offsets.push_back(
-                    Projection::DeclarationOffset{original, projection.analysis.size() + original - cursor});
+        });
+        for (const RuntimeLowering& lowering : std::views::reverse(projection.runtime_lowerings)) {
+            if (lowering.span.end() > projection.runtime.size()) {
+                continue;
             }
+            projection.runtime.replace(lowering.span.offset, lowering.span.length, lowering.text);
         }
-        if (end > cursor) {
-            projection.segments.push_back(Projection::Segment{cursor, projection.analysis.size(), end - cursor});
-        }
-        projection.analysis.append(text.substr(cursor, end - cursor));
-    };
-    for (const Edit& edit : edits) {
-        if (edit.span.offset < cursor || edit.span.end() > text.size()) {
-            continue; // overlapping or out-of-range spans are never emitted
-        }
-        append_original(edit.span.offset);
-        if (edit.specification_index.has_value()) {
-            // emit() recorded the name relative to its replacement; only now
-            // is its physical position in the complete analysis text known.
-            projection.specification_functions[*edit.specification_index].analysis_offset += projection.analysis.size();
-        }
-        if (edit.refinement_index.has_value()) {
-            projection.refinement_probes[*edit.refinement_index].alias_offset += projection.analysis.size();
-        }
-        for (const Projection::Copy& copy : edit.copies) {
-            projection.copies.push_back(Projection::Copy{projection.analysis.size() + copy.analysis, copy.original});
-        }
-        projection.analysis.append(edit.replacement);
-        cursor = edit.span.end();
-    }
-    append_original(text.size());
 
-    // What the program run lacks: every run between the copied segments, and
-    // each ghost declaration where a segment copied it (SPEC.md ERASE-019).
-    std::vector<source::ByteSpan> proof_only;
-    std::size_t copied_up_to = 0;
-    for (const Projection::Segment& segment : projection.segments) {
-        if (segment.analysis > copied_up_to) {
-            proof_only.push_back(source::ByteSpan{copied_up_to, segment.analysis - copied_up_to});
+        std::ranges::sort(edits, [](const Edit& lhs, const Edit& rhs) {
+            if (lhs.span.offset != rhs.span.offset)
+                return lhs.span.offset < rhs.span.offset;
+            return lhs.span.length < rhs.span.length; // insert before replacing adjacent text
+        });
+
+        std::vector<std::size_t> declarations;
+        declarations.reserve(syntax.pure_markers.size());
+        for (const auto& marker : syntax.pure_markers)
+            declarations.push_back(marker.function_offset);
+        for (const auto& function : syntax.verified_functions)
+            declarations.push_back(function.function_offset);
+        for (const auto& function : syntax.unsafe_functions)
+            declarations.push_back(function.function_offset);
+        std::ranges::sort(declarations);
+        declarations.erase(std::unique(declarations.begin(), declarations.end()), declarations.end());
+        std::size_t next_declaration = 0;
+        std::size_t cursor = 0;
+        const auto append_original = [&](std::size_t end) {
+            while (next_declaration < declarations.size() && declarations[next_declaration] < end) {
+                const auto original = declarations[next_declaration++];
+                if (original >= cursor) {
+                    projection.declaration_offsets.push_back(
+                        Projection::DeclarationOffset{original, projection.analysis.size() + original - cursor});
+                }
+            }
+            if (end > cursor) {
+                projection.segments.push_back(Projection::Segment{cursor, projection.analysis.size(), end - cursor});
+            }
+            projection.analysis.append(text.substr(cursor, end - cursor));
+        };
+        for (const Edit& edit : edits) {
+            if (edit.span.offset < cursor || edit.span.end() > text.size()) {
+                continue; // overlapping or out-of-range spans are never emitted
+            }
+            append_original(edit.span.offset);
+            if (edit.specification_index.has_value()) {
+                // emit() recorded the name relative to its replacement; only now
+                // is its physical position in the complete analysis text known.
+                projection.specification_functions[*edit.specification_index].analysis_offset +=
+                    projection.analysis.size();
+            }
+            if (edit.refinement_index.has_value()) {
+                projection.refinement_probes[*edit.refinement_index].alias_offset += projection.analysis.size();
+            }
+            for (const Projection::Copy& copy : edit.copies) {
+                projection.copies.push_back(
+                    Projection::Copy{projection.analysis.size() + copy.analysis, copy.original});
+            }
+            projection.analysis.append(edit.replacement);
+            cursor = edit.span.end();
         }
-        copied_up_to = segment.analysis + segment.length;
-    }
-    if (projection.analysis.size() > copied_up_to) {
-        proof_only.push_back(source::ByteSpan{copied_up_to, projection.analysis.size() - copied_up_to});
-    }
-    for (const GhostDeclaration& ghost : syntax.ghost_declarations) {
+        append_original(text.size());
+
+        // What the program run lacks: every run between the copied segments, and
+        // each ghost declaration where a segment copied it (SPEC.md ERASE-019).
+        std::vector<source::ByteSpan> proof_only;
+        std::size_t copied_up_to = 0;
         for (const Projection::Segment& segment : projection.segments) {
-            const std::size_t begin = std::max(ghost.erased.offset, segment.original);
-            const std::size_t end = std::min(ghost.erased.end(), segment.original + segment.length);
-            if (begin < end) {
-                proof_only.push_back(source::ByteSpan{segment.analysis + (begin - segment.original), end - begin});
+            if (segment.analysis > copied_up_to) {
+                proof_only.push_back(source::ByteSpan{copied_up_to, segment.analysis - copied_up_to});
+            }
+            copied_up_to = segment.analysis + segment.length;
+        }
+        if (projection.analysis.size() > copied_up_to) {
+            proof_only.push_back(source::ByteSpan{copied_up_to, projection.analysis.size() - copied_up_to});
+        }
+        for (const GhostDeclaration& ghost : syntax.ghost_declarations) {
+            for (const Projection::Segment& segment : projection.segments) {
+                const std::size_t begin = std::max(ghost.erased.offset, segment.original);
+                const std::size_t end = std::min(ghost.erased.end(), segment.original + segment.length);
+                if (begin < end) {
+                    proof_only.push_back(source::ByteSpan{segment.analysis + (begin - segment.original), end - begin});
+                }
+            }
+        }
+        std::ranges::sort(proof_only, {}, &source::ByteSpan::offset);
+        for (const source::ByteSpan& span : proof_only) {
+            if (!projection.proof_only.empty() && span.offset <= projection.proof_only.back().end()) {
+                source::ByteSpan& last = projection.proof_only.back();
+                last.length = std::max(last.end(), span.end()) - last.offset;
+            } else {
+                projection.proof_only.push_back(span);
             }
         }
     }
-    std::ranges::sort(proof_only, {}, &source::ByteSpan::offset);
-    for (const source::ByteSpan& span : proof_only) {
-        if (!projection.proof_only.empty() && span.offset <= projection.proof_only.back().end()) {
-            source::ByteSpan& last = projection.proof_only.back();
-            last.length = std::max(last.end(), span.end()) - last.offset;
-        } else {
-            projection.proof_only.push_back(span);
-        }
-    }
+};
 
-    refuse_misplaced_directives(stream, syntax, projection.diagnostics);
-    return projection;
+} // namespace
+
+Projection project(const TokenStream& stream, const Syntax& syntax, const ProjectionOptions& options) {
+    Projector projector(stream, syntax, options);
+    projector.project_markers();
+    projector.project_refinements();
+    projector.project_validations();
+
+    // Every Law and proof is projected into the formal namespace of the
+    // namespace it is written in, and nothing else is (formal_scopes).
+    const FormalScopes formal = formal_scopes(stream, syntax, options);
+    projector.project_laws(formal);
+    projector.project_proofs(formal);
+    projector.project_contracts();
+    projector.project_loops();
+    projector.project_path_claims();
+    projector.project_path_splits();
+    projector.project_explicit_instantiations();
+    projector.assemble();
+
+    refuse_misplaced_directives(stream, syntax, projector.projection.diagnostics);
+    return std::move(projector.projection);
 }
 
 std::optional<std::size_t> Projection::declaration_offset(std::size_t original) const {
