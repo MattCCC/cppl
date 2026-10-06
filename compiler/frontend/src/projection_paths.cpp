@@ -34,6 +34,47 @@ namespace {
 
 using detail::line_directive;
 
+// Whether a formula's form is one a loop invariant states: a C++ condition, or
+// an implication, an equivalence, a conjunction or a disjunction of such.
+bool invariant_form(const source::ProjectionShape& shape) {
+    using Kind = source::ProjectionKind;
+    if (shape.kind == Kind::Expression) {
+        return shape.children.empty();
+    }
+    if (shape.kind != Kind::Implication && shape.kind != Kind::Equivalence && shape.kind != Kind::Conjunction &&
+        shape.kind != Kind::Disjunction) {
+        return false;
+    }
+    return shape.children.size() == 2 && std::ranges::all_of(shape.children, invariant_form);
+}
+
+// The formula a loop invariant states where it writes formal syntax, or
+// nothing for a C++ condition. A form a loop invariant does not state here -- a
+// quantifier, formal equality, a memory capability -- is refused with what it
+// is (GRAMMAR.md 25).
+std::optional<detail::FormulaProjection> invariant_formula(const TokenStream& stream, const Clause& invariant,
+                                                           std::vector<diagnostics::Diagnostic>& diagnostics) {
+    if (!detail::contains_formal_syntax(stream, invariant.expression)) {
+        return std::nullopt;
+    }
+    detail::FormulaProjection formula = detail::project_formula(stream, invariant.expression);
+    if (!formula.failure && !invariant_form(formula.shape)) {
+        formula.failure = "a loop invariant states a condition, or an implication, an equivalence, a conjunction or a "
+                          "disjunction of conditions; a quantifier, formal equality and a memory capability are not "
+                          "supported in a loop invariant yet";
+    }
+    if (formula.failure) {
+        diagnostics::Diagnostic diagnostic;
+        diagnostic.severity = diagnostics::Severity::Error;
+        diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+        diagnostic.location = invariant.location;
+        diagnostic.message = *formula.failure;
+        diagnostics.push_back(std::move(diagnostic));
+        return std::nullopt;
+    }
+    return formula;
+}
+
 } // namespace
 
 void Projector::project_loops() {
@@ -49,14 +90,6 @@ void Projector::project_loops() {
         Generated replacement;
         replacement += "\n";
         for (std::size_t position = 0; position < loop.invariants.size(); ++position) {
-            if (detail::contains_formal_syntax(stream, loop.invariants[position].expression)) {
-                diagnostics::Diagnostic diagnostic;
-                diagnostic.severity = diagnostics::Severity::Error;
-                diagnostic.category = diagnostics::Category::UnsupportedSemantics;
-                diagnostic.location = loop.invariants[position].location;
-                diagnostic.message = "formal syntax in a loop invariant is not supported yet";
-                projection.diagnostics.push_back(std::move(diagnostic));
-            }
             LoopInvariantMarker marker;
             marker.name = options.generated_prefix + "invariant_" + std::to_string(projection.loop_invariants.size()) +
                           (options.unit_key.empty() ? "" : "_" + options.unit_key);
@@ -66,9 +99,21 @@ void Projector::project_loops() {
 
             const source::SourceLocation& at = loop.expression_locations[position];
             replacement += line_directive(at.line, loop.keyword_location.file);
-            replacement += "[[maybe_unused]] bool " + marker.name + " = (";
-            replacement += at_written_position(stream, loop.invariants[position].expression);
-            replacement += ");\n";
+            // An invariant stating an implication or an equivalence is
+            // projected as a contract clause's formula is, each C++ leaf in
+            // the loop head's scope; the bridge reads it by its form.
+            if (const std::optional<detail::FormulaProjection> formula =
+                    invariant_formula(stream, loop.invariants[position], projection.diagnostics);
+                formula.has_value()) {
+                marker.shape = formula->shape;
+                replacement += "[[maybe_unused]] auto " + marker.name + " = (";
+                replacement += formula->expression;
+                replacement += ");\n";
+            } else {
+                replacement += "[[maybe_unused]] bool " + marker.name + " = (";
+                replacement += at_written_position(stream, loop.invariants[position].expression);
+                replacement += ");\n";
+            }
             projection.loop_invariants.push_back(std::move(marker));
         }
         // A `decreases` measure resolves in the same scope as the invariants,

@@ -33,6 +33,15 @@ struct Selection {
     };
     std::vector<PropositionProbe> proposition_probes;
 
+    // The loop invariants that state an implication, an equivalence, or a
+    // conjunction or disjunction of them, by the name of the local each is
+    // projected into, with its form. Every other invariant is a C++ condition.
+    struct InvariantForm {
+        std::string name;
+        source::ProjectionShape shape;
+    };
+    std::vector<InvariantForm> invariant_forms;
+
     // Which verified function each contract clause probe belongs to, by the
     // analysis offset of that function's declaration. A memory capability a
     // clause states constrains that function's body and no other

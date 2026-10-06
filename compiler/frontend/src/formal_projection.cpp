@@ -216,6 +216,74 @@ void strip_parentheses(const std::vector<Token>& tokens, std::size_t& begin, std
     }
 }
 
+// Whether the tokens are one C++ pointer member access and nothing else: an
+// operand, its postfix operators, at least one of them `->` naming a member,
+// and only prefix operators before it (`p->m`, `!p->ready`, `p->f(x)[i]`). A
+// specification parenthesizes member access exactly this way to keep its C++
+// meaning (GRAMMAR.md 29, SPEC.md FORALL-002); any other parenthesized
+// proposition is read by the specification grammar, its top-level `->` an
+// implication, since `&&` binds tighter than `->` and a conjunction of
+// implications is written with them parenthesized (GRAMMAR.md 33).
+bool member_access(const std::vector<Token>& tokens, std::size_t begin, std::size_t end) {
+    std::size_t at = begin;
+    while (at < end &&
+           (tokens[at].is_punctuator("!") || tokens[at].is_punctuator("*") || tokens[at].is_punctuator("&") ||
+            tokens[at].is_punctuator("-") || tokens[at].is_punctuator("+") || tokens[at].is_punctuator("~") ||
+            tokens[at].is_punctuator("++") || tokens[at].is_punctuator("--"))) {
+        ++at;
+    }
+    // The operand: a name, possibly qualified, `this`, or a parenthesized one.
+    if (at < end && tokens[at].text == "(") {
+        at = matching(tokens, at, end);
+        if (at == end) {
+            return false;
+        }
+        ++at;
+    } else if (at < end && tokens[at].is(TokenKind::Identifier)) {
+        ++at;
+        while (at + 1 < end && tokens[at].is_punctuator("::") && tokens[at + 1].is(TokenKind::Identifier)) {
+            at += 2;
+        }
+    } else {
+        return false;
+    }
+    bool arrow = false;
+    while (at < end) {
+        const Token& token = tokens[at];
+        if (token.is_punctuator("->") || token.is_punctuator(".")) {
+            std::size_t member = at + 1;
+            if (member < end && (tokens[member].is_identifier("template") || tokens[member].is_punctuator("~"))) {
+                ++member;
+            }
+            if (member >= end || !tokens[member].is(TokenKind::Identifier)) {
+                return false;
+            }
+            arrow = arrow || token.is_punctuator("->");
+            at = member + 1;
+        } else if (token.text == "(" || token.text == "[") {
+            at = matching(tokens, at, end);
+            if (at == end) {
+                return false;
+            }
+            ++at;
+        } else if (token.is_punctuator("++") || token.is_punctuator("--")) {
+            ++at;
+        } else {
+            return false;
+        }
+    }
+    return arrow;
+}
+
+// A parenthesized pointer member access, which keeps its C++ meaning wherever a
+// proposition stands (GRAMMAR.md 29).
+bool parenthesized_member_access(const std::vector<Token>& tokens, std::size_t begin, std::size_t end) {
+    std::size_t inner_begin = begin;
+    std::size_t inner_end = end;
+    strip_parentheses(tokens, inner_begin, inner_end);
+    return inner_begin != begin && member_access(tokens, inner_begin, inner_end);
+}
+
 // Implication is looser than every ordinary C++ operator (GRAMMAR.md 33), so
 // only an `->` outside all brackets is one. Parenthesized C++ expressions,
 // argument lists and quantifier bodies stay opaque here; Clang alone parses
@@ -267,6 +335,8 @@ FormulaProjection formula(const TokenStream& stream, source::ByteSpan expression
         return {{}, {}, "proposition nesting exceeds the supported limit"};
     const auto& tokens = stream.tokens();
     auto [begin, end] = token_range(stream, expression);
+    if (parenthesized_member_access(tokens, begin, end))
+        return {{Kind::Expression, {}}, copied(stream, expression), {}};
     strip_parentheses(tokens, begin, end);
     if (begin == end)
         return {{}, {}, "a proposition cannot be empty"};
@@ -399,7 +469,13 @@ FormulaProjection formula(const TokenStream& stream, source::ByteSpan expression
 // proposition's own level. Everything else is C++ and is left to Clang, so a
 // program that spells an ordinary function `forall` or dereferences through
 // `->` inside an expression keeps its own meaning (SPEC.md 3.1).
-bool contains_formal_syntax(const TokenStream& stream, source::ByteSpan expression) {
+namespace {
+
+bool formal_at(const TokenStream& stream, source::ByteSpan expression, unsigned depth) {
+    // Nested past the depth a proposition is read to, the form is taken to be
+    // formal, so the reading refuses it rather than leaving it to Clang unread.
+    if (depth > 128)
+        return true;
     const auto& tokens = stream.tokens();
     auto [begin, end] = token_range(stream, expression);
     strip_parentheses(tokens, begin, end);
@@ -413,7 +489,33 @@ bool contains_formal_syntax(const TokenStream& stream, source::ByteSpan expressi
         if (tokens[index].is_identifier("Eq") && index + 1 < end && tokens[index + 1].text == "<")
             return true;
     }
+    // An operand of the proposition's own `&&` or `||` that is a parenthesized
+    // proposition states formal syntax where its contents do: `(a -> b) && (c
+    // -> d)` is a conjunction of implications (GRAMMAR.md 33). Reading the form
+    // keeps a parenthesized member access the C++ it is (GRAMMAR.md 29).
+    std::size_t operand = begin;
+    for (std::size_t index = begin; index <= end; ++index) {
+        const bool last = index == end;
+        if (!last && (tokens[index].text == "(" || tokens[index].text == "{" || tokens[index].text == "[")) {
+            index = matching(tokens, index, end);
+            if (index == end)
+                return false;
+            continue;
+        }
+        if (!last && tokens[index].text != "&&" && tokens[index].text != "||")
+            continue;
+        if (operand < index && tokens[operand].text == "(" && matching(tokens, operand, index) == index - 1 &&
+            (operand != begin || index != end) && formal_at(stream, span_of(tokens, operand, index), depth + 1))
+            return true;
+        operand = index + 1;
+    }
     return false;
+}
+
+} // namespace
+
+bool contains_formal_syntax(const TokenStream& stream, source::ByteSpan expression) {
+    return formal_at(stream, expression, 0);
 }
 
 FormulaProjection project_formula(const TokenStream& stream, source::ByteSpan expression) {

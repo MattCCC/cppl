@@ -415,6 +415,10 @@ cppl-while-statement ::= "while" "(" condition ")" loop-clauses compound-stateme
 One invariant must hold on entry and be preserved by every continuing iteration.
 `decreases` additionally requests termination evidence.
 
+An invariant is a condition, or an implication, an equivalence, a conjunction or
+a disjunction of conditions (§29, §30); a quantifier, formal equality and a
+memory capability are not read in an invariant by this implementation.
+
 One clause whose parentheses hold a declarator, before braces that hold no
 statement and are followed by `;` or `,`, is the C++ declaration it also spells
 (SPEC.md WORD-016): `while (n-- > 0) decreases (k) {n};` declares `k`. A loop
@@ -460,6 +464,15 @@ Quantifiers are specification-only. Binder types and names are Clang-resolved.
 
 `P -> Q` is right-associative formal implication in specification context.
 Parenthesize C++ pointer member access there so it retains its C++ meaning.
+
+A parenthesized group in a proposition is that member access when it holds
+exactly one: an operand, its postfix operators with at least one `->` naming a
+member, and only prefix operators before it (`(p->m)`, `(!p->ready)`). Any other
+parenthesized group is a proposition, its top-level `->` an implication, so a
+conjunction of implications is written `(a == 0 -> r == 0) && (a > 0 -> r > 0)`
+(§33). `(a -> b)` with a name on each side is member access; an implication
+between two names is written with a comparison on a side, `(a -> b == true)`, or
+as `!a || b`.
 
 ## 30. Equivalence
 

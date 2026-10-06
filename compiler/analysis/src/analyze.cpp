@@ -28,6 +28,11 @@ void select(clangbridge::ParseRequest& request, const frontend::Projection& proj
     request.selection.refinements.clear();
     for (const auto& probe : projection.proposition_probes)
         request.selection.proposition_probes.push_back({probe.name, probe.shape, probe.owner});
+    request.selection.invariant_forms.clear();
+    for (const auto& invariant : projection.loop_invariants) {
+        if (invariant.shape.kind != source::ProjectionKind::Expression)
+            request.selection.invariant_forms.push_back({invariant.name, invariant.shape});
+    }
     for (const auto& refinement : projection.refinement_probes) {
         if (refinement.shape.kind != source::ProjectionKind::Expression)
             request.selection.proposition_probes.push_back({refinement.probe, refinement.shape, {}});

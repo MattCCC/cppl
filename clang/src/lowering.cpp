@@ -325,7 +325,8 @@ Place BodyLowering::anonymous_place(std::string spelling) {
 
 void extract_body(Function& function, CXCursor cursor, const Signature& signature, const std::string& invariant_prefix,
                   const std::vector<Selection::Refinement>& refinements, bool executable_state,
-                  const std::vector<StatedCapability>* capabilities, UnsafeEffects& unsafe_effects) {
+                  const std::vector<StatedCapability>* capabilities, UnsafeEffects& unsafe_effects,
+                  const std::vector<Selection::InvariantForm>& invariant_forms) {
     const std::vector<CXCursor>& parameters = signature.parameters;
     const std::vector<CXCursor> members = children_of(cursor);
 
@@ -354,6 +355,7 @@ void extract_body(Function& function, CXCursor cursor, const Signature& signatur
                           .executable_state = executable_state,
                           .capabilities = capabilities};
     routed.chosen = &lowering.chosen_arms;
+    lowering.invariant_forms = &invariant_forms;
     lowering.completion_location = presumed_location(clang_getRangeEnd(clang_getCursorExtent(members[body_index])));
     lowering.escaped = escaped_locals(members[body_index]);
     lowering.unconfined = unconfined_locals(members[body_index]);

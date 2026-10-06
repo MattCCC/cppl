@@ -36,7 +36,10 @@ namespace {
 // The schema describes only syntax emitted by the projector. Every C++ leaf,
 // parameter type and declaration reference is resolved independently by Clang.
 std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::ProjectionShape& shape,
-                                              const Signature& signature, unsigned depth) {
+                                              const Signature& signature, unsigned depth,
+                                              const Locals* locals = nullptr) {
+    const Locals none;
+    const Locals& reading = locals != nullptr ? *locals : none;
     using Kind = source::ProjectionKind;
     if (depth > kMaxExpressionDepth)
         return std::unexpected("formal proposition nests too deeply");
@@ -50,7 +53,7 @@ std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::Pro
     if (shape.kind == Kind::Expression) {
         if (!shape.children.empty())
             return std::unexpected("malformed expression projection");
-        return build_expression(cursor, signature, {}, 0);
+        return build_expression(cursor, signature, reading, 0);
     }
     while (clang_getCursorKind(cursor) == CXCursor_UnexposedExpr || clang_getCursorKind(cursor) == CXCursor_ParenExpr) {
         const auto children = children_of(cursor);
@@ -87,7 +90,8 @@ std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::Pro
         equality.operand_type.refinements = std::move(*refined);
         // The first operator() argument is the closure object.
         for (unsigned index = 1; index < 3; ++index)
-            equality.operands.push_back(build_expression(clang_Cursor_getArgument(cursor, index), signature, {}, 0));
+            equality.operands.push_back(
+                build_expression(clang_Cursor_getArgument(cursor, index), signature, reading, 0));
         result.node = std::move(equality);
         return result;
     }
@@ -114,7 +118,7 @@ std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::Pro
             return std::unexpected("forall has no proposition");
         Signature scope = signature;
         scope.parameters.insert(scope.parameters.end(), binders.begin(), binders.end());
-        auto body = build_formal(values[0], shape.children[0], scope, depth + 1);
+        auto body = build_formal(values[0], shape.children[0], scope, depth + 1, locals);
         if (!body)
             return body;
         // A binder ranges over the values of the type it is written with, so a
@@ -140,7 +144,7 @@ std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::Pro
             return std::unexpected("logical connective requires exactly two propositions");
         std::vector<Expr> operands;
         for (std::size_t index = 0; index < 2; ++index) {
-            auto operand = build_formal(statements[index], shape.children[index], signature, depth + 1);
+            auto operand = build_formal(statements[index], shape.children[index], signature, depth + 1, locals);
             if (!operand)
                 return operand;
             operands.push_back(std::move(*operand));
@@ -409,6 +413,15 @@ void extract_formal(Function& function, CXCursor cursor, const Signature& signat
         function.body_rejection.reset();
         return;
     }
+}
+
+// A loop invariant stating an implication, an equivalence, or a conjunction or
+// disjunction of them is the proposition its form builds, each C++ leaf read in
+// the loop head's scope at the versions current there, exactly as the leaf of a
+// condition invariant is (GRAMMAR.md 25, 29, 30).
+std::expected<Expr, std::string> build_invariant(CXCursor cursor, const source::ProjectionShape& shape,
+                                                 const Signature& signature, const Locals& head) {
+    return build_formal(cursor, shape, signature, 0, &head);
 }
 
 } // namespace cppl::clangbridge::detail

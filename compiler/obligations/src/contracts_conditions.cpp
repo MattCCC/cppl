@@ -468,7 +468,8 @@ std::expected<void, Failure> Conditions::enter(const vir::Loop& loop, const vir:
         types.push_back(*type);
     }
     for (std::uint32_t position = 0; position < loop.invariants; ++position) {
-        if (!loop.operands[carried + position].type.is_boolean()) {
+        const vir::Type& stated = loop.operands[carried + position].type;
+        if (!stated.is_boolean() && !stated.is_proposition()) {
             return fail("a loop invariant must be a condition", location);
         }
     }

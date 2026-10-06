@@ -91,6 +91,21 @@ diagnostics::Category convert(clangbridge::Category category) {
     return diagnostics::Category::Internal;
 }
 
+// A parenthesized `a -> b` with a name on each side is C++ member access in a
+// specification too (GRAMMAR.md 29, SPEC.md FORALL-002), which Clang refuses
+// where `a` is not a pointer. Where an implication was meant, the diagnostic
+// says how to write one there.
+void explain_member_reference(diagnostics::Diagnostic& converted) {
+    if (converted.category == diagnostics::Category::CppSemantic &&
+        converted.message.starts_with("member reference type '") && converted.message.ends_with("' is not a pointer")) {
+        converted.notes.push_back(diagnostics::Note{
+            "in a contract or a loop invariant, a parenthesized 'a -> b' with a name on each side keeps its C++ "
+            "meaning, member access (GRAMMAR.md 29); an implication there is written with a comparison on a side, "
+            "'(a -> b == true)', or as '!a || b'",
+            converted.location});
+    }
+}
+
 // Where a reason names a construct, as the author can find it.
 std::string written_at(const source::SourceLocation& location) {
     return location.file + ":" + std::to_string(location.line) + ":" + std::to_string(location.column);
@@ -240,6 +255,7 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
                 converted.category = convert(diagnostic.category);
                 converted.message = diagnostic.message;
                 converted.location = diagnostic.location;
+                explain_member_reference(converted);
                 // A location the bridge could not map back through #line
                 // reports the scratch path; that is useless to a caller
                 // matching diagnostics to the original document, so it is
@@ -412,6 +428,7 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
         converted.category = convert(diagnostic.category);
         converted.message = diagnostic.message;
         converted.location = diagnostic.location;
+        explain_member_reference(converted);
         engine.report(std::move(converted));
     }
     if (unit.has_errors) {

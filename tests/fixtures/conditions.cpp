@@ -115,6 +115,33 @@ verified unsigned sum_present(const std::vector<unsigned>& v, std::size_t i, std
     return total;
 }
 
+// A loop invariant states an implication, conjoined with a condition, and a
+// contract a conjunction of parenthesized implications (GRAMMAR.md 25, 29, 33).
+verified unsigned first_match(unsigned n, unsigned x)
+    expects (n < 100u)
+    ensures (result <= n)
+{
+    unsigned i = 0u;
+    bool found = false;
+    while (i < n && !found)
+        invariant (i <= n && (found -> i < n))
+        decreases (n - i + (found ? 0u : 1u))
+    {
+        if (x == i) {
+            found = true;
+        } else {
+            i = i + 1u;
+        }
+    }
+    return i;
+}
+
+verified unsigned sign_of(unsigned x)
+    ensures ((x == 0u -> result == 0u) && (x > 0u -> result == 1u))
+{
+    return x == 0u ? 0u : 1u;
+}
+
 // A local holding `&&`, read beneath `!`: the path splits on the local's
 // condition, and the proof is composed through the negation.
 verified bool not_both(bool p, bool q)
@@ -339,6 +366,7 @@ int main() {
     std::printf("%d %d %u %u %u\n", kept_or_zero(v, 2), kept_or_zero(v, 5), zeros_seen(u, 1, 4u), zeros_seen(u, 8, 4u),
                 sum_present(u, 0, 2));
     std::printf("%d %d\n", not_both(true, true) ? 1 : 0, not_both(true, false) ? 1 : 0);
+    std::printf("%u %u %u %u\n", first_match(9u, 4u), first_match(3u, 7u), sign_of(0u), sign_of(5u));
     std::printf("%d %d %d %d %d %d\n", divides(9u, 3u) ? 1 : 0, divides(9u, 0u) ? 1 : 0,
                 zero_or_divides(9u, 0u) ? 1 : 0, zero_or_divides(9u, 2u) ? 1 : 0, ordered(1, 2, 3) ? 1 : 0,
                 ordered(2, 1, 3) ? 1 : 0);

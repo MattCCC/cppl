@@ -651,7 +651,8 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
                          request.selection.specification_prefix.empty() ? std::string()
                                                                         : request.selection.specification_prefix,
                          request.selection.refinements, executable,
-                         stated == stated_capabilities.end() ? nullptr : &stated->second, unsafe_effects);
+                         stated == stated_capabilities.end() ? nullptr : &stated->second, unsafe_effects,
+                         request.selection.invariant_forms);
         }
         result.functions.push_back(std::move(function));
     }

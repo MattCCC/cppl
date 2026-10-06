@@ -266,6 +266,11 @@ struct BodyLowering {
     // it (AGENTS.md storage invariants, SPEC.md VERIFIED-043).
     const std::vector<StatedCapability>* capabilities = nullptr;
 
+    // The loop invariants of the unit that state an implication, an
+    // equivalence, or a conjunction or disjunction of them, with their forms
+    // (bridge.hpp `Selection::invariant_forms`).
+    const std::vector<Selection::InvariantForm>* invariant_forms = nullptr;
+
     // The standard-library models this body's lowering used (RFC 0020 §10).
     std::set<source::RepresentationKind> library_models;
 
@@ -545,7 +550,8 @@ std::size_t return_paths(const Expr& expression);
 
 void extract_body(Function& function, CXCursor cursor, const Signature& signature, const std::string& invariant_prefix,
                   const std::vector<Selection::Refinement>& refinements, bool executable_state,
-                  const std::vector<StatedCapability>* capabilities, UnsafeEffects& unsafe_effects);
+                  const std::vector<StatedCapability>* capabilities, UnsafeEffects& unsafe_effects,
+                  const std::vector<Selection::InvariantForm>& invariant_forms);
 
 constexpr std::size_t kMaxReturnPaths = 128;
 

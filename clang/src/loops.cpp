@@ -1,7 +1,9 @@
 #include "access.hpp"
 #include "cppl/clang/ast.hpp"
+#include "cppl/clang/bridge.hpp"
 #include "cppl/source/location.hpp"
 #include "expressions.hpp"
+#include "formal.hpp"
 #include "lowering.hpp"
 #include "places.hpp"
 #include "types.hpp"
@@ -12,6 +14,7 @@
 #include <clang-c/Index.h>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <optional>
 #include <string>
 #include <utility>
@@ -166,9 +169,26 @@ std::optional<Expr> BodyLowering::lower_loop(const LoopHeader& header, const Loc
                           "', which it holds before: the invariant holds at each iteration's head, before the "
                           "loop variable is initialized (SPEC.md LOOP-004)");
         }
-        Expr invariant = build_expression(initializer, signature, frame.head, 0);
-        if (!std::holds_alternative<Unsupported>(invariant.node) && invariant.type.kind != TypeKind::Bool) {
-            return reject("a loop invariant must be a condition");
+        // One stating an implication or an equivalence is the proposition its
+        // form builds; any other is the condition it is.
+        const std::string named = take(clang_getCursorSpelling(marker));
+        const Selection::InvariantForm* form = nullptr;
+        if (invariant_forms != nullptr) {
+            const auto found = std::ranges::find(*invariant_forms, named, &Selection::InvariantForm::name);
+            form = found == invariant_forms->end() ? nullptr : &*found;
+        }
+        Expr invariant;
+        if (form != nullptr) {
+            std::expected<Expr, std::string> stated = build_invariant(initializer, form->shape, signature, frame.head);
+            if (!stated) {
+                return reject("a loop invariant: " + stated.error());
+            }
+            invariant = std::move(*stated);
+        } else {
+            invariant = build_expression(initializer, signature, frame.head, 0);
+            if (!std::holds_alternative<Unsupported>(invariant.node) && invariant.type.kind != TypeKind::Bool) {
+                return reject("a loop invariant must be a condition");
+            }
         }
         invariants.push_back(std::move(invariant));
         consumed_invariants.push_back(take(clang_getCursorSpelling(marker)));

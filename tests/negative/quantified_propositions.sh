@@ -120,7 +120,7 @@ CPP
 reject deep_nesting < "$run/deep.in"
 
 grep -q 'existential quantification is not supported yet' "$run/existential.log"
-grep -q 'formal syntax in a loop invariant' "$run/invariant.log"
+grep -q 'a quantifier, formal equality and a memory capability are not supported in a loop invariant yet' "$run/invariant.log"
 grep -q 'unsupported-semantics' "$run/no_block.log"
 grep -q 'forall requires at least one binder' "$run/no_binders.log"
 grep -q 'nested or malformed formal syntax' "$run/nested_in_an_argument.log"

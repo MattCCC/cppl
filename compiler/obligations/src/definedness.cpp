@@ -487,6 +487,44 @@ std::expected<kernel::Proposition, Failure> specified(const vir::Expr& condition
         return binary->op == vir::BinaryOp::And ? kernel::Proposition::conjunction(std::move(*left), std::move(*right))
                                                 : kernel::Proposition::disjunction(std::move(*left), std::move(*right));
     }
+    // A loop invariant stating an implication, an equivalence, or a conjunction
+    // or disjunction of them states the proposition its connective forms, each
+    // operand specified on its own, exactly as a contract clause's connective
+    // is (`lower_proposition`): a premise states its own definedness, and the
+    // conclusion's is owed where the premise holds (GRAMMAR.md 29, 30).
+    if (const auto* implication = std::get_if<vir::Implication>(&condition.node);
+        implication != nullptr && condition.type.is_proposition() && implication->operands.size() == 2) {
+        auto premise = specified(implication->operands[0], lower);
+        if (!premise) {
+            return premise;
+        }
+        auto conclusion = specified(implication->operands[1], lower);
+        if (!conclusion) {
+            return conclusion;
+        }
+        return kernel::Proposition::implication(std::move(*premise), std::move(*conclusion));
+    }
+    if (const auto* connective = std::get_if<vir::Connective>(&condition.node);
+        connective != nullptr && condition.type.is_proposition() && connective->operands.size() == 2) {
+        auto left = specified(connective->operands[0], lower);
+        if (!left) {
+            return left;
+        }
+        auto right = specified(connective->operands[1], lower);
+        if (!right) {
+            return right;
+        }
+        switch (connective->kind) {
+            case vir::Connective::Kind::Conjunction:
+                return kernel::Proposition::conjunction(std::move(*left), std::move(*right));
+            case vir::Connective::Kind::Disjunction:
+                return kernel::Proposition::disjunction(std::move(*left), std::move(*right));
+            case vir::Connective::Kind::Equivalence:
+                return kernel::Proposition::conjunction(kernel::Proposition::implication(*left, *right),
+                                                        kernel::Proposition::implication(*right, *left));
+        }
+        return std::unexpected(Failure{"unknown logical connective", condition.provenance.range.begin, {}});
+    }
     auto term = lower(condition);
     if (!term) {
         return std::unexpected(term.error());

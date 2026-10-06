@@ -238,6 +238,83 @@ verified int kept_or_zero(const std::vector<int>& v, std::size_t i)
 int main() { return 0; }
 CPP
 
+# An invariant's implication runs from its premise to its conclusion: here the
+# premise may hold on entry while the conclusion does not.
+refused invariant_implication_on_entry "loop invariant 'saw_positive loop at line [0-9]+ invariant 1' does not hold on entry" <<'CPP'
+verified unsigned saw_positive(unsigned n, unsigned x)
+    expects (n < 100u)
+    ensures (true)
+{
+    bool seen = false;
+    unsigned i = 0u;
+    while (i < n)
+        invariant (x > 0u -> seen)
+        decreases (n - i)
+    {
+        if (x > 0u) {
+            seen = true;
+        }
+        ++i;
+    }
+    return i;
+}
+int main() { return 0; }
+CPP
+
+# Each parenthesized implication of a conjunction is a claim of its own.
+refused parenthesized_implications_one_false "$false_claim" <<'CPP'
+verified unsigned sign_of(unsigned x)
+    ensures ((x == 0u -> result == 0u) && (x > 0u -> result == 2u))
+{
+    return x == 0u ? 0u : 1u;
+}
+int main() { return 0; }
+CPP
+
+# A quantifier in a loop invariant is not read yet.
+refused invariant_quantifier "a quantifier, formal equality and a memory capability are not supported in a loop invariant yet" <<'CPP'
+verified unsigned count_up(unsigned n)
+    expects (n < 100u)
+    ensures (true)
+{
+    unsigned i = 0u;
+    while (i < n)
+        invariant (forall (unsigned k) { k < i -> k < n })
+        decreases (n - i)
+    {
+        ++i;
+    }
+    return i;
+}
+int main() { return 0; }
+CPP
+
+# A parenthesized `a -> b` with a name on each side is member access, as C++
+# reads it, and the diagnostic says how an implication is written there.
+refused parenthesized_names_member_access "keeps its C\+\+ meaning, member access \(GRAMMAR.md 29\)" <<'CPP'
+verified bool either(bool a, bool b)
+    ensures ((a -> b) || true)
+{
+    return a || b;
+}
+int main() { return 0; }
+CPP
+
+# A parenthesized member access keeps its C++ meaning beside an implication,
+# where a contract reads no member through a pointer.
+refused parenthesized_member_access_kept "member access is not modeled" <<'CPP'
+struct Sensor {
+    bool ready;
+};
+verified bool ready_of(const Sensor* p)
+    expects (readable(p))
+    ensures (result -> (p->ready))
+{
+    return p->ready;
+}
+int main() { return 0; }
+CPP
+
 # A local holding `&&` read beneath `!` is its negation, never the `&&` itself,
 # and never the negation of only one operand.
 refused not_both_claimed_both "$false_claim" <<'CPP'

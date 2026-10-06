@@ -82,6 +82,13 @@ struct LoopInvariantMarker {
     std::size_t function_index = 0;
     bool measure = false;
     source::SourceLocation location;
+    // The form of an invariant that states an implication, an equivalence, or
+    // a conjunction or disjunction of them (GRAMMAR.md 25, 29, 30). Such an
+    // invariant is projected as the scaffolding a contract clause's formula is,
+    // an `auto` local holding it, and the bridge builds its proposition from
+    // this form. Any other invariant is one C++ condition, the `Expression`
+    // form.
+    source::ProjectionShape shape;
 };
 
 // The declarations a claim that a path cannot occur is projected into

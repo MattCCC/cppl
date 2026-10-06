@@ -102,9 +102,17 @@ statement written under such a binder means what it would anywhere else, so
 a name a statement can use, so evidence that stays quantified cannot be
 instantiated at one. `forall` and `exists` are formal only in that complete form,
 and an `->` outside all brackets is implication, so a program that spells its own
-`forall` or dereferences inside an expression keeps its own meaning. Existential
-quantification, quantifiers in loop invariants, and formal forms nested inside an
-ordinary C++ expression are refused. See `SPEC.md` 8, 8.1-8.2 and 9. Both forms
+`forall` or dereferences inside an expression keeps its own meaning. A
+parenthesized operand of a proposition's `&&` or `||` is a proposition of its
+own, so `(x == 0u -> r == 0u) && (x > 0u -> r == 1u)` is a conjunction of
+implications, while a parenthesized pointer member access, `(p->m)`, stays C++
+(GRAMMAR.md 29); `(a -> b)` with a name on each side is member access, and Clang's
+refusal of it on a `bool` names the spelling of an implication. A loop invariant
+states a condition, or an implication, an equivalence, a conjunction or a
+disjunction of them (`invariant (i <= n && (found -> i < n))`), each lowered as a
+contract clause's connective is (`e2e_conditions`, `negative_conditions`).
+Existential quantification, quantifiers and formal equality in loop invariants,
+and formal forms nested inside an ordinary C++ expression are refused. See `SPEC.md` 8, 8.1-8.2 and 9. Both forms
 lower onto the quantifier and implication the kernel already had, and added no
 kernel rule.
 A binder of a refinement type, and a Law's or proof's parameter of one, ranges
