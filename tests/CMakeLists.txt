@@ -537,6 +537,9 @@ cppl_add_script_test(e2e_if_statements e2e/if_statements.sh)
 cppl_add_script_test(e2e_range_for e2e/range_for.sh)
 cppl_add_script_test(negative_range_for negative/range_for.sh)
 cppl_add_script_test(e2e_verified_methods e2e/verified_methods.sh)
+# Whole struct values initialized, passed, returned and assigned
+# (TRUST.md TCB-AGGREGATE-001).
+cppl_add_script_test(e2e_struct_values e2e/struct_values.sh)
 
 # Contracts across translation units, through verification interfaces
 # (SPEC.md XTU-*, RFC 0017).
@@ -586,6 +589,7 @@ cppl_add_script_test(negative_verified_loops negative/verified_loops.sh)
 cppl_add_script_test(negative_switch_statements negative/switch_statements.sh)
 cppl_add_script_test(negative_if_statements negative/if_statements.sh)
 cppl_add_script_test(negative_verified_methods negative/verified_methods.sh)
+cppl_add_script_test(negative_struct_values negative/struct_values.sh)
 
 cppl_add_script_test(integration_header_law integration/header_law.sh)
 cppl_add_script_test(integration_source_identity integration/source_identity.sh)
