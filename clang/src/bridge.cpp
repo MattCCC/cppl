@@ -7340,7 +7340,7 @@ struct BodyLowering {
             Local binding{.declaration = range.variable,
                           .version = version,
                           .type = range.variable_type,
-                          .referent = *element,
+                          .referent = element,
                           .spelling = name};
             binding.borrows = state[*element].formed_at;
             state.push_back(std::move(binding));
@@ -7378,8 +7378,10 @@ struct BodyLowering {
                 locals[root].version == frame.head[root].version) {
                 continue;
             }
-            const std::string why =
-                locals[root].sequence.has_value() ? locals[root].sequence->invalidated : std::string();
+            std::string why;
+            if (const std::optional<Local::Sequence>& held = locals[root].sequence; held.has_value()) {
+                why = held->invalidated;
+            }
             return reject("the range-based for at " + describe_location(range.statement) + " goes on iterating '" +
                           range.range + "' after " +
                           (why.empty() ? std::string("something that may replace its storage") : why) +
