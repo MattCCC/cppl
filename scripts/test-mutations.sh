@@ -138,13 +138,13 @@ call-capability-pointer	compiler/obligations/src/contracts_evaluation.cpp	candid
 call-capability-extent	compiler/obligations/src/contracts_evaluation.cpp	if (required.extent.empty() && !held_sized && !region.has_value()) {	if (true || (required.extent.empty() && !held_sized && !region.has_value())) {	^negative_memory_capabilities$
 memory-assumption-trusted-only	compiler/elaboration/src/elaborate_contracts.cpp	    if (!declaration.trusted) {	    if (false && !declaration.trusted) {	^negative_trusted_dependencies$
 verified-specifier-span	compiler/frontend/src/recognizer.cpp	verified.keyword = tokens[index].span;	verified.keyword = source::ByteSpan{tokens[specifiers_start(tokens, index)].span.offset, tokens[index].span.end() - tokens[specifiers_start(tokens, index)].span.offset};	^e2e_erasure_equivalence$
-unsafe-block-havoc	clang/src/bridge.cpp	const std::vector<std::size_t> reached = unsafe_reach(state);	const std::vector<std::size_t> reached;	^negative_unsafe_boundary$
+unsafe-block-havoc	clang/src/unsafe.cpp	const std::vector<std::size_t> reached = unsafe_reach(state);	const std::vector<std::size_t> reached;	^negative_unsafe_boundary$
 unsafe-names-escape	clang/src/bridge.cpp	lowering.escaped.insert(named);	(void)named;	^negative_unsafe_boundary$
-unsafe-revokes-capabilities	clang/src/bridge.cpp	revoked_by = where;	(void)where;	^negative_unsafe_boundary$
+unsafe-revokes-capabilities	clang/src/unsafe.cpp	revoked_by = where;	(void)where;	^negative_unsafe_boundary$
 capability-rechecked-on-reuse	clang/src/bridge.cpp	if (!held) {	if (false && !held) {	^negative_unsafe_boundary$|^negative_memory_capabilities$
 capability-reuse-callable-position	clang/src/bridge.cpp	granted(signature.position(static_cast<std::size_t>(at - parameters.begin())), required);	granted(static_cast<std::uint32_t>(at - parameters.begin()), required);	^e2e_memory_capabilities$
 unsafe-revokes-call-capabilities	compiler/obligations/src/contracts_conditions.cpp	scope.unsafe = location;	(void)location;	^negative_unsafe_boundary$
-unsafe-control-stays-in-block	clang/src/bridge.cpp	left = leaves_block(block, 0, 0, 0)	left = (false ? leaves_block(block, 0, 0, 0) : std::optional<std::string>{})	^negative_unsafe_boundary$
+unsafe-control-stays-in-block	clang/src/unsafe.cpp	left = leaves_block(block, 0, 0, 0)	left = (false ? leaves_block(block, 0, 0, 0) : std::optional<std::string>{})	^negative_unsafe_boundary$
 unsafe-call-outside-block	compiler/elaboration/src/elaborate.cpp	if (unsafe_call != callees.end()) {	if (false && unsafe_call != callees.end()) {	^negative_unsafe_boundary$
 unsafe-pure-refused	compiler/elaboration/src/elaborate.cpp	candidate.pure && contains_unsafe_region(	false && contains_unsafe_region(	^negative_unsafe_boundary$
 unsafe-contract-refused	compiler/frontend/src/recognizer.cpp	if (std::size_t clause_index = 0; has_specification_clause(tokens, *name, clause_index)) {	if (std::size_t clause_index = 0; false && has_specification_clause(tokens, *name, clause_index)) {	^negative_unsafe_boundary$|^unit_recognizer_test$
@@ -173,8 +173,8 @@ sequence-mutator-new-generation	clang/src/bridge.cpp	effects.push_back(new_gener
 call-two-writable-views	clang/src/bridge.cpp	for (const std::size_t other : written_roots) {	for (const std::size_t other : std::vector<std::size_t>{}) {	^negative_sequence_boundaries$
 call-span-parameter-written-twice	clang/src/bridge.cpp	if (writes && std::ranges::any_of(written_span_parameters, [&](CXCursor written_parameter) {	if (false && writes && std::ranges::any_of(written_span_parameters, [&](CXCursor written_parameter) {	^negative_sequence_boundaries$
 unsafe-callee-writes-const-references	clang/src/bridge.cpp	        if (position.writable || unsafe_callee) {	        if (position.writable) {	^negative_unsafe_callees$
-unsafe-callee-through-calls	clang/src/bridge.cpp	node.effects = std::ranges::any_of(node.callees, [&](const std::string& called) {	node.effects = false && std::ranges::any_of(node.callees, [&](const std::string& called) {	^negative_unsafe_callees$
-unsafe-callee-from-interface	clang/src/bridge.cpp	if (current_key.empty() || imported_.contains(current_key)) {	if (current_key.empty()) {	^negative_unsafe_callees$
+unsafe-callee-through-calls	clang/src/unsafe.cpp	node.effects = std::ranges::any_of(node.callees, [&](const std::string& called) {	node.effects = false && std::ranges::any_of(node.callees, [&](const std::string& called) {	^negative_unsafe_callees$
+unsafe-callee-from-interface	clang/src/unsafe.cpp	if (current_key.empty() || imported_.contains(current_key)) {	if (current_key.empty()) {	^negative_unsafe_callees$
 unsafe-callee-temporary-post-state	clang/src/bridge.cpp	std::move(declared)});	std::move(declared)}), call->effects.pop_back();	^negative_unsafe_callees$
 call-statement-silent-temporaries	clang/src/bridge.cpp	if (clang_getCursorKind(inner) == CXCursor_CallExpr && temporaries_destroy_silently(statement)) {	if (clang_getCursorKind(inner) == CXCursor_CallExpr && (temporaries_destroy_silently(statement) || true)) {	^negative_sequence_generations$
 compile-time-constant-expression	clang/src/expressions.cpp	if (kind == CXCursor_UnaryExpr || kind == CXCursor_RequiresExpr) {	if (false && (kind == CXCursor_UnaryExpr || kind == CXCursor_RequiresExpr)) {	^e2e_safety_subset$
@@ -194,9 +194,9 @@ reference-binds-temporary	clang/src/bridge.cpp	const bool binds_temporary = refe
 linkage-specification-is-namespace-scope	compiler/frontend/src/recognizer.cpp	if (brace >= 2 && tokens[brace - 1].kind == TokenKind::StringLiteral && tokens[brace - 2].is_identifier("extern")) {	if (false && brace >= 2 && tokens[brace - 1].kind == TokenKind::StringLiteral && tokens[brace - 2].is_identifier("extern")) {	^e2e_safety_subset$
 call-statement-temporaries-mutator-only	clang/src/bridge.cpp	if (clang_getCursorKind(inner) == CXCursor_CallExpr && sequence_call(inner).has_value()) {	if (clang_getCursorKind(inner) == CXCursor_CallExpr) {	^negative_sequence_generations$
 call-writable-span-havocs-pointees	clang/src/access.cpp	return convert_type(canonical).representation.kind == source::RepresentationKind::Span &&	return false && convert_type(canonical).representation.kind == source::RepresentationKind::Span &&	^negative_sequence_boundaries$
-unsafe-reaches-viewed-container	clang/src/bridge.cpp	reach(*held->views);	(void)held;	^negative_sequence_attacks$
-unsafe-reaches-whole-object	clang/src/bridge.cpp	reach(other);	(void)other;	^negative_sequence_attacks$
-unsafe-refined-container-refused	clang/src/bridge.cpp	held.has_value() && !held->element.refinements.empty()) {	held.has_value() && false && !held->element.refinements.empty()) {	^negative_sequence_attacks$|^negative_sequence_boundaries$
+unsafe-reaches-viewed-container	clang/src/unsafe.cpp	reach(*held->views);	(void)held;	^negative_sequence_attacks$
+unsafe-reaches-whole-object	clang/src/unsafe.cpp	reach(other);	(void)other;	^negative_sequence_attacks$
+unsafe-refined-container-refused	clang/src/unsafe.cpp	held.has_value() && !held->element.refinements.empty()) {	held.has_value() && false && !held->element.refinements.empty()) {	^negative_sequence_attacks$|^negative_sequence_boundaries$
 hidden-refinement-spelling-refused	clang/src/refinements.cpp	if (written.kind == CXType_Unexposed && unnamed &&	if (false && written.kind == CXType_Unexposed && unnamed &&	^negative_refinement_types$
 template-argument-default-refinement	clang/src/bridge.cpp	if (auto by_default = defaulted(named)) {	if (auto by_default = std::optional<RefinedTemplateArgument>{}) {	^negative_refinement_types$
 template-argument-decltype-refinement	clang/src/bridge.cpp	if (kind == CXCursor_DeclRefExpr && user_template.has_value()) {	if (false && kind == CXCursor_DeclRefExpr && user_template.has_value()) {	^negative_refinement_types$
@@ -231,7 +231,7 @@ lsp-meaning-option-unverified	src/lsp/src/compile_commands.cpp	if (argument.star
 template-argument-refinement-use-site	clang/src/bridge.cpp	collector.refused_arguments.emplace_back(refined_template_argument_refusal(*refined), cursor);	(void)refined;	^negative_refinement_types$
 template-argument-refinement-verified-body	clang/src/bridge.cpp	found.refused_arguments.emplace_back(refined_template_argument_refusal(*refined), cursor);	(void)refined;	^negative_refinement_types$
 template-argument-refinement-through-alias	clang/src/bridge.cpp	if (auto hidden = refined_template_argument(named, selection, depth + 1)) {	if (auto hidden = std::optional<RefinedTemplateArgument>{}) {	^negative_refinement_types$
-unsafe-block-new-generation	clang/src/bridge.cpp	new_generation(state[index], "the unsafe block at " + at);	(void)state[index];	^negative_containers$|^negative_sequence_attacks$
+unsafe-block-new-generation	clang/src/unsafe.cpp	new_generation(state[index], "the unsafe block at " + at);	(void)state[index];	^negative_containers$|^negative_sequence_attacks$
 container-span-capability	clang/src/bridge.cpp	if (!region.parameter.has_value() || granted(*region.parameter, required)) {	if (true) {	^negative_containers$
 container-call-disjointness	clang/src/bridge.cpp	if (other == root || may_alias(state[other], state[root])) {	if (false && (other == root || may_alias(state[other], state[root]))) {	^negative_containers$
 span-copy-hands-storage	clang/src/bridge.cpp	return handed_storage(call->arguments.front(), state);	return std::nullopt;	^negative_sequence_boundaries$
@@ -355,12 +355,12 @@ virtual-call-refused	clang/src/expressions.cpp	if (clang_CXXMethod_isVirtual(ref
 member-refinement-kept	clang/src/signature.cpp	converted.refinements = std::move(*declared);	(void)declared;	^negative_verified_methods$
 container-element-refinement-kept	clang/src/refinements.cpp	auto refinements = refinements_of(declared, element, *known);	auto refinements = decltype(refinements_of(declared, element, *known)){};	^negative_containers$|^negative_integration_ledger$
 reference-aggregate-witness	clang/src/bridge.cpp	if (parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	if (false && parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	^negative_verified_storage$
-unsafe-member-write-rooted	clang/src/bridge.cpp	return access.has_value() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	return access.has_value() && access->path.empty() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	^negative_unsafe_boundary$
+unsafe-member-write-rooted	clang/src/unsafe.cpp	return access.has_value() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	return access.has_value() && access->path.empty() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	^negative_unsafe_boundary$
 alias-write-charged	clang/src/bridge.cpp	        require(locals[index].type);	        (void)index;	^negative_verified_methods$
 alias-write-validity-from-prior	clang/src/bridge.cpp	const bool valid = valid_versions.contains(locals[index].version);	const bool valid = true;	^negative_verified_methods$
 return-charges-unestablished	clang/src/bridge.cpp	if (!valid_versions.contains(locals[local].version) && carries_refinement(locals[local].type)) {	if (false) {	^negative_verified_methods$|^negative_cross_feature$
 call-effect-refinement-charged	compiler/obligations/src/contracts_evaluation.cpp	const auto required = membership(program_, effect.declared, arguments[effect.argument]);	const auto required = membership(program_, effect.declared.erased(), arguments[effect.argument]);	^negative_verified_methods$|^negative_cross_feature$
-unsafe-reach-counted-valid	clang/src/bridge.cpp	new_generation(state[index], "the unsafe block at " + at);	new_generation(state[index], "the unsafe block at " + at); valid_versions.insert(state[index].version);	^negative_verified_methods$|^negative_cross_feature$
+unsafe-reach-counted-valid	clang/src/unsafe.cpp	new_generation(state[index], "the unsafe block at " + at);	new_generation(state[index], "the unsafe block at " + at); valid_versions.insert(state[index].version);	^negative_verified_methods$|^negative_cross_feature$
 loop-head-counted-valid	clang/src/bridge.cpp	"the loop at " + describe_location(header.statement) + ", which may change it");	"the loop at " + describe_location(header.statement) + ", which may change it"); valid_versions.insert(frame.head[index].version);	^negative_cross_feature$
 read-only-position-kept-apart	clang/src/bridge.cpp	if (!position.writable && !reached_by_a_write(position.storage)) {	if (!position.writable && (true || !reached_by_a_write(position.storage))) {	^negative_verified_methods$|^e2e_verified_methods$
 call-effect-common-alias-model	clang/src/bridge.cpp	[&](std::size_t written) { return may_alias(state[written], state[other]); })) {	[&](std::size_t written) { return false && may_alias(state[written], state[other]); })) {	^negative_verified_methods$
