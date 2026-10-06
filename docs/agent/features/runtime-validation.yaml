@@ -89,7 +89,7 @@ implementation:
     - compiler/frontend/src/projection.cpp
   bridge:
     - clang/src/bridge.cpp
-    - compiler/elaboration/src/elaborate.cpp
+    - compiler/elaboration/src/elaborate_statements.cpp
   erasure:
     - compiler/erasure/src/erase.cpp
   obligations:

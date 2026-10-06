@@ -84,6 +84,7 @@ implementation:
     - clang/include/cppl/clang/ast.hpp
   elaboration:
     - compiler/elaboration/src/elaborate.cpp
+    - compiler/elaboration/src/elaborate_statements.cpp
   vir:
     - vir/include/cppl/vir/module.hpp
     - vir/include/cppl/vir/expr.hpp

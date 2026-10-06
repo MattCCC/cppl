@@ -100,7 +100,7 @@ implementation:
     - vir/include/cppl/vir/expr.hpp
     - vir/include/cppl/vir/module.hpp
   elaboration:
-    - compiler/elaboration/src/elaborate.cpp
+    - compiler/elaboration/src/elaborate_cases.cpp
   analysis:
     - compiler/analysis/src/analyze.cpp
   obligations:

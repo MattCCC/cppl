@@ -89,7 +89,7 @@ implementation:
     - vir/include/cppl/vir/expr.hpp
     - vir/include/cppl/vir/module.hpp
   elaboration:
-    - compiler/elaboration/src/elaborate.cpp
+    - compiler/elaboration/src/elaborate_expressions.cpp
   obligations:
     - compiler/obligations/include/cppl/obligations/contracts.hpp
     - compiler/obligations/include/cppl/obligations/obligation.hpp

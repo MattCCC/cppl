@@ -1,6 +1,10 @@
 add_library(cppl_elaboration STATIC
     src/body_walks.cpp
-    src/elaborate.cpp)
+    src/elaborate.cpp
+    src/elaborate_cases.cpp
+    src/elaborate_contracts.cpp
+    src/elaborate_expressions.cpp
+    src/elaborate_statements.cpp)
 
 target_include_directories(cppl_elaboration PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)

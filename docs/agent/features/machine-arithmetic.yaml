@@ -103,7 +103,7 @@ implementation:
     - clang/src/bridge.cpp
     - clang/src/types.cpp
   elaboration:
-    - compiler/elaboration/src/elaborate.cpp
+    - compiler/elaboration/src/elaborate_expressions.cpp
   vir:
     - vir/include/cppl/vir/expr.hpp
     - vir/src/vir.cpp

@@ -76,7 +76,7 @@ implementation:
   clang:
     - clang/src/bridge.cpp
   elaboration:
-    - compiler/elaboration/src/elaborate.cpp
+    - compiler/elaboration/src/elaborate_contracts.cpp
   vir:
     - vir/include/cppl/vir/module.hpp
   obligations:

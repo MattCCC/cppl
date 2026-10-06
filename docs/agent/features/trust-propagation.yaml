@@ -82,7 +82,8 @@ depends_on:
 
 implementation:
   elaboration:
-    - compiler/elaboration/src/elaborate.cpp
+    - compiler/elaboration/src/elaborate_statements.cpp
+    - compiler/elaboration/src/elaborate_contracts.cpp
   vir:
     - vir/include/cppl/vir/module.hpp
   obligations:
