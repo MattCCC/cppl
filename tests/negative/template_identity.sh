@@ -141,4 +141,69 @@ grep -q 'verified' "$run/erasure.runtime.cpp" && fail "'verified' survived into 
 grep -q 'expects\|ensures' "$run/erasure.runtime.cpp" && fail "a contract clause survived into the runtime program"
 grep -q '__cppl_' "$run/erasure.runtime.cpp" && fail "a generated probe survived into the runtime program"
 
+# SPEC: TEMPLATE-001
+# Every specialization the program instantiates is verified, wherever it is
+# instantiated: one reached only through another template's specialization, or
+# only through a class template's destructor, which no expression names, is
+# verified as one named in main is, and refused when its contract is false of
+# it. `pick(int)` makes the contract false of the `int` and `long`
+# specializations only.
+reached_only() {
+    local name="$1" use="$2"
+    cat > "$run/$name.cpp" <<CPP
+pure unsigned pick(unsigned) { return 0u; }
+pure unsigned pick(int) { return 1u; }
+pure unsigned pick(long) { return 1u; }
+template <class T>
+verified unsigned f(const T& x) ensures (result == 0u) {
+    return pick(x);
+}
+unsigned seen = 7u;
+template <class T>
+unsigned through(const T& x) { return f(x); }
+template <class T>
+struct Watch {
+    T value;
+    ~Watch() { seen = f(value); }
+};
+int main() {
+    $use
+    return static_cast<int>(seen + f(5u));
+}
+CPP
+    if "$CPPL" -std=c++17 "$run/$name.cpp" -o "$run/$name" > "$run/$name.log" 2>&1; then
+        cat "$run/$name.log" >&2
+        fail "$name was accepted, but f's contract is false of the specialization it instantiates"
+    fi
+    grep -q "return path 'f path 1' does not satisfy its contract" "$run/$name.log" ||
+        { cat "$run/$name.log" >&2; fail "$name was not refused for f's contract"; }
+}
+reached_only through_another_template 'seen = through(2L);'
+reached_only through_a_destructor '{ Watch<int> watch{3}; }'
+
+# The twin: unsigned specializations only, reached the same ways, are verified.
+cat > "$run/reached_verified.cpp" <<CPP
+pure unsigned pick(unsigned) { return 0u; }
+template <class T>
+verified unsigned f(const T& x) ensures (result == 0u) {
+    return pick(x);
+}
+unsigned seen = 7u;
+template <class T>
+unsigned through(const T& x) { return f(x); }
+template <class T>
+struct Watch {
+    T value;
+    ~Watch() { seen = f(value); }
+};
+int main() {
+    seen = through(2u);
+    { Watch<unsigned> watch{3u}; }
+    return static_cast<int>(seen + f(5u));
+}
+CPP
+"$CPPL" -std=c++17 "$run/reached_verified.cpp" -o "$run/reached_verified" > "$run/reached_verified.log" 2>&1 ||
+    { cat "$run/reached_verified.log" >&2; fail "specializations reached through a template and a destructor were refused"; }
+"$run/reached_verified" || fail "the verified program did not return the 0 its contracts state"
+
 echo 'specialization identity, extents and erasure hold across argument families'

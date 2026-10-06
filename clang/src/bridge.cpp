@@ -9013,6 +9013,61 @@ std::vector<const Function*> TranslationUnit::find_specializations_at_offset(std
     return found;
 }
 
+// Every specialization of a verified function template the unit references, by
+// USR with one cursor for it, as Clang's indexer reports references from every
+// body it instantiated, implicit instantiations included: a destructor's, a
+// conversion's, or a template's reached only through another template. The
+// cursor search in `collect_specializations` sees only what an expression of
+// the written program names, and no instantiated body (SPEC.md TEMPLATE-001).
+// Nothing when the indexer fails, which the caller refuses.
+std::optional<std::vector<std::pair<std::string, CXCursor>>> indexed_specializations(CXIndex index,
+                                                                                     CXTranslationUnit unit,
+                                                                                     const Selection& selection) {
+    struct Found {
+        const Selection* selection = nullptr;
+        std::vector<std::pair<std::string, CXCursor>> specializations;
+    } found{&selection, {}};
+    IndexerCallbacks callbacks{};
+    callbacks.indexEntityReference = [](CXClientData data, const CXIdxEntityRefInfo* reference) {
+        if (reference == nullptr || reference->referencedEntity == nullptr) {
+            return;
+        }
+        auto& into = *static_cast<Found*>(data);
+        // The indexer names a specialization by its template; the reference
+        // itself, in the instantiated body, resolves to the specialization.
+        const CXCursor referenced = clang_getCursorReferenced(reference->cursor);
+        if (clang_Cursor_isNull(referenced) != 0) {
+            return;
+        }
+        const auto primary = specialized_template(referenced);
+        if (!primary.has_value()) {
+            return;
+        }
+        const std::string name = take(clang_getCursorSpelling(referenced));
+        const bool generated =
+            !into.selection->specification_prefix.empty() && name.starts_with(into.selection->specification_prefix);
+        if (!generated &&
+            std::ranges::find(into.selection->offsets, physical_offset(*primary)) == into.selection->offsets.end()) {
+            return;
+        }
+        std::string usr = take(clang_getCursorUSR(referenced));
+        if (std::ranges::none_of(into.specializations, [&](const auto& known) { return known.first == usr; })) {
+            into.specializations.emplace_back(std::move(usr), referenced);
+        }
+    };
+    CXIndexAction action = clang_IndexAction_create(index);
+    if (action == nullptr) {
+        return std::nullopt;
+    }
+    const int status = clang_indexTranslationUnit(action, &found, &callbacks, sizeof(callbacks),
+                                                  CXIndexOpt_IndexImplicitTemplateInstantiations, unit);
+    clang_IndexAction_dispose(action);
+    if (status != 0) {
+        return std::nullopt;
+    }
+    return std::move(found.specializations);
+}
+
 std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
     CXIndex index = clang_createIndex(/*excludeDeclarationsFromPCH=*/0, /*displayDiagnostics=*/0);
     if (index == nullptr) {
@@ -9088,6 +9143,39 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
     // A second pass for template specializations, which are reached from their
     // uses rather than from the declaration list (SPEC.md 42).
     clang_visitChildren(clang_getTranslationUnitCursor(unit), collect_specializations, &collector);
+    // Every specialization of a verified function template the unit
+    // instantiates is verified: one the search above did not reach, from an
+    // implicit call it cannot see, is refused rather than left unverified
+    // (SPEC.md TEMPLATE-001).
+    const bool verified_templates = std::ranges::any_of(collector.functions, [&](CXCursor function) {
+        return clang_getCursorKind(function) == CXCursor_FunctionTemplate &&
+               std::ranges::find(request.selection.offsets, physical_offset(function)) !=
+                   request.selection.offsets.end();
+    });
+    if (verified_templates) {
+        const auto indexed = indexed_specializations(index, unit, request.selection);
+        if (!indexed.has_value()) {
+            result.has_errors = true;
+            result.diagnostics.push_back(
+                {Severity::Error,
+                 "the instantiations of this unit's verified function templates could not be enumerated, so which "
+                 "of them are verified cannot be shown (SPEC.md TEMPLATE-001)",
+                 presumed_location(clang_getCursorLocation(clang_getTranslationUnitCursor(unit)))});
+        } else {
+            // A specialization the cursor search did not reach, such as one a
+            // class template's destructor uses, is verified as every other is,
+            // with whatever its own body instantiates.
+            for (const auto& [usr, specialization] : *indexed) {
+                if (std::ranges::any_of(collector.specializations, [&, usr = std::string_view(usr)](CXCursor known) {
+                        return take(clang_getCursorUSR(known)) == usr;
+                    })) {
+                    continue;
+                }
+                collector.specializations.push_back(specialization);
+                clang_visitChildren(specialization, collect_specializations, &collector);
+            }
+        }
+    }
     // In a verified declaration or body, every declaration and reference that
     // names a template outside the standard library at a refined argument
     // (SPEC.md STDMODEL-020).

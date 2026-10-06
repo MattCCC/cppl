@@ -146,6 +146,8 @@ unsafe-refined-container-refused	clang/src/bridge.cpp	held.has_value() && !held-
 hidden-refinement-spelling-refused	clang/src/bridge.cpp	if (written.kind == CXType_Unexposed && unnamed &&	if (false && written.kind == CXType_Unexposed && unnamed &&	^negative_refinement_types$
 template-argument-default-refinement	clang/src/bridge.cpp	if (auto by_default = defaulted(named)) {	if (auto by_default = std::optional<RefinedTemplateArgument>{}) {	^negative_refinement_types$
 template-argument-decltype-refinement	clang/src/bridge.cpp	if (kind == CXCursor_DeclRefExpr && user_template.has_value()) {	if (false && kind == CXCursor_DeclRefExpr && user_template.has_value()) {	^negative_refinement_types$
+template-specializations-indexed	clang/src/bridge.cpp	collector.specializations.push_back(specialization);	(void)specialization;	^negative_template_identity$
+template-index-resolves-specialization	clang/src/bridge.cpp	const CXCursor referenced = clang_getCursorReferenced(reference->cursor);	const CXCursor referenced = reference->referencedEntity->cursor;	^negative_template_identity$
 call-element-beside-reallocatable-container	clang/src/bridge.cpp	(container.storage != owner && !may_alias(holder, state[owner]))) {	true || (container.storage != owner && !may_alias(holder, state[owner]))) {	^negative_sequence_boundaries$
 deref-symbolic-index-overlaps	clang/src/bridge.cpp	if (other.has_symbolic_step() || target.has_symbolic_step()) {	if (false && (other.has_symbolic_step() || target.has_symbolic_step())) {	^negative_memory_capabilities$
 record-user-destructor-unmodeled	clang/src/bridge.cpp	if (has_user_provided_destructor(definition)) {	if (false && has_user_provided_destructor(definition)) {	^negative_verified_methods$
