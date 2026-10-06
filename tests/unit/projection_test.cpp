@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <ios>
@@ -710,6 +711,94 @@ CPPL_TEST(a_proof_only_span_left_in_the_runtime_program_is_refused) {
     std::string runtime = unit.projection.runtime;
     runtime[keyword.offset] = kErasedKinds[keyword.offset];
     CPPL_CHECK(!refused(unit, std::move(runtime)).spans_erased);
+}
+
+// SPEC: ERASE-005, ERASE-017
+// TRUST.md TCB-ERASE-011
+CPPL_TEST(a_directive_inside_a_cpp_l_construct_stays_where_it_stands) {
+    static const std::string source = "# 1 \"directives.cpp\"\n"
+                                      "law identity(unsigned x)\n"
+                                      "    expects (x < 100u)\n"
+                                      "#pragma pack(push, 1)\n"
+                                      "    proves (x == x);\n"
+                                      "proof identity_holds(unsigned x)\n"
+                                      "    proves (identity(x))\n"
+                                      "{\n"
+                                      "#pragma pack(push, 2)\n"
+                                      "    refl;\n"
+                                      "}\n"
+                                      "type Small = unsigned where\n"
+                                      "# 40 \"directives.cpp\"\n"
+                                      "    (self < 10u);\n"
+                                      "#pragma pack(pop)\n"
+                                      "#pragma pack(pop)\n";
+    cppl::diagnostics::Engine engine;
+    const auto stream = cppl::frontend::lex(source, "directives.cpp");
+    const auto syntax = cppl::frontend::recognize(stream, engine);
+    const auto projection = cppl::frontend::project(stream, syntax, {});
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK(projection.diagnostics.empty());
+
+    // Every directive the lexer passed over is in the program, byte for byte,
+    // where it was written: the two in C++L declarations, the line marker in a
+    // lowered refinement, and the two after them.
+    CPPL_CHECK_EQ(stream.directives().size(), std::size_t{6});
+    const auto line_of = [](const std::string& text, std::size_t line) {
+        std::size_t begin = 0;
+        for (std::size_t skipped = 0; skipped < line && begin != std::string::npos; ++skipped) {
+            begin = text.find('\n', begin);
+            begin = begin == std::string::npos ? begin : begin + 1;
+        }
+        return begin == std::string::npos ? std::string() : text.substr(begin, text.find('\n', begin) - begin);
+    };
+    for (const auto& directive : stream.directives()) {
+        const auto line = static_cast<std::size_t>(std::ranges::count(source.substr(0, directive.span.offset), '\n'));
+        CPPL_CHECK_EQ(line_of(projection.runtime, line), std::string(stream.spelling(directive.span)));
+    }
+    // The analysed program states each pragma too, after the C++ it generates.
+    CPPL_CHECK(projection.analysis.find("#pragma pack(push, 1)") != std::string::npos);
+    CPPL_CHECK(projection.analysis.find("#pragma pack(push, 2)") != std::string::npos);
+
+    cppl::diagnostics::Engine checked;
+    const auto erased = cppl::erasure::erase(stream, syntax, projection, checked);
+    CPPL_CHECK(erased.report.preserved());
+    CPPL_CHECK(!checked.has_errors());
+
+    // A directive blanked with the declaration around it is refused, inside a
+    // proof-only span and inside a lowering alike.
+    for (std::size_t index = 1; index < 4; ++index) {
+        const auto& directive = stream.directives()[index];
+        cppl::frontend::Projection tampered = projection;
+        tampered.runtime.replace(directive.span.offset, directive.span.length, directive.span.length, ' ');
+        cppl::diagnostics::Engine refused;
+        const auto report = cppl::erasure::erase(stream, syntax, tampered, refused).report;
+        CPPL_CHECK(!report.preserved());
+        CPPL_CHECK(refused.has_errors());
+        if (index < 3) {
+            CPPL_CHECK(!report.directives_kept);
+        } else {
+            CPPL_CHECK(!report.lowerings_canonical);
+        }
+    }
+}
+
+// SPEC: ERASE-017
+CPPL_TEST(a_directive_inside_an_expression_cpp_l_states_is_refused) {
+    static const std::string source = "# 1 \"misplaced.cpp\"\n"
+                                      "law bounded(unsigned x)\n"
+                                      "    proves (x <\n"
+                                      "#pragma pack(push, 1)\n"
+                                      "            100u || x >= 100u);\n"
+                                      "#pragma pack(pop)\n";
+    cppl::diagnostics::Engine engine;
+    const auto stream = cppl::frontend::lex(source, "misplaced.cpp");
+    const auto syntax = cppl::frontend::recognize(stream, engine);
+    const auto projection = cppl::frontend::project(stream, syntax, {});
+    CPPL_CHECK_EQ(projection.diagnostics.size(), std::size_t{1});
+    if (!projection.diagnostics.empty()) {
+        CPPL_CHECK_EQ(projection.diagnostics[0].location.line, std::uint32_t{3});
+        CPPL_CHECK(projection.diagnostics[0].message.find("#pragma pack(push, 1)") != std::string::npos);
+    }
 }
 
 CPPL_TEST(a_runtime_program_changed_beyond_erasure_is_refused) {

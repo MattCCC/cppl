@@ -43,6 +43,16 @@ struct Token {
     }
 };
 
+// A preprocessor directive line the lexer passed over rather than read as
+// tokens: a line marker, or a directive that survived preprocessing, such as a
+// `#pragma` (one a macro's `_Pragma` produced included). The span runs from the
+// first byte of the line to the last before its newline. A directive is never
+// C++L, so it stays where it stands in every text projected from the stream.
+struct Directive {
+    source::ByteSpan span;
+    bool line_marker = false;
+};
+
 // Where a line marker says a file was entered from: the file, by index, and the
 // line of its `#include`.
 struct IncludeSite {
@@ -55,13 +65,14 @@ class TokenStream {
   public:
     TokenStream(std::string_view text, std::vector<Token> tokens, std::vector<std::string> files,
                 std::vector<bool> system_files = {}, std::vector<std::optional<IncludeSite>> include_sites = {},
-                std::vector<source::ByteSpan> comments = {})
+                std::vector<source::ByteSpan> comments = {}, std::vector<Directive> directives = {})
         : text_(text),
           tokens_(std::move(tokens)),
           files_(std::move(files)),
           system_files_(std::move(system_files)),
           include_sites_(std::move(include_sites)),
-          comments_(std::move(comments)) {}
+          comments_(std::move(comments)),
+          directives_(std::move(directives)) {}
 
     // The scanned buffer. The stream does not own it; it stays valid only as
     // long as the buffer passed to lex() does.
@@ -84,6 +95,10 @@ class TokenStream {
     // stream has none; an editor's, lexed from the text as written, has each.
     [[nodiscard]] const std::vector<source::ByteSpan>& comments() const noexcept {
         return comments_;
+    }
+    // Every directive line the lexer passed over, in order.
+    [[nodiscard]] const std::vector<Directive>& directives() const noexcept {
+        return directives_;
     }
 
     // Whether a line marker entered the file as a system header.
@@ -117,6 +132,7 @@ class TokenStream {
     std::vector<bool> system_files_;
     std::vector<std::optional<IncludeSite>> include_sites_;
     std::vector<source::ByteSpan> comments_;
+    std::vector<Directive> directives_;
 };
 
 // Lexes preprocessed C++ text.

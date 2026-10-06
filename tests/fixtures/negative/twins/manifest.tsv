@@ -14,6 +14,7 @@ twin	cross_tu/rival.cpp	negative/twins/cross_tu_rival.cpp	error \[proof-failure\
 twin	cross_tu/sequences.cpp	negative/twins/cross_tu_sequences.cpp	error \[kernel-rejection\]: return path 'grown_copy path [0-9]+' does not satisfy its contract	-	-
 twin	cross_tu/sequences_client.cpp	negative/twins/cross_tu_sequences_client.cpp	error \[kernel-rejection\]: return path 'through_listed path [0-9]+' does not satisfy its contract	cross_tu/sequences.cpp,cross_tu/sequences_middle.cpp	-
 twin	cross_tu/sequences_middle.cpp	negative/twins/cross_tu_sequences_middle.cpp	error \[kernel-rejection\]: return path 'listed_in_the_middle path [0-9]+' does not satisfy its contract	cross_tu/sequences.cpp	-
+twin	directives/erasure.cpp	negative/twins/directives_erasure.cpp	error \[proof-failure\]: verified function 'packed' does not satisfy its contract	-	-
 twin	disjunction.cpp	negative/twins/disjunction.cpp	error \[kernel-rejection\]: law 'bounded_by_cases' is not proven	-	-
 twin	equivalence/abi_library.cpp	negative/twins/equivalence_abi_library.cpp	error \[kernel-rejection\]: law 'twice_is_a_sum' is not proven	-	-
 twin	equivalence/conditional_proof.cpp	negative/twins/equivalence_conditional_proof.cpp	error \[proof-failure\]: 'premise' has no matching premise to stand for	-	-

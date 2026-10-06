@@ -40,6 +40,18 @@ list(
     "/tests/fixtures/negative/"
 )
 
+# `directives/` fixtures write preprocessor directives inside C++L
+# declarations, which erasure keeps where they stand (SPEC.md ERASE-017).
+# cppl-format lays a declaration out again from its tokens and does not yet keep
+# a directive inside one, so these are held exactly as written; and the
+# hand-erased reference keeps every line where it was, which canonical blank
+# lines would not.
+list(
+    FILTER CPPL_L_FORMAT_FILES
+    EXCLUDE REGEX
+    "/tests/fixtures/directives/"
+)
+
 list(
     SORT CPPL_L_FORMAT_FILES
 )

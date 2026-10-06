@@ -136,7 +136,20 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
     bool only_deletions = true;
     bool spans_erased = std::ranges::all_of(
         erased, [&original](const source::ByteSpan& span) { return span.end() <= original.size(); });
+    bool directives_kept = true;
     bool lowerings_canonical = true;
+    // A preprocessor directive line is never C++L, so one inside a proof-only
+    // span stays in the program exactly as written: a `#pragma` erased with the
+    // span would change what follows it, and a line marker erased would move
+    // every line below it (SPEC.md ERASE-005, TRUST.md TCB-ERASE-011).
+    const std::vector<frontend::Directive>& directives = stream.directives();
+    std::size_t next_directive = 0; // the first directive not wholly before the walk
+    const auto directive_at = [&directives, &next_directive](std::size_t offset) {
+        while (next_directive < directives.size() && directives[next_directive].span.end() <= offset) {
+            ++next_directive;
+        }
+        return next_directive < directives.size() && directives[next_directive].span.offset <= offset;
+    };
     std::size_t next_erased = 0; // the first erased span not wholly before the walk
     const auto erased_at = [&erased, &next_erased](std::size_t offset) {
         while (next_erased < erased.size() && erased[next_erased].end() <= offset) {
@@ -154,7 +167,12 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
             }
             const char kept = runtime[runtime_offset];
             const char written = original[source_offset];
-            if (erased_at(source_offset)) {
+            if (erased_at(source_offset) && directive_at(source_offset)) {
+                if (kept != written) {
+                    directives_kept = false; // a directive erased with the C++L around it
+                    return;
+                }
+            } else if (erased_at(source_offset)) {
                 if (kept == blanked(written)) {
                     if (kept != written) {
                         ++report.erased_bytes;
@@ -180,7 +198,7 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
             break;
         }
         compare_until(lowering.span.offset);
-        if (!only_deletions) {
+        if (!only_deletions || !directives_kept) {
             break;
         }
         // A runtime-bearing declaration is never also proof-only: its bytes are
@@ -198,7 +216,7 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
         runtime_offset += lowering.expected.size();
         source_offset = lowering.span.end();
     }
-    if (only_deletions && lowerings_canonical) {
+    if (only_deletions && directives_kept && lowerings_canonical) {
         compare_until(original.size());
         if (runtime_offset != runtime.size()) {
             only_deletions = false;
@@ -212,6 +230,7 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
     report.only_deletions = only_deletions;
     report.spans_erased = spans_erased;
     report.lowerings_canonical = lowerings_canonical;
+    report.directives_kept = directives_kept;
 
     if (!report.preserved()) {
         diagnostics::Diagnostic diagnostic;

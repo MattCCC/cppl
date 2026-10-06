@@ -552,6 +552,16 @@ coordinates.
 **[COMPAT-PP-003]** Different proof-relevant macro configurations are different
 compatibility environments.
 
+A directive that survives preprocessing -- a `#pragma`, a `_Pragma` operator's,
+a line marker -- is never C++L. Written inside a C++L construct, it stays in the
+program where it stands, and applies to what follows it as it would in the
+program erased by hand (`SPEC.md` `ERASE-017`). Between a function's contract
+clauses that is between its declarator and its body, where C++ admits no
+`#pragma`, so Clang refuses such a unit as it refuses the program erased by
+hand. A directive inside an expression or a statement C++L states is refused.
+`cppl-format` does not yet keep a directive written inside a C++L declaration
+when it lays the declaration out again.
+
 ---
 
 # 14. Contextual C++L vocabulary

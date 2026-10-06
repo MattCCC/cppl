@@ -109,6 +109,17 @@ case_run refuse law_answers_explicit_instantiation \
     "law_answers_explicit_instantiation.cpp:24:12: error [proof-failure]: verified function 'g' does not satisfy its contract" \
     "law_answers_explicit_instantiation.cpp:24:12: note: goal: forall u32. Eq<u32>(7:u32, 1:u32)"
 
+# SPEC: ERASE-017
+# A directive inside an expression or a statement C++L states is refused at its
+# own line, and one kept between contract clauses stands where C++ admits none,
+# which Clang refuses as it refuses the program erased by hand.
+case_run refuse directive_inside_expression \
+    "directive_inside_expression.cpp:10:1: error [unsupported-semantics]: the directive '#pragma pack(push, 1)' stands inside an expression or a statement C++L states, where it cannot be kept" \
+    "directive_inside_expression.cpp:17:1: error [unsupported-semantics]: the directive '#pragma pack(push, 1)' stands inside an expression or a statement C++L states, where it cannot be kept" \
+    "directive_inside_expression.cpp:26:1: error [unsupported-semantics]: the directive '#pragma pack(push, 1)' stands inside an expression or a statement C++L states, where it cannot be kept"
+case_run refuse directive_between_contract_clauses \
+    "directive_between_contract_clauses.cpp:11:9: error [cpp-semantic]: expected function body after function declarator"
+
 # Every refused fixture, whichever stage refuses it.
 swept=0
 for fixture in "$FIXTURES"/*.cpp; do

@@ -4185,6 +4185,19 @@ A case split on a runtime path (CASE-017) erases the same way: all of it is
 removed, the claims in its arms included, and a `;` stands where its closing `}`
 was.
 
+[ERASE-017] A preprocessor directive that survives preprocessing -- a `#pragma`, one a
+`_Pragma` operator produced included, or a line marker -- is never part of the
+C++L construct it stands inside. Erasure keeps it where it stands, on its own
+line, so it applies to what follows it exactly as it would in the program
+erased by hand, and every line below it keeps its number. The program verified
+is subject to the same directives at the same points. A directive other than a
+line marker written inside an expression or a statement a C++L construct states
+-- within a clause's or a parameter list's parentheses, a refinement's
+predicate, a ghost declaration, a proof statement, a claim that a path cannot
+occur, a case split or a validation -- MUST be refused rather than kept in one
+of the two programs and lost in the other. Between the clauses of a
+declaration, and between the statements of a proof, one is kept.
+
 ---
 
 ## 36.1 Erasure must preserve runtime behavior

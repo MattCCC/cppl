@@ -12,6 +12,7 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <ranges>
 #include <set>
@@ -26,13 +27,72 @@ namespace {
 
 using detail::line_directive;
 
-void blank(std::string& buffer, const source::ByteSpan& span) {
+// The directive line of `stream` holding byte `offset`, if one does.
+const Directive* directive_at(const TokenStream& stream, std::size_t offset) {
+    const std::vector<Directive>& directives = stream.directives();
+    const auto found = std::ranges::upper_bound(directives, offset, {},
+                                                [](const Directive& directive) { return directive.span.offset; });
+    if (found == directives.begin()) {
+        return nullptr;
+    }
+    const Directive& candidate = *std::prev(found);
+    return offset < candidate.span.end() ? &candidate : nullptr;
+}
+
+// Blanks `span` of `buffer`, a text of `stream`, keeping every newline and every
+// preprocessor directive line within it byte for byte. Neither is C++L: a
+// newline removed would move every line below it, and a `#pragma` or a line
+// marker removed would change what Clang makes of everything after it (SPEC.md
+// ERASE-005). `buffer` holds the stream's text from byte `base` on.
+void blank(std::string& buffer, const source::ByteSpan& span, const TokenStream& stream, std::size_t base = 0) {
     const std::size_t end = std::min(span.end(), buffer.size());
     for (std::size_t offset = span.offset; offset < end; ++offset) {
-        if (buffer[offset] != '\n') {
-            buffer[offset] = ' ';
+        if (buffer[offset] == '\n') {
+            continue;
+        }
+        if (const Directive* directive = directive_at(stream, base + offset); directive != nullptr) {
+            offset = std::min(directive->span.end() - base, end) - 1;
+            continue;
+        }
+        buffer[offset] = ' ';
+    }
+}
+
+// `lowered`, the canonical C++ a runtime-bearing construct means, standing where
+// `span` was written: it occupies the span's first line, and every later line
+// of the span stays a line, holding nothing but the directive written on it if
+// it is a directive line (blank).
+std::string in_place_of(const TokenStream& stream, const source::ByteSpan& span, std::string_view lowered) {
+    std::string text(lowered);
+    const std::string_view written = stream.spelling(span);
+    for (std::size_t at = 0; at < written.size(); ++at) {
+        if (written[at] != '\n') {
+            continue;
+        }
+        text += '\n';
+        const std::size_t line = span.offset + at + 1;
+        if (const Directive* directive = directive_at(stream, line);
+            directive != nullptr && directive->span.offset == line && directive->span.end() <= span.end()) {
+            text += stream.spelling(directive->span);
         }
     }
+    return text;
+}
+
+// The directives other than line markers written within `span`, each on a line
+// of its own, for an analysis text that replaces the span with generated C++:
+// what they do to the C++ after the span, they do there too. The line markers
+// need no copy, since the generated text states its own lines.
+std::string directives_within(const TokenStream& stream, const source::ByteSpan& span) {
+    std::string text;
+    for (const Directive& directive : stream.directives()) {
+        if (directive.span.offset >= span.offset && directive.span.end() <= span.end() && !directive.line_marker) {
+            text += "\n";
+            text += stream.spelling(directive.span);
+            text += "\n";
+        }
+    }
+    return text;
 }
 
 // Generated analysis text, and every run of it copied byte for byte from the
@@ -416,6 +476,115 @@ FormalScopes formal_scopes(const TokenStream& stream, const Syntax& syntax, cons
     return scopes;
 }
 
+// A directive other than a line marker that C++L cannot keep where it was
+// written, refused by name (SPEC.md ERASE-017).
+//
+// Erasure keeps every directive in the program exactly where it stands. The
+// analysis text keeps one where it stands too, or, where it replaces a C++L
+// declaration with generated C++, states it after that C++, in the scope the
+// declaration stood in. Neither works for a directive inside an expression or
+// a statement C++L states -- a clause's parentheses, a parameter list, a ghost
+// declaration, a proof statement, a claim, a case split or a validation --
+// since the analysis text copies those into generated C++, where a directive
+// would land in the middle of an expression. Between the clauses of a
+// declaration, and between the statements of a proof, it is kept.
+void refuse_misplaced_directives(const TokenStream& stream, const Syntax& syntax,
+                                 std::vector<diagnostics::Diagnostic>& diagnostics) {
+    struct Region {
+        source::ByteSpan span;
+        bool whole = false; // refused anywhere inside, not only within parentheses
+    };
+    std::vector<Region> regions;
+    regions.reserve(syntax.laws.size() + syntax.proofs.size() + syntax.refinement_types.size() +
+                    syntax.verified_functions.size() + syntax.loops.size() + syntax.ghost_declarations.size() +
+                    syntax.path_contradictions.size() + syntax.path_splits.size() + syntax.validations.size());
+    for (const LawDeclaration& law : syntax.laws) {
+        regions.push_back(Region{law.range.span, false});
+    }
+    for (const ProofDeclaration& proof : syntax.proofs) {
+        regions.push_back(Region{proof.range.span, false});
+        for (const ProofStatement& statement : proof.statements) {
+            regions.push_back(Region{statement.span, true});
+        }
+    }
+    for (const RefinementType& refinement : syntax.refinement_types) {
+        regions.push_back(Region{refinement.range.span, false});
+    }
+    for (const VerifiedFunction& verified : syntax.verified_functions) {
+        regions.push_back(Region{verified.clause_region, false});
+    }
+    for (const LoopSpecification& loop : syntax.loops) {
+        regions.push_back(Region{loop.clause_region, false});
+    }
+    for (const GhostDeclaration& ghost : syntax.ghost_declarations) {
+        regions.push_back(Region{ghost.erased, true});
+    }
+    for (const PathContradiction& claim : syntax.path_contradictions) {
+        regions.push_back(Region{claim.span, true});
+    }
+    for (const PathCaseSplit& split : syntax.path_splits) {
+        regions.push_back(Region{split.span, true});
+    }
+    for (const ValidationExpression& validation : syntax.validations) {
+        regions.push_back(Region{validation.callee, true});
+    }
+
+    const std::vector<Token>& tokens = stream.tokens();
+    // How many parentheses and brackets opened since `from` are still open at
+    // `to`.
+    const auto depth = [&tokens](std::size_t from, std::size_t to) {
+        int open = 0;
+        auto token = std::ranges::lower_bound(tokens, from, {}, [](const Token& each) { return each.span.offset; });
+        for (; token != tokens.end() && token->kind != TokenKind::EndOfFile && token->span.offset < to; ++token) {
+            if (token->is_punctuator("(") || token->is_punctuator("[")) {
+                ++open;
+            } else if (token->is_punctuator(")") || token->is_punctuator("]")) {
+                --open;
+            }
+        }
+        return open;
+    };
+
+    for (const Directive& directive : stream.directives()) {
+        if (directive.line_marker) {
+            continue;
+        }
+        const bool misplaced = std::ranges::any_of(regions, [&](const Region& region) {
+            if (directive.span.offset < region.span.offset || directive.span.end() > region.span.end()) {
+                return false;
+            }
+            return region.whole || depth(region.span.offset, directive.span.offset) > 0;
+        });
+        if (!misplaced) {
+            continue;
+        }
+        // The directive takes a line of its own, so the token after it says
+        // which line that is.
+        source::SourceLocation location;
+        const auto next = std::ranges::lower_bound(tokens, directive.span.end(), {},
+                                                   [](const Token& each) { return each.span.offset; });
+        if (next != tokens.end()) {
+            location = stream.location_of(*next);
+            const std::string_view between =
+                stream.text().substr(directive.span.offset, next->span.offset - directive.span.offset);
+            const auto lines = static_cast<std::uint32_t>(std::ranges::count(between, '\n'));
+            location.line = location.line > lines ? location.line - lines : location.line;
+            location.column = 1;
+        }
+        diagnostics::Diagnostic diagnostic;
+        diagnostic.severity = diagnostics::Severity::Error;
+        diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+        diagnostic.location = location;
+        diagnostic.message = "the directive '" + std::string(stream.spelling(directive.span)) +
+                             "' stands inside an expression or a statement C++L states, where it cannot be kept";
+        diagnostic.notes.push_back(diagnostics::Note{
+            "a directive is kept where it stands between the clauses of a declaration and between the statements of "
+            "a proof; move it there, or before or after the construct",
+            location});
+        diagnostics.push_back(std::move(diagnostic));
+    }
+}
+
 } // namespace
 
 std::string canonical_lowering(const TokenStream& stream, const RefinementType& refinement) {
@@ -434,34 +603,19 @@ std::string canonical_lowering(const TokenStream& stream, const RefinementType& 
                 spelled_tokens(stream, refinement.predicate) + "); }";
     }
     // Every line of the declaration stays a line of the program, so nothing
-    // below it moves.
-    for (const char character : stream.spelling(refinement.range.span)) {
-        if (character == '\n') {
-            text += '\n';
-        }
-    }
-    return text;
+    // below it moves, and every directive written in it stays where it was.
+    return in_place_of(stream, refinement.range.span, text);
 }
 
 std::string lowered_validation(const TokenStream& stream, const Syntax& syntax,
                                const ValidationExpression& validation) {
-    std::string text = syntax.refinement_types[validation.refinement_index].validator;
     // A `validate<R>` written across lines keeps every line.
-    for (const char character : stream.spelling(validation.callee)) {
-        if (character == '\n') {
-            text += '\n';
-        }
-    }
-    return text;
+    return in_place_of(stream, validation.callee, syntax.refinement_types[validation.refinement_index].validator);
 }
 
 std::string erased_split(const TokenStream& stream, const PathCaseSplit& split) {
     std::string text(stream.spelling(split.span));
-    for (char& character : text) {
-        if (character != '\n') {
-            character = ' ';
-        }
-    }
+    blank(text, source::ByteSpan{0, text.size()}, stream, split.span.offset);
     if (!text.empty()) {
         text.back() = ';';
     }
@@ -496,14 +650,14 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     edits.reserve(syntax.laws.size() + syntax.proofs.size() + syntax.pure_markers.size());
 
     for (const PureMarker& marker : syntax.pure_markers) {
-        blank(projection.runtime, marker.keyword);
+        blank(projection.runtime, marker.keyword, stream);
         edits.push_back(Edit{marker.keyword, std::string(marker.keyword.length, ' ')});
     }
 
     // `unsafe` is a marker: the word leaves both texts and the declaration or
     // the block it marks stays ordinary C++ (SPEC.md ERASE-003, Annex M).
     for (const UnsafeFunction& function : syntax.unsafe_functions) {
-        blank(projection.runtime, function.keyword);
+        blank(projection.runtime, function.keyword, stream);
         edits.push_back(Edit{function.keyword, std::string(function.keyword.length, ' ')});
     }
     // A block's region starts at a declaration only Clang sees, just inside its
@@ -511,7 +665,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // provenance is where the author wrote `unsafe`.
     for (std::size_t index = 0; index < syntax.unsafe_blocks.size(); ++index) {
         const UnsafeBlock& block = syntax.unsafe_blocks[index];
-        blank(projection.runtime, block.keyword);
+        blank(projection.runtime, block.keyword, stream);
         edits.push_back(Edit{block.keyword, std::string(block.keyword.length, ' ')});
         if (block.nested) {
             continue;
@@ -540,7 +694,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // declaration after it is ghost state.
     for (std::size_t index = 0; index < syntax.ghost_declarations.size(); ++index) {
         const GhostDeclaration& ghost = syntax.ghost_declarations[index];
-        blank(projection.runtime, ghost.erased);
+        blank(projection.runtime, ghost.erased, stream);
         const std::string name = options.generated_prefix + "ghost_" + std::to_string(index) +
                                  (options.unit_key.empty() ? "" : "_" + options.unit_key);
         const std::size_t column = ghost.location.column > 1 ? ghost.location.column - 1 : 0;
@@ -714,6 +868,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             replacement += formula.expression;
         }
         replacement += "); }\n";
+        replacement += directives_within(stream, refinement.range.span);
         replacement += line_directive(refinement.end_line, refinement.keyword_location.file);
 
         // A validation runs the predicate as written, so it must be an ordinary
@@ -741,13 +896,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     for (const ValidationExpression& validation : syntax.validations) {
         const std::string suffix =
             std::to_string(validation.refinement_index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
-        std::string probe = options.generated_prefix + "refinement_" + suffix;
-        for (const char character : stream.spelling(validation.callee)) {
-            if (character == '\n') {
-                probe += '\n';
-            }
-        }
-        edits.push_back(Edit{validation.callee, std::move(probe)});
+        const std::string probe = options.generated_prefix + "refinement_" + suffix;
+        edits.push_back(Edit{validation.callee, in_place_of(stream, validation.callee, probe)});
         projection.runtime_lowerings.push_back(
             RuntimeLowering{validation.callee, lowered_validation(stream, syntax, validation)});
     }
@@ -755,19 +905,23 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // Every Law and proof is projected into the formal namespace of the
     // namespace it is written in, and nothing else is (formal_scopes).
     const FormalScopes formal = formal_scopes(stream, syntax, options);
-    const auto in_formal_scope = [](const std::string& opening, const Generated& declarations, std::uint32_t end_line,
-                                    std::string_view file) {
+    // A directive written inside the declaration follows the namespace, in the
+    // namespace the declaration stands in, as it does in the program.
+    const auto in_formal_scope = [&stream](const std::string& opening, const Generated& declarations,
+                                           const source::ByteSpan& span, std::uint32_t end_line,
+                                           std::string_view file) {
         Generated scoped;
         scoped += opening;
         scoped += declarations;
         scoped += "}\n";
+        scoped += directives_within(stream, span);
         scoped += line_directive(end_line, file);
         return scoped;
     };
 
     for (std::size_t index = 0; index < syntax.laws.size(); ++index) {
         const LawDeclaration& law = syntax.laws[index];
-        blank(projection.runtime, law.range.span);
+        blank(projection.runtime, law.range.span, stream);
 
         const Clause* proposition = law.proposition();
         if (proposition == nullptr) {
@@ -792,7 +946,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
 
         projected.analysis_offset += formal.laws[index].size();
         edits.push_back(generated_edit(
-            law.range.span, in_formal_scope(formal.laws[index], replacement, law.end_line, law.keyword_location.file),
+            law.range.span,
+            in_formal_scope(formal.laws[index], replacement, law.range.span, law.end_line, law.keyword_location.file),
             projection.specification_functions.size()));
         projection.specification_functions.push_back(std::move(projected));
     }
@@ -816,7 +971,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
 
     for (std::size_t index = 0; index < syntax.proofs.size(); ++index) {
         const ProofDeclaration& proof = syntax.proofs[index];
-        blank(projection.runtime, proof.range.span);
+        blank(projection.runtime, proof.range.span, stream);
 
         const std::string suffix = std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
 
@@ -939,8 +1094,9 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         };
         emit_steps(emit_steps, proof.statements, proof_parameters);
 
-        edits.push_back(generated_edit(proof.range.span, in_formal_scope(formal.proofs[index], replacement,
-                                                                         proof.end_line, proof.keyword_location.file)));
+        edits.push_back(
+            generated_edit(proof.range.span, in_formal_scope(formal.proofs[index], replacement, proof.range.span,
+                                                             proof.end_line, proof.keyword_location.file)));
         projection.proof_functions.push_back(std::move(projected));
     }
 
@@ -951,8 +1107,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // of the declared return type.
     for (std::size_t index = 0; index < syntax.verified_functions.size(); ++index) {
         const VerifiedFunction& verified = syntax.verified_functions[index];
-        blank(projection.runtime, verified.keyword);
-        blank(projection.runtime, verified.clause_region);
+        blank(projection.runtime, verified.keyword, stream);
+        blank(projection.runtime, verified.clause_region, stream);
         edits.push_back(Edit{verified.keyword, std::string(verified.keyword.length, ' ')});
         edits.push_back(Edit{verified.clause_region,
                              projection.runtime.substr(verified.clause_region.offset, verified.clause_region.length)});
@@ -1138,7 +1294,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // and the text after the brace resumes at its own line and column.
     for (std::size_t index = 0; index < syntax.loops.size(); ++index) {
         const LoopSpecification& loop = syntax.loops[index];
-        blank(projection.runtime, loop.clause_region);
+        blank(projection.runtime, loop.clause_region, stream);
         edits.push_back(
             Edit{loop.clause_region, projection.runtime.substr(loop.clause_region.offset, loop.clause_region.length)});
 
@@ -1249,8 +1405,9 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             projection.path_contradictions.push_back(std::move(marker));
             continue;
         }
-        blank(projection.runtime, claim.erased);
+        blank(projection.runtime, claim.erased, stream);
         Generated replacement = claim_block(marker.name, claim.statement);
+        replacement += directives_within(stream, claim.span);
         replacement += line_directive(claim.end_line, claim.statement.location.file);
         replacement += std::string(claim.end_column - 1, ' ');
         edits.push_back(generated_edit(claim.span, std::move(replacement)));
@@ -1398,6 +1555,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                    options.generated_prefix + "split_" + std::to_string(index) +
                        (options.unit_key.empty() ? "" : "_" + options.unit_key),
                    {});
+        replacement += directives_within(stream, split.span);
         replacement += line_directive(split.end_line, file);
         replacement += std::string(split.end_column - 1, ' ');
         edits.push_back(generated_edit(split.span, std::move(replacement)));
@@ -1501,6 +1659,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     }
     append_original(text.size());
 
+    refuse_misplaced_directives(stream, syntax, projection.diagnostics);
     return projection;
 }
 

@@ -113,7 +113,8 @@ class Lexer {
                 std::move(files_),
                 std::move(system_files_),
                 std::move(include_sites_),
-                std::move(comments_)};
+                std::move(comments_),
+                std::move(directives_)};
     }
 
   private:
@@ -230,6 +231,7 @@ class Lexer {
         // A directive carrying a line number is a position marker; anything
         // else that survived preprocessing (a #pragma) only costs a line.
         const bool is_marker = has_line;
+        directives_.push_back(Directive{source::ByteSpan{offset_, cursor - offset_}, is_marker});
         offset_ = cursor;
         if (offset_ < text_.size()) {
             ++offset_; // the newline
@@ -386,6 +388,7 @@ class Lexer {
     std::vector<bool> system_files_;
     std::vector<std::optional<IncludeSite>> include_sites_;
     std::vector<source::ByteSpan> comments_;
+    std::vector<Directive> directives_;
     std::size_t offset_ = 0;
     std::size_t line_start_ = 0;
     std::uint32_t presumed_line_ = 1;

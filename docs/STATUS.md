@@ -1909,6 +1909,15 @@ that declaration, and nothing else changed, with line numbering unchanged
 the text checked. Equivalence is therefore established structurally for the
 constructs implemented, not proven in general.
 
+A preprocessor directive inside a C++L construct -- a `#pragma`, a `_Pragma`
+operator's, a line marker after a long comment -- stays in the runtime program
+where it stands, the validator refuses a runtime program that lost one, and the
+analysed program is subject to it at the same point
+(`tests/e2e/erasure_directives.sh`, `SPEC.md` `ERASE-017`). One inside an
+expression or a statement C++L states is refused. `cppl-format` does not yet
+keep a directive written inside a C++L declaration when it lays the declaration
+out again, so the fixtures that hold one are excluded from the format check.
+
 The analysed text declares no Law where ordinary C++ can find it: each Law and
 proof is projected into a formal namespace with a reserved name, which only
 Laws and proofs look into (`SPEC.md` `LAW-008`). A Law that would otherwise be
