@@ -45,6 +45,7 @@ add_library(cppl_clang STATIC
     src/switches.cpp
     src/types.cpp
     src/unsafe.cpp
+    src/value_initialization.cpp
     src/write_scan.cpp
     src/writes.cpp)
 

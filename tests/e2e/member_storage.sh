@@ -6,7 +6,8 @@
 # (`fixtures/member_storage.cpp`): a member array of the implicit object,
 # std::array or built in, subscripted at a term; an object a reference parameter
 # designates, written member by member and through member calls that may write
-# it; and a std::array handed by reference. In every supported standard each
+# it; a std::array handed by reference; and aggregate initializers that leave
+# members out, which C++ value-initializes. In every supported standard each
 # contract is proven with nothing unresolved and no assumption, the program
 # prints what was proven, and the erased program, compiled by Clang alone,
 # prints the same. Refusals are in negative/member_storage.sh.
@@ -18,7 +19,7 @@ CLANG="$4"
 mkdir -p "$WORK"
 run=$(mktemp -d "$WORK/member-storage.XXXXXX")
 
-expected=$'9 9 2 11 0\n5 2\n2 3 0\n2 0'
+expected=$'9 9 2 11 0\n5 2\n2 3 0\n2 0\n0 4 0 3'
 
 for standard in c++17 c++20 c++23; do
     "$CPPL" "-std=$standard" "$FIXTURES/member_storage.cpp" -o "$run/program" \
@@ -28,7 +29,7 @@ for standard in c++17 c++20 c++23; do
         echo "verifying member_storage warned ($standard)" >&2
         exit 1
     fi
-    for line in 'Function contracts proven: +14' 'Unresolved obligations: +0' 'Trusted external axioms: +0' \
+    for line in 'Function contracts proven: +19' 'Unresolved obligations: +0' 'Trusted external axioms: +0' \
         'Trust-dependent claims: +0' 'Unsafe-dependent claims: +0'; do
         if ! grep -Eq "^$line\$" "$run/report"; then
             echo "member_storage ($standard) does not report '$line'" >&2
@@ -50,7 +51,7 @@ for standard in c++17 c++20 c++23; do
         exit 1
     fi
     for written in 'items[size] = value;' 'return items[size - 1u];' 'slots[head] = value;' 's.pop();' \
-        'c.hits = 0u;' 'counts[bucket] = counts[bucket] + 1u;'; do
+        'c.hits = 0u;' 'counts[bucket] = counts[bucket] + 1u;' 'std::array<unsigned, 10> counts{};' 'unsigned firsts[4] = {4u};'; do
         grep -qF "$written" "$run/runtime.cpp" || {
             echo "'$written' is not in the runtime program ($standard)" >&2
             exit 1

@@ -2,11 +2,13 @@
 // The storage a realistic class holds and a caller hands it: a member array of
 // the implicit object, std::array or built in, subscripted at a term against
 // the extent its type states; an object a reference parameter designates,
-// written member by member and through a member call that may write it; and a
-// std::array handed by reference.
+// written member by member and through a member call that may write it; a
+// std::array handed by reference; and an aggregate initializer that leaves
+// members out, which C++ value-initializes.
 #include <array>
 #include <cstddef>
 #include <cstdio>
+#include <vector>
 
 struct Stack {
     std::array<int, 16> items;
@@ -139,6 +141,56 @@ verified void clear_first(std::array<unsigned, 10>& counts)
     counts[0] = 0u;
 }
 
+// Members an aggregate initializer leaves out are value-initialized: a scalar
+// is zero, and an aggregate is the same rule member by member.
+verified unsigned zero_counts()
+    ensures (result == 0u)
+{
+    std::array<unsigned, 10> counts{};
+    return counts[0] + counts[9];
+}
+
+verified unsigned first_given()
+    ensures (result == 4u)
+{
+    unsigned firsts[4] = {4u};
+    return firsts[0] + firsts[1] + firsts[3];
+}
+
+verified std::size_t fresh_size()
+    ensures (result == 0u)
+{
+    Stack fresh{};
+    return fresh.size;
+}
+
+type Bucket = unsigned where (self < 10u);
+
+verified Bucket bucket_of(unsigned value)
+    ensures (result < 10u)
+{
+    return value % 10u;
+}
+
+// A histogram over buckets that start at zero, each subscripted by a value
+// whose refinement keeps it within the extent.
+verified unsigned tally(const std::vector<unsigned>& values, unsigned wanted)
+    expects (wanted < 10u)
+    ensures (true)
+{
+    std::array<unsigned, 10> counts{};
+    for (std::size_t i = 0; i < values.size(); ++i)
+        invariant (i <= values.size())
+        decreases (values.size() - i)
+    {
+        const Bucket b = bucket_of(values[i]);
+        if (counts[b] < 1000u) {
+            counts[b] = counts[b] + 1u;
+        }
+    }
+    return counts[wanted];
+}
+
 int main() {
     Stack s{{}, 0u};
     s.push(4);
@@ -166,5 +218,8 @@ int main() {
     counts[0] = 8u;
     clear_first(counts);
     std::printf("%u %u\n", counts[3], counts[0]);
+
+    const std::vector<unsigned> values{13u, 23u, 4u, 3u};
+    std::printf("%u %u %zu %u\n", zero_counts(), first_given(), fresh_size(), tally(values, 3u));
     return 0;
 }

@@ -369,4 +369,162 @@ verified void clear_first(std::array<unsigned, 10>& counts, unsigned at)
 int main() { return 0; }
 CPP
 
+# --- members an aggregate initializer leaves out -----------------------------
+
+# A member left out is zero, never another value.
+refused left_out_claimed_nonzero "$false_claim" <<'CPP'
+#include <array>
+verified unsigned zero_counts()
+    ensures (result == 1u)
+{
+    std::array<unsigned, 10> counts{};
+    return counts[3];
+}
+int main() { return 0; }
+CPP
+
+# A default member initializer, not zero, initializes a member left out.
+refused left_out_default_member_initializer "default member initializer" <<'CPP'
+struct Limits {
+    unsigned low;
+    unsigned high = 5u;
+};
+verified unsigned high_of()
+    ensures (result == 0u)
+{
+    Limits l{1u};
+    return l.high;
+}
+int main() { return 0; }
+CPP
+
+# So does one in a nested member left out.
+refused nested_default_member_initializer "default member initializer" <<'CPP'
+struct Inner {
+    unsigned v = 7u;
+};
+struct Outer {
+    unsigned a;
+    Inner inner;
+};
+verified unsigned inner_of()
+    ensures (result == 0u)
+{
+    Outer o{1u};
+    return o.inner.v;
+}
+int main() { return 0; }
+CPP
+
+# A class with a constructor of its own runs it where it is value-initialized.
+refused left_out_constructor "declares a constructor" <<'CPP'
+struct Cell {
+    Cell() : v(7u) {}
+    unsigned v;
+};
+struct Row {
+    unsigned a;
+    Cell cell;
+};
+verified unsigned cell_of()
+    ensures (result == 0u)
+{
+    Row r{1u};
+    return r.cell.v;
+}
+int main() { return 0; }
+CPP
+
+# A refined member left out owes its refinement of zero.
+refused left_out_refined "not shown to satisfy refinement type 'Positive'" <<'CPP'
+type Positive = unsigned where (self > 0u);
+struct Account {
+    unsigned id;
+    Positive balance;
+};
+verified unsigned balance_of()
+    ensures (true)
+{
+    Account a{1u};
+    return a.balance;
+}
+int main() { return 0; }
+CPP
+
+# A designated element leaves out members that are not the trailing ones.
+refused left_out_designated "designated initializer" <<'CPP'
+struct Pair {
+    unsigned a;
+    unsigned b;
+};
+verified unsigned first_of()
+    ensures (result == 2u)
+{
+    Pair p{.b = 2u};
+    return p.a;
+}
+int main() { return 0; }
+CPP
+
+# A scalar member given a braced list beside members left out.
+refused left_out_scalar_braces "gives a scalar member a braced list" <<'CPP'
+verified unsigned first_of()
+    ensures (result == 1u)
+{
+    unsigned a[3] = {{1u}};
+    return a[0];
+}
+int main() { return 0; }
+CPP
+
+# An initializer that leaves out a nested member's braces is not matched to the
+# members by position.
+refused elided_braces "leaves out a nested member's braces|not initialized by an aggregate initializer" <<'CPP'
+struct Pair {
+    unsigned a;
+    unsigned b;
+};
+struct Wrapped {
+    Pair pair;
+    unsigned c;
+};
+verified unsigned c_of()
+    ensures (result == 0u)
+{
+    Wrapped w{1u, 2u, 3u};
+    return w.c;
+}
+int main() { return 0; }
+CPP
+
+refused elided_braces_partial "not initialized by an aggregate initializer" <<'CPP'
+struct Pair {
+    unsigned a;
+    unsigned b;
+};
+struct Wrapped {
+    Pair pair;
+    unsigned c;
+};
+verified unsigned c_of()
+    ensures (result == 0u)
+{
+    Wrapped w{1u};
+    return w.c;
+}
+int main() { return 0; }
+CPP
+
+# A local with no initializer holds indeterminate values, never zeros.
+refused default_initialized "not initialized by an aggregate initializer" <<'CPP'
+#include <array>
+verified unsigned first_of()
+    ensures (result == 0u)
+{
+    std::array<unsigned, 3> a;
+    return a[0];
+}
+int main() { return 0; }
+CPP
+
 echo 'every false twin of the member storage fixture is refused, each with its reason'

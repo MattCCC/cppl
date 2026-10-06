@@ -437,12 +437,20 @@ struct S { unsigned x; };
 verified unsigned f() ensures (result == 5u) { S s{3u}; s.x += 2u; return s.x; }
 CPP
 
-# Construction this body cannot see the effect of on every member is refused,
-# rather than leaving a member tracked at an unconstrained value.
-refuse partial_aggregate_initialization 'partial aggregate initialization is not modeled' <<'CPP'
+# A member an aggregate initializer leaves out is value-initialized, as C++
+# does: it holds zero, never an unconstrained value, and never another value.
+accept partial_aggregate_initialization <<'CPP'
 struct S { int x; int y; };
 verified int f() ensures (result == 0) { S s{1}; return s.y; }
 CPP
+
+refuse partial_aggregate_initialization_is_zero 'does not satisfy its contract' <<'CPP'
+struct S { int x; int y; };
+verified int f() ensures (result == 1) { S s{1}; return s.y; }
+CPP
+
+# Construction this body cannot see the effect of on every member is refused,
+# rather than leaving a member tracked at an unconstrained value.
 
 refuse aggregate_without_an_initializer 'cannot state what each member holds' <<'CPP'
 struct S { int x; };
@@ -544,12 +552,19 @@ struct Outer { Inner i; };
 verified int f(int x) ensures (result > 0) { Outer o{{1}}; o.i.v = x; return o.i.v; }
 CPP
 
-# Construction must still be fully visible at every level: a nested member with
-# fewer values than members is partial initialization, not a tracked object.
-refuse nested_partial_initialization 'partial aggregate initialization' <<'CPP'
+# Construction is visible at every level: a nested member with fewer values
+# than members has the rest value-initialized, and a member it leaves out holds
+# zero.
+accept nested_partial_initialization <<'CPP'
 struct Inner { int v; int w; };
 struct Outer { Inner i; };
-verified int f() ensures (result == 1) { Outer o{{1}}; return o.i.v; }
+verified int f() ensures (result == 1) { Outer o{{1}}; return o.i.v + o.i.w; }
+CPP
+
+refuse nested_partial_initialization_is_zero 'does not satisfy its contract' <<'CPP'
+struct Inner { int v; int w; };
+struct Outer { Inner i; };
+verified int f() ensures (result == 2) { Outer o{{1}}; return o.i.v + o.i.w; }
 CPP
 
 # --- Gaps: refused today, and the reason must stay visible -------------------

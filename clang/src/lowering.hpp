@@ -346,6 +346,9 @@ struct BodyLowering {
         Type type;
         CXCursor initializer;
         std::string spelling;
+        // Left out of its aggregate initializer, so C++ value-initializes it:
+        // its first value is the zero of its type (C++ [dcl.init.aggr]).
+        bool value_initialized = false;
     };
 
     // The lowering's own state: the capabilities it may rely on, the one write, a
@@ -506,6 +509,13 @@ struct BodyLowering {
     std::optional<std::string> collect_type_leaves(const Type& type, const std::string& written,
                                                    const std::vector<PlaceStep>& prefix,
                                                    std::vector<AggregateLeaf>& leaves);
+    // The members an aggregate initializer leaves out, which C++ value-initializes
+    // (value_initialization.cpp), and the first value of a leaf.
+    std::optional<std::string> value_initialized(CXCursor list, const Type& type, const std::string& written,
+                                                 const std::vector<PlaceStep>& prefix,
+                                                 std::vector<AggregateLeaf>& leaves);
+    std::optional<Expr> initial_value(const AggregateLeaf& leaf, Locals& state, std::vector<std::size_t>& invalidated,
+                                      CXCursor at);
     std::optional<Expr> lower_aggregate(CXCursor declaration, const std::string& name, const Type& type,
                                         const std::vector<CXCursor>& declared, std::size_t index,
                                         const Continuation& next, const Locals& locals, unsigned depth);

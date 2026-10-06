@@ -77,12 +77,12 @@ std::optional<std::string> BodyLowering::collect_leaves(const Type& type, CXCurs
                "' is not initialized by an aggregate initializer, so this body cannot state what each member holds";
     }
     const std::vector<CXCursor> elements = children_of(list);
-    if (elements.size() != components.size()) {
+    if (elements.size() > components.size()) {
         return "'" + written + "' of type '" + type.spelling + "' is initialized with " +
                std::to_string(elements.size()) + " values for " + std::to_string(components.size()) +
-               " members; partial aggregate initialization is not modeled";
+               " members; an initializer that leaves out a nested member's braces is not modeled";
     }
-    for (std::size_t member = 0; member < components.size(); ++member) {
+    for (std::size_t member = 0; member < elements.size(); ++member) {
         if (leaves.size() >= kMaxTrackedLeaves) {
             return "'" + written + "' has more tracked members than the proof resource limit allows";
         }
@@ -103,7 +103,7 @@ std::optional<std::string> BodyLowering::collect_leaves(const Type& type, CXCurs
         }
         leaves.push_back(AggregateLeaf{std::move(path), member_type, elements[member], member_written});
     }
-    return std::nullopt;
+    return value_initialized(list, type, written, prefix, leaves);
 }
 
 // The scalar places a value of `type` occupies, in declaration order, with
@@ -208,7 +208,7 @@ std::optional<Expr> BodyLowering::lower_aggregate(CXCursor declaration, const st
     std::vector<Expr> values;
     for (const AggregateLeaf& leaf : leaves) {
         std::vector<std::size_t> invalidated;
-        auto evaluated = evaluate(leaf.initializer, declaring, invalidated);
+        auto evaluated = initial_value(leaf, declaring, invalidated, declaration);
         if (!evaluated)
             return std::nullopt;
         if (!invalidated.empty())

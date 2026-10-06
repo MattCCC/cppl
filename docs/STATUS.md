@@ -1167,8 +1167,15 @@ a path of field and element steps. `o.i.v` and `h.items[0]` are places exactly
 as `o.a` is, so a write reaches the leaf written and leaves a sibling at depth
 alone, and a refined leaf owes its predicate where the value enters it. Nesting
 is bounded at eight levels and 256 leaves per declaration, and construction must
-stay fully visible at every level: partial initialization, default
-initialization and a union member are each refused by name.
+stay fully visible at every level: default initialization and a union member are
+each refused by name. An aggregate initializer that leaves trailing members out
+(`std::array<unsigned, 10> counts{};`, `unsigned a[4] = {4u};`, `Stack s{};`)
+value-initializes them, as C++ does: each scalar left out starts at zero, owing
+its member's refinement of it, and an aggregate left out is the same rule member
+by member. Where C++ does something else it is refused by name: a member with a
+default member initializer, a class declaring a constructor, a bit-field, a
+designated element and a scalar given a braced list beside members left out
+(`TRUST.md` TCB-OBJ-010, `e2e_member_storage`, `negative_member_storage`).
 
 A member of a by-value aggregate *parameter* the body writes is tracked as a
 place, starting from the value the parameter arrived with; a member it never
