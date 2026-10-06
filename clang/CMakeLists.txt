@@ -29,7 +29,8 @@ add_library(cppl_clang STATIC
     src/signature.cpp
     src/statements.cpp
     src/types.cpp
-    src/unsafe.cpp)
+    src/unsafe.cpp
+    src/write_scan.cpp)
 
 target_include_directories(cppl_clang PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
