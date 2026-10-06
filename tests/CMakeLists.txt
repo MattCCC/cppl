@@ -180,7 +180,7 @@ target_link_libraries(unit_draft_authority_test PRIVATE cppl_frontend cppl_elabo
 cppl_add_unit_test(unit_default_arguments_test unit/default_arguments_test.cpp)
 target_link_libraries(unit_default_arguments_test PRIVATE cppl_frontend cppl_elaboration cppl_diagnostics)
 
-cppl_add_unit_test(unit_projection_test unit/projection_test.cpp)
+cppl_add_unit_test(unit_projection_test unit/projection_test.cpp unit/projection_test_erasure.cpp)
 target_link_libraries(unit_projection_test PRIVATE cppl_frontend cppl_erasure cppl_diagnostics)
 target_compile_definitions(unit_projection_test PRIVATE
     CPPL_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")

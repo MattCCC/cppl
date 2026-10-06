@@ -161,7 +161,7 @@ tests:
     - tests/unit/lsp_decomposition_view_test.cpp
     - tests/unit/lsp_semantic_tokens_test.cpp
     - tests/unit/recognizer_test_claims.cpp
-    - tests/unit/projection_test.cpp
+    - tests/unit/projection_test_erasure.cpp
   end_to_end:
     - tests/e2e/omitted_case.sh
     - tests/e2e/contradiction.sh

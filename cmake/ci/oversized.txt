@@ -10,4 +10,3 @@
 #
 # <path> <line count when listed>
 clang/src/bridge.cpp 3644
-tests/unit/projection_test.cpp 1184
