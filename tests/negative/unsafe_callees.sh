@@ -198,6 +198,48 @@ verified unsigned claims_five() ensures (result == 5u) {
 }
 CPP
 
+# What such a call writes is followed where the call is a statement, an
+# initializer or an assignment of its own. Inside a larger expression or a
+# condition it would go unseen, and the argument would read as kept, so the call
+# is refused there.
+nested="has unsafe code that may write what it is handed, so a call to it requires a statement, initializer or assignment of its own"
+refuse call_inside_an_expression <<CPP "'peek' $nested"
+$peek
+verified unsigned claims_five() ensures (result == 5u) {
+    unsigned a = 5u;
+    unsigned seen = peek(a) + 1u;
+    return a + 0u * seen;
+}
+CPP
+
+refuse call_in_a_condition <<CPP "'peek' $nested"
+$peek
+verified unsigned claims_five() ensures (result == 5u) {
+    unsigned a = 5u;
+    if (peek(a) == 9u) {
+        return a;
+    }
+    return a;
+}
+CPP
+
+refuse member_call_inside_an_expression <<CPP "'Counter::read' $nested"
+struct Counter {
+    unsigned value;
+    verified unsigned read() const ensures (true) {
+        unsafe {
+            const_cast<Counter*>(this)->value = 9u;
+        }
+        return 0u;
+    }
+};
+verified unsigned claims_five() ensures (result == 5u) {
+    Counter c{5u};
+    unsigned ignored = c.read() + 1u;
+    return c.value + 0u * ignored;
+}
+CPP
+
 # What the caller learns from the callee's contract at the post-state holds.
 accept result_from_the_post_state "9" <<CPP
 #include <cstdio>

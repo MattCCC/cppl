@@ -1582,6 +1582,8 @@ std::expected<Receiver, std::string> receiver_of(CXCursor method, const std::vec
     return receiver;
 }
 
+class UnsafeEffects;
+
 // What a body or a clause is lowered against: the parameters Clang resolved for
 // its declaration and, for a non-static member function, its implicit object.
 // The verified callable takes the implicit object's leaves first and the
@@ -1599,6 +1601,11 @@ struct Signature {
     // canonicalizes away (SPEC.md FORALL-001). A reference, so no signature can
     // be made without them.
     const std::vector<Selection::Refinement>& refinements;
+    // Which callees may write through a `const` access path they are handed,
+    // through an unsafe block (TRUST.md TCB-UNSAFE-004). Set for a body that
+    // runs, where such a call is followed only as a statement of its own; a
+    // clause runs nothing.
+    UnsafeEffects* unsafe_effects = nullptr;
 
     [[nodiscard]] std::uint32_t leaves() const {
         return receiver.has_value() ? static_cast<std::uint32_t>(receiver->leaves.size()) : 0;
@@ -3104,11 +3111,18 @@ Expr lower_default_argument(CXCursor call, CXCursor callee, unsigned index, CXCu
         refused.type = convert_type(clang_getCursorType(argument));
         return refused;
     }
-    const Signature declaration_scope{{}, std::nullopt, signature.clause, signature.refinements};
+    const Signature declaration_scope{
+        {}, std::nullopt, signature.clause, signature.refinements, signature.unsafe_effects};
     Expr lowered = build_expression(*initializer, declaration_scope, Locals{}, depth + 1);
     attribute_to_default(lowered, default_owner(callee, index), 0);
     return lowered;
 }
+
+// Whether a call of `callee` may write, through unsafe code, storage it is handed
+// by a `const` access path: a reference or a pointer parameter, a view, or its
+// implicit object (TRUST.md TCB-UNSAFE-004). Defined beside `UnsafeEffects`,
+// which decides which callees hold such code.
+bool writes_unsafely(UnsafeEffects* effects, CXCursor callee);
 
 Expr build_expression(CXCursor cursor, const Signature& signature, const Locals& locals, unsigned depth,
                       bool sequenced_call) {
@@ -3618,6 +3632,17 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
                 !sequenced_call)
                 return unsupported_expression(
                     cursor, "a mutating call requires a sequenced statement, initializer or assignment");
+        }
+        // A callee whose unsafe code may write what it is handed writes, as far
+        // as this body can tell, every reference, pointer and view it is handed
+        // and its object (TRUST.md TCB-UNSAFE-004). That write is followed only
+        // where the call is a statement, an initializer or an assignment of its
+        // own; anywhere else it would go unseen.
+        if (!sequenced_call && writes_unsafely(signature.unsafe_effects, referenced)) {
+            return unsupported_expression(cursor, "'" + qualified_name_of(referenced) +
+                                                      "' has unsafe code that may write what it is handed, so a call "
+                                                      "to it requires a statement, initializer or assignment of its "
+                                                      "own (TRUST.md TCB-UNSAFE-004)");
         }
         Call call;
         call.callee_usr = take(clang_getCursorUSR(referenced));
@@ -4501,6 +4526,18 @@ class UnsafeEffects {
     std::unordered_set<std::string> imported_;
     std::unordered_map<std::string, bool> known_;
 };
+
+bool writes_unsafely(UnsafeEffects* effects, CXCursor callee) {
+    if (effects == nullptr) {
+        return false;
+    }
+    const bool member = clang_getCursorKind(callee) == CXCursor_CXXMethod && clang_CXXMethod_isStatic(callee) == 0;
+    const bool hands = member || std::ranges::any_of(parameters_of(callee), [](CXCursor parameter) {
+                           const CXType declared = clang_getCursorType(parameter);
+                           return source::aliases_storage(passing_of(declared)) || designates_storage(declared);
+                       });
+    return hands && effects->of(callee);
+}
 
 // The variables and parameters a subtree names, by Clang's resolution.
 std::unordered_set<unsigned> named_declarations(CXCursor root) {
@@ -11132,7 +11169,7 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
             // parameter it is.
             extract_body(function, body_cursor,
                          Signature{parameters_of(body_cursor), std::move(standing.receiver), !executable,
-                                   request.selection.refinements},
+                                   request.selection.refinements, executable ? &unsafe_effects : nullptr},
                          request.selection.specification_prefix.empty() ? std::string()
                                                                         : request.selection.specification_prefix,
                          request.selection.refinements, executable,
