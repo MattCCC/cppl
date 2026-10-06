@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <clang-c/CXFile.h>
 #include <clang-c/CXSourceLocation.h>
-#include <clang-c/CXString.h>
 #include <clang-c/Index.h>
 #include <cstddef>
 #include <optional>
@@ -22,24 +21,8 @@ namespace {
 // How deep a statement or expression is followed, as the bridge bounds it.
 constexpr unsigned kMaxStatementDepth = 128;
 
-std::string take(CXString value) {
-    const char* text = clang_getCString(value);
-    std::string result = text != nullptr ? std::string(text) : std::string();
-    clang_disposeString(value);
-    return result;
-}
-
-std::vector<CXCursor> children_of(CXCursor cursor) {
-    std::vector<CXCursor> children;
-    clang_visitChildren(
-        cursor,
-        [](CXCursor child, CXCursor, CXClientData data) {
-            static_cast<std::vector<CXCursor>*>(data)->push_back(child);
-            return CXChildVisit_Continue;
-        },
-        &children);
-    return children;
-}
+using bridge::children_of;
+using bridge::take;
 
 std::size_t file_offset(CXSourceLocation location) {
     unsigned offset = 0;

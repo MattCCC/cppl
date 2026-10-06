@@ -20,7 +20,6 @@
 #include <algorithm>
 #include <clang-c/CXDiagnostic.h>
 #include <clang-c/CXErrorCode.h>
-#include <clang-c/CXString.h>
 #include <clang-c/Index.h>
 #include <cstddef>
 #include <expected>
@@ -111,27 +110,6 @@ using detail::template_arguments_of;
 using detail::UnsafeEffects;
 using detail::bridge::presumed_location;
 using detail::bridge::take;
-
-class ScopedString {
-  public:
-    explicit ScopedString(CXString value) : value_(value) {}
-    ~ScopedString() {
-        clang_disposeString(value_);
-    }
-
-    ScopedString(const ScopedString&) = delete;
-    ScopedString& operator=(const ScopedString&) = delete;
-    ScopedString(ScopedString&&) = delete;
-    ScopedString& operator=(ScopedString&&) = delete;
-
-    [[nodiscard]] std::string str() const {
-        const char* text = clang_getCString(value_);
-        return text != nullptr ? std::string(text) : std::string();
-    }
-
-  private:
-    CXString value_;
-};
 
 Severity convert_severity(CXDiagnosticSeverity severity) {
     switch (severity) {
