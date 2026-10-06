@@ -34,9 +34,69 @@ constexpr auto kValueFlags = std::to_array<std::string_view>({"-D", "-U"});
 
 // Flags whose value is joined by `=`, kept whole. Every machine option
 // (`-march=`, `-mabi=`, ...) is kept as well, by `machine_option`.
-constexpr auto kJoinedFlags =
-    std::to_array<std::string_view>({"-std=", "--std=", "-stdlib=", "--target=", "--sysroot=", "--driver-mode=",
-                                     "-fms-compatibility-version=", "-fpack-struct=", "-fclang-abi-compat="});
+constexpr auto kJoinedFlags = std::to_array<std::string_view>(
+    {"-std=", "--std=", "-stdlib=", "--target=", "--sysroot=", "--driver-mode=", "-fms-compatibility-version=",
+     "-fpack-struct=", "-fclang-abi-compat=", "-fmacro-prefix-map=", "-ffile-prefix-map=", "-fconstexpr-depth=",
+     "-fconstexpr-steps=", "-ftemplate-depth=", "-fbracket-depth="});
+
+// `-f` options the editor leaves out because they cannot change what the text
+// means: code generation, instrumentation, diagnostics and output. Any other
+// `-f` option a build gives and the editor does not pass on makes the document
+// unverifiable in the editor (`unpassed_option`), since it may change how the
+// program reads.
+constexpr auto kIgnorableFlagPrefixes = std::to_array<std::string_view>({"-fPIC",
+                                                                         "-fpic",
+                                                                         "-fPIE",
+                                                                         "-fpie",
+                                                                         "-fno-pic",
+                                                                         "-fno-PIC",
+                                                                         "-fno-pie",
+                                                                         "-fno-PIE",
+                                                                         "-fdiagnostics-",
+                                                                         "-fno-diagnostics-",
+                                                                         "-fcolor-diagnostics",
+                                                                         "-fno-color-diagnostics",
+                                                                         "-fansi-escape-codes",
+                                                                         "-fmessage-length=",
+                                                                         "-fcaret-diagnostics",
+                                                                         "-fno-caret-diagnostics",
+                                                                         "-fshow-column",
+                                                                         "-fno-show-column",
+                                                                         "-fomit-frame-pointer",
+                                                                         "-fno-omit-frame-pointer",
+                                                                         "-fstack-protector",
+                                                                         "-fno-stack-protector",
+                                                                         "-fstack-clash-protection",
+                                                                         "-fno-stack-clash-protection",
+                                                                         "-fcf-protection",
+                                                                         "-fvisibility",
+                                                                         "-ffunction-sections",
+                                                                         "-fno-function-sections",
+                                                                         "-fdata-sections",
+                                                                         "-fno-data-sections",
+                                                                         "-fcommon",
+                                                                         "-fno-common",
+                                                                         "-fsanitize",
+                                                                         "-fno-sanitize",
+                                                                         "-fprofile-",
+                                                                         "-fno-profile-",
+                                                                         "-fcoverage-",
+                                                                         "-fdebug-",
+                                                                         "-fno-debug-",
+                                                                         "-flto",
+                                                                         "-fno-lto",
+                                                                         "-fplt",
+                                                                         "-fno-plt",
+                                                                         "-fasynchronous-unwind-tables",
+                                                                         "-fno-asynchronous-unwind-tables",
+                                                                         "-funwind-tables",
+                                                                         "-fno-unwind-tables",
+                                                                         "-fstrict-aliasing",
+                                                                         "-fno-strict-aliasing",
+                                                                         "-fsemantic-interposition",
+                                                                         "-fno-semantic-interposition",
+                                                                         "-fsyntax-only",
+                                                                         "-ftime-trace"});
 
 // Switches kept as they are: each defines a macro, changes the language, or
 // changes the data model or the ABI a type has on the target.
@@ -106,6 +166,21 @@ bool machine_option(std::string_view argument) {
 
 bool one_of(std::string_view word, const auto& words) {
     return std::ranges::find(words, word) != words.end();
+}
+
+// Whether an option standing alone, its value joined to it, is passed on to
+// how the editor reads the text.
+bool passed_on(std::string_view argument) {
+    const auto prefixes = [argument](const auto& flags) {
+        return std::ranges::any_of(flags, [argument](std::string_view flag) { return argument.starts_with(flag); });
+    };
+    return prefixes(kValueFlags) || prefixes(kJoinedFlags) || one_of(argument, kSwitches) || machine_option(argument) ||
+           (argument.starts_with("-O") && argument.size() <= 3);
+}
+
+bool ignorable_flag(std::string_view argument) {
+    return std::ranges::any_of(kIgnorableFlagPrefixes,
+                               [argument](std::string_view prefix) { return argument.starts_with(prefix); });
 }
 
 std::string absolute(std::string_view path, const std::filesystem::path& directory) {
@@ -242,12 +317,7 @@ std::vector<std::string> reading_flags(const std::vector<std::string>& arguments
             kept.push_back("--sysroot=" + absolute(argument.substr(std::string_view("--sysroot=").size()), directory));
             continue;
         }
-        const bool joined_value =
-            std::ranges::any_of(kValueFlags, [argument](std::string_view flag) { return argument.starts_with(flag); });
-        const bool joined =
-            std::ranges::any_of(kJoinedFlags, [argument](std::string_view flag) { return argument.starts_with(flag); });
-        if (joined_value || joined || one_of(argument, kSwitches) || machine_option(argument) ||
-            (argument.starts_with("-O") && argument.size() <= 3)) {
+        if (passed_on(argument)) {
             kept.emplace_back(argument);
         }
     }
@@ -266,6 +336,14 @@ std::optional<std::string> unpassed_option(const std::vector<std::string>& argum
         // `-Xclang -triple`, or to the compile of one architecture alone.
         if (argument == "-Xclang" || argument.starts_with("-Xarch_")) {
             return "'" + std::string(argument) + "' passes options on to the compiler that the editor does not";
+        }
+        // An `-f` option may change what the text means, as
+        // `-fno-access-control` or `-fno-elide-constructors` do; one the
+        // editor neither passes on nor knows to be about code generation
+        // alone leaves the document unverified rather than read otherwise.
+        if (argument.starts_with("-f") && !passed_on(argument) && !ignorable_flag(argument)) {
+            return "'" + std::string(argument) +
+                   "' may change how the program reads, and the editor does not pass it on";
         }
         // Options the build reads from a file the editor does not read.
         if (argument.starts_with("@")) {

@@ -105,6 +105,9 @@ CPPL_TEST(only_what_changes_how_the_text_reads_is_kept) {
            __LINE__);
     // What follows `--` is input.
     expect(reading_flags({"cl", "-DA", "--", "-DB"}, "/"), {"-DA"}, __LINE__);
+    // What changes the macros or limits a build reads the text with is passed on.
+    expect(reading_flags({"clang++", "-fmacro-prefix-map=/src=.", "-ftemplate-depth=64", "-fPIC", "-c", "a.cpp"}, "/"),
+           {"-fmacro-prefix-map=/src=.", "-ftemplate-depth=64"}, __LINE__);
     // Every spelling of the language standard Clang accepts.
     expect(reading_flags({"clang++", "--std=c++20", "--std", "c++17", "-c", "a.cpp"}, "/"),
            {"--std=c++20", "--std", "c++17"}, __LINE__);
@@ -197,6 +200,19 @@ CPPL_TEST(a_build_option_the_editor_cannot_pass_on_makes_the_document_unverified
     CPPL_CHECK(refused({"cppl", "--config=cross.cfg", "-c", "a.cpp"}, "'--config=cross.cfg'"));
     CPPL_CHECK(refused({"cppl", "--config-user-dir=cfg", "-c", "a.cpp"}, "'--config-user-dir=cfg'"));
     CPPL_CHECK(refused({"cppl", "--config-system-dir=cfg", "-c", "a.cpp"}, "'--config-system-dir=cfg'"));
+    // An `-f` option that may change what the text means, which the editor
+    // does not pass on.
+    CPPL_CHECK(refused({"cppl", "-fno-access-control", "-c", "a.cpp"}, "'-fno-access-control'"));
+    CPPL_CHECK(refused({"cppl", "-fno-elide-constructors", "-c", "a.cpp"}, "'-fno-elide-constructors'"));
+    CPPL_CHECK(refused({"cppl", "-fdelayed-template-parsing", "-c", "a.cpp"}, "'-fdelayed-template-parsing'"));
+    CPPL_CHECK(refused({"cppl", "-fplugin=evil.so", "-c", "a.cpp"}, "'-fplugin=evil.so'"));
+    // One about code generation, instrumentation or diagnostics alone, or one
+    // passed on, stands in the way of nothing.
+    CPPL_CHECK(!unpassed_option({"cppl", "-fPIC", "-fno-omit-frame-pointer", "-fsanitize=address",
+                                 "-fdiagnostics-color=always", "-ffunction-sections", "-fstack-protector-strong",
+                                 "-fvisibility=hidden", "-fno-exceptions", "-ffile-prefix-map=/a=b", "-c", "a.cpp"},
+                                "/work/build", driver)
+                    .has_value());
     // A driver of another name may select another target by its name alone.
     CPPL_CHECK(refused({"cppl", "--cppl-clang=/opt/llvm/bin/i686-linux-gnu-clang++", "-c", "a.cpp"},
                        "the Clang driver '/opt/llvm/bin/i686-linux-gnu-clang++'"));

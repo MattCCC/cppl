@@ -1588,10 +1588,16 @@ Only flags that change how the text reads are kept:
 - optimization levels, which define `__OPTIMIZE__`;
 - the `-f` switches that define macros, change the language, or change the data
   model or ABI a type has: `char` signedness, `wchar_t` width, short enums,
-  structure packing and return, `__int128`, `-fwrapv`, the Clang ABI version.
+  structure packing and return, `__int128`, `-fwrapv`, the Clang ABI version,
+  and the prefix maps and depth limits a build reads the text with.
 
 Output, dependency, warning and code-generation flags are dropped, and so is
-the input. `-mllvm` and `-mmlir`, which reach only code generation, are dropped
+the input. An `-f` option is dropped only when it is known to be about code
+generation, instrumentation or diagnostics alone (`-fPIC`, `-fsanitize=`,
+`-fstack-protector`, `-fdiagnostics-...`, ...). Any other `-f` option the server
+does not pass on, such as `-fno-access-control` or `-fno-elide-constructors`,
+may change what the text means, so a document whose entry has one is not
+verified in the editor. `-mllvm` and `-mmlir`, which reach only code generation, are dropped
 with their values.
 
 The database belongs to the project, and opening a file must not run the
