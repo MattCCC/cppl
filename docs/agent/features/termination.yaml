@@ -77,6 +77,7 @@ implementation:
     - compiler/frontend/src/projection_paths.cpp
   clang:
     - clang/src/bridge.cpp
+    - clang/src/control.cpp
     - clang/src/write_scan.cpp
   elaboration:
     - compiler/elaboration/src/elaborate_contracts.cpp

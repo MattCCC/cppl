@@ -101,6 +101,7 @@ implementation:
   clang:
     - clang/include/cppl/clang/ast.hpp
     - clang/src/bridge.cpp
+    - clang/src/control.cpp
     - clang/src/conversions.cpp
     - clang/src/expressions.cpp
     - clang/src/types.cpp

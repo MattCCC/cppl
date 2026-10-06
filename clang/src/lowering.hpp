@@ -522,4 +522,8 @@ void extract_body(Function& function, CXCursor cursor, const Signature& signatur
                   const std::vector<Selection::Refinement>& refinements, bool executable_state,
                   const std::vector<StatedCapability>* capabilities, UnsafeEffects& unsafe_effects);
 
+constexpr std::size_t kMaxReturnPaths = 128;
+
+std::string unmodeled_statement(const std::string& found);
+
 } // namespace cppl::clangbridge::detail

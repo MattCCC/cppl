@@ -69,11 +69,11 @@ partial-warning-only-partial	compiler/driver/src/pipeline.cpp	if (claim.kind != 
 partial-callees-recorded	compiler/obligations/src/contracts_termination.cpp	if (callee != index && !total[callee]) {	if (false && callee != index && !total[callee]) {	^(e2e_partial_correctness|e2e_cross_tu)$
 partial-warning-not-for-refused	compiler/driver/src/pipeline.cpp	!function->contract->measures.empty()) {	false) {	^e2e_partial_correctness$
 init-statement-detected	clang/src/statements.cpp	} else if (spelled == ";" && nesting == 1) {	} else if (false) {	^(negative_verified_paths|negative_switch_statements|e2e_if_statements)$
-if-init-runs	clang/src/bridge.cpp	prefix.push_back(parts[0]);	(void)0;	^(e2e_if_statements|negative_if_statements)$
-if-condition-variable-declared	clang/src/bridge.cpp	prefix.push_back(parts[condition]);	(void)0;	^e2e_if_statements$
-if-constexpr-selects	clang/src/bridge.cpp	if (holds) {	if (!holds) {	^(e2e_if_statements|negative_if_statements)$
-if-constexpr-only-selected	clang/src/bridge.cpp	if (!header.constant) {	if (true) {	^e2e_if_statements$
-if-consteval-refused	clang/src/bridge.cpp	if (head->immediate) {	if (false) {	^negative_if_statements$
+if-init-runs	clang/src/control.cpp	prefix.push_back(parts[0]);	(void)0;	^(e2e_if_statements|negative_if_statements)$
+if-condition-variable-declared	clang/src/control.cpp	prefix.push_back(parts[condition]);	(void)0;	^e2e_if_statements$
+if-constexpr-selects	clang/src/control.cpp	if (holds) {	if (!holds) {	^(e2e_if_statements|negative_if_statements)$
+if-constexpr-only-selected	clang/src/control.cpp	if (!header.constant) {	if (true) {	^e2e_if_statements$
+if-consteval-refused	clang/src/control.cpp	if (head->immediate) {	if (false) {	^negative_if_statements$
 switch-init-statement-refused	clang/src/bridge.cpp	return reject("a 'switch' statement with an init-statement is not modeled");	(void)0;	^negative_switch_statements$
 switch-nested-label-refused	clang/src/bridge.cpp	if (holds_switch_label(statement)) {	if (false && holds_switch_label(statement)) {	^negative_switch_statements$
 switch-unreachable-prefix-refused	clang/src/bridge.cpp	if (entries.empty() && !is_switch_label(statement)) {	if (false && entries.empty() && !is_switch_label(statement)) {	^negative_switch_statements$
@@ -84,7 +84,7 @@ logical-value-or-guard	clang/src/statements.cpp	: Conditional{{std::move(first),
 returned-arm-or-selects-false	clang/src/statements.cpp	selected.when_false = parts[1];	selected.when_true = parts[1];	^(e2e_conditions|negative_conditions)$
 returned-arm-split	clang/src/selections.cpp	if (const auto selected = signature.clause ? std::nullopt : selected_value(value)) {	if (const auto selected = std::optional<detail::SelectedValue>{}) {	^(e2e_conditions|negative_conditions)$
 returned-arm-binds-formed	clang/src/lowering.hpp	result = bind_formed_derefs(std::move(*result), at);	(void)at;	^(e2e_conditions|negative_conditions|e2e_containers|negative_containers)$
-condition-leaf-formed	clang/src/bridge.cpp	if (!signature.clause && !form_places(condition, state))	if (false)	^(e2e_conditions|negative_containers)$
+condition-leaf-formed	clang/src/control.cpp	if (!signature.clause && !form_places(condition, state))	if (false)	^(e2e_conditions|negative_containers)$
 condition-route-loop	clang/src/bridge.cpp	decided = lower_condition(header.condition, iterate, leave, frame.head, depth + 1);	decided = lower_condition(header.condition, leave, iterate, frame.head, depth + 1);	^(e2e_conditions|e2e_verified_loops)$
 statement-arm-split	clang/src/selections.cpp	if (!selected || chosen_for(chosen_arms, selected->selection) != nullptr) {	if (true) {	^(e2e_conditions|negative_conditions)$
 statement-arm-bound-on-route	clang/src/selections.cpp	forming(statement, [&] { return lower_statement_form(statement, next, state, depth + 1); });	lower_statement_form(statement, next, state, depth + 1);	^(e2e_conditions|negative_conditions)$
@@ -96,9 +96,9 @@ switch-default-entered	clang/src/bridge.cpp	chain = std::move(entered[static_cas
 switch-break-innermost	clang/src/bridge.cpp	if (!switch_frames.empty() && switch_frames.back()->loops_outside == frames.size()) {	if (!switch_frames.empty()) {	^(e2e_switch_statements|negative_switch_statements)$
 switch-exit-closes-frame	clang/src/bridge.cpp	switch_frames.resize(std::min(switch_frames.size(), frame.switches_outside));	(void)frame.switches_outside;	^e2e_switch_statements$
 switch-continue-closes-frames	clang/src/bridge.cpp	leave_switches_inside(frame);	(void)frame;	^e2e_switch_statements$
-switch-label-reachable	clang/src/bridge.cpp	const bool labelled = next.labels != nullptr && std::ranges::contains(*next.labels, next.index);	const bool labelled = false;	^(e2e_switch_statements|e2e_safety_subset)$
-switch-labels-propagate	clang/src/bridge.cpp	next.labels = from.labels;	(void)from.labels;	^e2e_switch_statements$
-comma-statement-left-operand	clang/src/bridge.cpp	return lower_statement(operands[0], then, locals, depth + 1);	return lower_statements(then, locals, depth + 1);	^(e2e_switch_statements|negative_switch_statements|negative_verified_locals)$
+switch-label-reachable	clang/src/control.cpp	const bool labelled = next.labels != nullptr && std::ranges::contains(*next.labels, next.index);	const bool labelled = false;	^(e2e_switch_statements|e2e_safety_subset)$
+switch-labels-propagate	clang/src/control.cpp	next.labels = from.labels;	(void)from.labels;	^e2e_switch_statements$
+comma-statement-left-operand	clang/src/control.cpp	return lower_statement(operands[0], then, locals, depth + 1);	return lower_statements(then, locals, depth + 1);	^(e2e_switch_statements|negative_switch_statements|negative_verified_locals)$
 comma-nested-refused-by-name	clang/src/expressions.cpp	if (op == CXBinaryOperator_Comma) {	if (false && op == CXBinaryOperator_Comma) {	^(negative_switch_statements|e2e_safety_subset)$
 lexer-records-directives	compiler/frontend/src/lexer.cpp	directives_.push_back(Directive{source::ByteSpan{offset_, cursor - offset_}, is_marker});	(void)is_marker;	^(unit_projection_test|e2e_erasure_directives)$
 erasure-blank-keeps-directives	compiler/frontend/src/projector.hpp	if (const Directive* directive = directive_at(stream, base + offset); directive != nullptr) {	if (const Directive* directive = directive_at(stream, base + offset); false && directive != nullptr) {	^(unit_projection_test|e2e_erasure_directives)$
@@ -179,7 +179,7 @@ unsafe-callee-writes-const-references	clang/src/calls.cpp	        if (position.w
 unsafe-callee-through-calls	clang/src/unsafe.cpp	node.effects = std::ranges::any_of(node.callees, [&](const std::string& called) {	node.effects = false && std::ranges::any_of(node.callees, [&](const std::string& called) {	^negative_unsafe_callees$
 unsafe-callee-from-interface	clang/src/unsafe.cpp	if (current_key.empty() || imported_.contains(current_key)) {	if (current_key.empty()) {	^negative_unsafe_callees$
 unsafe-callee-temporary-post-state	clang/src/calls.cpp	std::move(declared)});	std::move(declared)}), call->effects.pop_back();	^negative_unsafe_callees$
-call-statement-silent-temporaries	clang/src/bridge.cpp	if (clang_getCursorKind(inner) == CXCursor_CallExpr && temporaries_destroy_silently(statement)) {	if (clang_getCursorKind(inner) == CXCursor_CallExpr && (temporaries_destroy_silently(statement) || true)) {	^negative_sequence_generations$
+call-statement-silent-temporaries	clang/src/control.cpp	if (clang_getCursorKind(inner) == CXCursor_CallExpr && temporaries_destroy_silently(statement)) {	if (clang_getCursorKind(inner) == CXCursor_CallExpr && (temporaries_destroy_silently(statement) || true)) {	^negative_sequence_generations$
 compile-time-constant-expression	clang/src/expressions.cpp	if (kind == CXCursor_UnaryExpr || kind == CXCursor_RequiresExpr) {	if (false && (kind == CXCursor_UnaryExpr || kind == CXCursor_RequiresExpr)) {	^e2e_safety_subset$
 static-assertion-decided-by-clang	clang/src/bridge.cpp	    if (clang_getCursorKind(declaration) == CXCursor_StaticAssert) {	    if (false && clang_getCursorKind(declaration) == CXCursor_StaticAssert) {	^e2e_safety_subset$
 unsafe-callee-const-view-refined-elements	clang/src/calls.cpp	if (const auto& held = *state[root].sequence; !held.element.refinements.empty()) {	if (const auto& held = *state[root].sequence; false && !held.element.refinements.empty()) {	^negative_unsafe_callees$
@@ -192,10 +192,10 @@ integer-to-boolean-nonzero	clang/src/conversions.cpp	nonzero.node = Binary{Binar
 boolean-conversion-implicit	clang/src/expressions.cpp	if (kind == CXCursor_UnexposedExpr && boolean_pair(original, converted)) {	if (false && kind == CXCursor_UnexposedExpr && boolean_pair(original, converted)) {	^negative_boolean_conversions$
 boolean-conversion-written	clang/src/expressions.cpp	            if (destination.kind == TypeKind::Bool && source.kind == TypeKind::Bool) {	            if (false && destination.kind == TypeKind::Bool && source.kind == TypeKind::Bool) {	^negative_boolean_conversions$
 requires-expression-constant	clang/src/expressions.cpp	if (kind == CXCursor_UnaryExpr || kind == CXCursor_RequiresExpr) {	if (kind == CXCursor_UnaryExpr || false) {	^e2e_safety_subset$
-label-names-statement	clang/src/bridge.cpp	    if (kind == CXCursor_LabelStmt) {	    if (false && kind == CXCursor_LabelStmt) {	^e2e_safety_subset$
+label-names-statement	clang/src/control.cpp	    if (kind == CXCursor_LabelStmt) {	    if (false && kind == CXCursor_LabelStmt) {	^e2e_safety_subset$
 reference-binds-temporary	clang/src/bridge.cpp	const bool binds_temporary = reference && is_prvalue(initializer);	const bool binds_temporary = false && reference && is_prvalue(initializer);	^e2e_safety_subset$
 linkage-specification-is-namespace-scope	compiler/frontend/src/recognizer_statements.cpp	if (brace >= 2 && tokens[brace - 1].kind == TokenKind::StringLiteral && tokens[brace - 2].is_identifier("extern")) {	if (false && brace >= 2 && tokens[brace - 1].kind == TokenKind::StringLiteral && tokens[brace - 2].is_identifier("extern")) {	^e2e_safety_subset$
-call-statement-temporaries-mutator-only	clang/src/bridge.cpp	if (clang_getCursorKind(inner) == CXCursor_CallExpr && sequence_call(inner).has_value()) {	if (clang_getCursorKind(inner) == CXCursor_CallExpr) {	^negative_sequence_generations$
+call-statement-temporaries-mutator-only	clang/src/control.cpp	if (clang_getCursorKind(inner) == CXCursor_CallExpr && sequence_call(inner).has_value()) {	if (clang_getCursorKind(inner) == CXCursor_CallExpr) {	^negative_sequence_generations$
 call-writable-span-havocs-pointees	clang/src/access.cpp	return convert_type(canonical).representation.kind == source::RepresentationKind::Span &&	return false && convert_type(canonical).representation.kind == source::RepresentationKind::Span &&	^negative_sequence_boundaries$
 unsafe-reaches-viewed-container	clang/src/unsafe.cpp	reach(*held->views);	(void)held;	^negative_sequence_attacks$
 unsafe-reaches-whole-object	clang/src/unsafe.cpp	reach(other);	(void)other;	^negative_sequence_attacks$
