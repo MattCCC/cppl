@@ -2712,7 +2712,7 @@ row covers semantics V1 does not claim, such as induction over the `@` domains,
 or semantics not yet frozen. A gate is met only when its status is
 `IMPLEMENTED` or `VERIFIED` and its pass condition holds.
 
-**V1 is not met.** Gates G14, G17 and G18 are open, and the project stays
+**V1 is not met.** Gates G17 and G18 are open, and the project stays
 **Production ready: No**.
 
 | Gate | What it covers | Status | Met |
@@ -2730,7 +2730,7 @@ or semantics not yet frozen. A gate is met only when its status is
 | G11 | Proof erasure and native output | `IMPLEMENTED` | yes |
 | G12 | Trust reporting | `IMPLEMENTED` | yes |
 | G13 | Kernel assurance: mechanized model | `IMPLEMENTED` | yes |
-| G14 | Kernel and verifier assurance: adversarial testing | `PARTIAL` | no |
+| G14 | Kernel and verifier assurance: adversarial testing | `IMPLEMENTED` | yes |
 | G15 | Correspondence TCB | `IMPLEMENTED` | yes |
 | G16 | Artifact provenance | `IMPLEMENTED` | yes |
 | G17 | Stability of the specification and the proof system | `PARTIAL` | no |
@@ -2968,8 +2968,8 @@ Pass condition: `check_sound` with no hypothesis, audited closed by
 
 ## V1 closure: adversarial testing (G14)
 
-`PARTIAL`. Every kernel rule, primitive and verifier check named in
-`TRUST.md` 36.3 has adversarial tests and a mutation entry; there are 229
+`IMPLEMENTED`. Every kernel rule, primitive and verifier check named in
+`TRUST.md` 36.3 has adversarial tests and a mutation entry; there are 349
 entries (`MUTATION_TESTING.md`). Persistent fuzz targets exist for kernel
 proofs, terms, certificates and arithmetic, and for the recognizer, the
 verification-interface decoder and the language server.
@@ -2980,7 +2980,7 @@ attributed to its own case by source location and each accepted twin run:
 - the sequence subset: every storage event against every view kind, every
   bound, alias, call form, unmodeled member and content invariant
   (`negative_sequence_generations`, `negative_sequence_boundaries` and their
-  e2e twins; 316 refusals and 328 accepted twins);
+  e2e twins; 327 refusals and 402 accepted twins, each proven and run);
 - runtime validation: every admitted position, every route, write, call, alias
   and loop after which a validation's fact no longer holds, and every position
   and predicate no program can run (`e2e_runtime_validation_matrix`,
@@ -3003,11 +3003,14 @@ The matrices found one soundness defect, fixed with permanent regressions and a
 mutation entry (`TRUST.md` 36.3: a span passed by value was not followed to the
 storage it views).
 
-The full mutation suite catches all 229 entries, and none is equivalent (G18
-records the run).
+The V1 closure audit (`TRUST.md` 36.4) then attacked the verified subset for
+claims reported PROVEN and false at runtime, and attacked each fix again with
+variants its regressions did not cover. Every defect it found is fixed with a
+regression and a mutation entry.
 
-Open: the ASan, UBSan and fuzz profiles have to be recorded green on the
-release candidate (G18 lists the runs).
+On the release candidate the full mutation suite catches all 349 entries, none
+equivalent, and `ci-asan`, `ci-ubsan` and `ci-fuzz` are green ("Profiles on the
+release candidate" lists the runs).
 
 ## V1 closure: correspondence TCB (G15)
 
@@ -3049,11 +3052,19 @@ Interface provenance stays TCB: authentication is not implemented
 
 `PARTIAL`. The header of this file states that neither the language
 specification nor the proof system is frozen. V1 requires both frozen at a
-tagged version.
+tagged version. That is the release decision: `CMakeLists.txt` names version
+1.0.0, `SPEC.md`, `GRAMMAR.md` and `KERNEL.md` each state that they are frozen
+at it, this file's header says so, and the commit is tagged. The kernel and
+formal-core versions change only with the calculus (`KERNEL.md` 18), so a
+freeze of the current one keeps `cppl-kernel-0.9.0` and `cppl-core-0.9.0`.
 
 ## V1 closure: delivery
 
-`PARTIAL`: one platform is built and tested, and no ABI is guaranteed.
+`PARTIAL`. On the release candidate, the release archive is built, tested and
+installed on the one platform a release claims ("Profiles on the release
+candidate"), and no ABI is guaranteed. Open: an archive that `release.yml` has
+built, tested and attested from a pushed, signed tag at the version G17
+freezes.
 
 ### Tested platform
 
@@ -3062,7 +3073,7 @@ What has been built and tested, and nothing else, is supported (`INSTALL.md`).
 | Component | Tested |
 | --- | --- |
 | OS and architecture | Linux x86_64 (Ubuntu 24.04) |
-| LLVM / Clang | 22.1.8, the upstream release build (`LLVM-22.1.8-Linux-X64`) |
+| LLVM / Clang | 22.1.8 from apt.llvm.org, as CI and the release workflow install it |
 | C++ standard library of compiled programs | libstdc++ of GCC 13.3, which that Clang selects |
 | Compiler of C++L itself | Clang 22.1.8, and GCC 13.3 (`ci-linux-gcc`) |
 | Standard modes verified | `c++17`, `c++20`, `c++23` (the suite names each) |
@@ -3079,13 +3090,25 @@ What has been built and tested, and nothing else, is supported (`INSTALL.md`).
 
 ### Profiles on the release candidate
 
-| Profile | Result |
-| --- | --- |
-| `ci-linux-clang` | recorded below when run on the candidate |
-| `ci-linux-gcc` | recorded below when run on the candidate |
-| `ci-quality` | recorded below when run on the candidate |
-| `ci-asan`, `ci-ubsan`, `ci-fuzz` | recorded below when run on the candidate |
-| Full mutation suite | all 229 entries caught, none equivalent. Run in chunks from `0994f65` to `6b88b38`, each chunk on the tree as it stood when the chunk started. `call-precondition-gate` was reported equivalent; it is now caught by its pinned diagnostic (`MUTATION_TESTING.md` 5) and was rerun on the commit that pins it |
+The release candidate is `e2611d7`. Each run started from a clean clone of it,
+in its own build tree.
+
+| Profile | Where | Result |
+| --- | --- | --- |
+| `ci-linux-clang` | Ubuntu 24.04 image (`tools/ci/linux.sh clang`), Clang 22.1.8 | 200 of 200 tests pass |
+| `ci-linux-gcc` | Ubuntu 24.04 image, GCC 13.3.0 | 200 of 200 tests pass |
+| Release workflow | Ubuntu 24.04 image: `cmake --workflow --preset release`, then the record and checksum checks of `release.yml` | 200 of 200 tests pass; `cppl-0.0.1-Linux-x86_64.tar.gz` is packaged and matches its checksum; the record names `e2611d7` and a clean tree. Attestation and publication run only from a pushed tag, and have not run |
+| `ci-quality` | native (below) | the format check and lint report nothing |
+| `ci-asan` | native | 200 of 200 tests pass |
+| `ci-ubsan` | native | 200 of 200 tests pass |
+| `ci-fuzz` | native | all 9 searches of 200000 inputs pass with no finding; `kernel_terms` took 593 s and `kernel_proof` 265 s |
+| Full mutation suite | native | all 349 entries caught, none equivalent, on `113c15a`. The candidate differs from it only in the fuzz searches' time limit and test preset, `CI.md` and the GitHub workflow, which no mutation build configures or runs |
+| Formal model | Ubuntu 24.04 image, Coq 8.18.0 (`tools/formal/check.sh`) | 12 theorems checked, none resting on an axiom; 141 normalization edges, 82 translations and 85 verdicts computed. Run on `20fdcf2`; nothing it reads has changed since |
+
+The native runs are on Fedora 44 x86_64 with Homebrew's LLVM 22.1.8, whose
+compiled programs use the libstdc++ of GCC 16.2. On the same host, GCC 16.2
+built the sources of `20fdcf2` with the `ci-linux-gcc` settings, and all 201
+tests passed. Neither is part of the tested platform.
 
 ### ABI
 

@@ -370,9 +370,10 @@ Each target runs two ways:
   from seed `CPPL_FUZZ_SEED` (1), 10 s per input, 2 GiB of memory. A fixed
   seed and count make a failure repeat when the run does; a change to the code
   changes the path the search takes. The work is fixed, not the time: a kernel
-  search's inputs grow costlier as its corpus grows: `kernel_proof` took 797 s
-  and `kernel_terms` 513 s on a 32-thread x86_64 workstation. A search may
-  take `CPPL_FUZZ_TIMEOUT` seconds (3600), and the preset runs four at a time.
+  search's inputs grow costlier as its corpus grows: on a 32-thread x86_64
+  workstation `kernel_terms` took 513 s to 593 s and `kernel_proof` 265 s to
+  797 s, depending on what else it ran. A search may take
+  `CPPL_FUZZ_TIMEOUT` seconds (3600), and the preset runs four at a time.
 
 When a search fails, libFuzzer writes the input under
 `build/ci/fuzz/tests/fuzz/<name>/artifacts/`. Run it with
