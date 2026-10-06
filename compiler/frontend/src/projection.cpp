@@ -964,11 +964,43 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // reads it as a test of that refinement; the runtime text calls the
     // validator the declaration lowers to (SPEC.md RUNTIMECHECK-018,
     // RUNTIMECHECK-021).
+    //
+    // A validation is runtime code, so one in proof-only syntax of a verified
+    // body -- a ghost declaration, a claim that a path cannot occur, a case
+    // split -- would never run, and its lowering would stand inside a span
+    // erasure blanks. It is refused by name (SPEC.md RUNTIMECHECK-019).
+    const auto within = [](const source::ByteSpan& inner, const source::ByteSpan& outer) {
+        return inner.offset >= outer.offset && inner.end() <= outer.end();
+    };
     for (const ValidationExpression& validation : syntax.validations) {
         const std::string suffix =
             std::to_string(validation.refinement_index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
         const std::string probe = options.generated_prefix + "refinement_" + suffix;
         edits.push_back(Edit{validation.callee, probe + resume_at(stream, validation.callee.end())});
+        const bool in_ghost = std::ranges::any_of(syntax.ghost_declarations, [&](const GhostDeclaration& ghost) {
+            return within(validation.callee, ghost.erased);
+        });
+        const bool in_proof_syntax = std::ranges::any_of(syntax.path_contradictions,
+                                                         [&](const PathContradiction& claim) {
+                                                             return within(validation.callee, claim.span);
+                                                         }) ||
+                                     std::ranges::any_of(syntax.path_splits, [&](const PathCaseSplit& split) {
+                                         return within(validation.callee, split.span);
+                                     });
+        if (in_ghost || in_proof_syntax) {
+            diagnostics::Diagnostic diagnostic;
+            diagnostic.severity = diagnostics::Severity::Error;
+            diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+            diagnostic.location = validation.location;
+            diagnostic.message = std::string("a validation expression is runtime code, and ") +
+                                 (in_ghost ? "a ghost declaration never runs"
+                                           : "a claim that a path cannot occur or a case split never runs");
+            diagnostic.notes.push_back(diagnostics::Note{
+                "validate the value in the verified body and name the result there (SPEC.md RUNTIMECHECK-019)",
+                validation.location});
+            projection.diagnostics.push_back(std::move(diagnostic));
+            continue;
+        }
         projection.runtime_lowerings.push_back(
             RuntimeLowering{validation.callee, lowered_validation(stream, syntax, validation)});
     }

@@ -133,6 +133,12 @@ refuse_alone() {
     fi
 }
 
+# SPEC: RUNTIMECHECK-019
+# A validation in a ghost declaration would never run; it is refused by name,
+# once, and erasure is never asked to keep runtime code in a span it blanks.
+case_run refuse_alone validation_in_ghost \
+    "validation_in_ghost.cpp:13:21: error [unsupported-semantics]: a validation expression is runtime code, and a ghost declaration never runs"
+
 # SPEC: ERASE-018
 # A lowering that cannot keep the code after it on its line in its column is
 # refused by name, rather than compiled with that code moved.

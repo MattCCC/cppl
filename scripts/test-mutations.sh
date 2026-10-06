@@ -60,6 +60,7 @@ lowering-pads-last-line	compiler/frontend/src/projection.cpp	        text.append
 analysis-resumes-at-column	compiler/frontend/src/projection.cpp	    resumed.append(offset - line_start, ' ');	    resumed.append(0, ' ');	^(unit_projection_test|e2e_erasure_positions)$
 erasure-columns-preserved	compiler/erasure/src/erase.cpp	            columns_preserved = false;	            (void)columns_preserved;	^unit_projection_test$
 lowering-moves-columns-refused	compiler/frontend/src/projection.cpp	        if (lowering_moves_columns(stream, refinement.range.span, lowering)) {	        if (false && lowering_moves_columns(stream, refinement.range.span, lowering)) {	^(unit_projection_test|negative_erasure)$
+validation-in-proof-syntax-refused	compiler/frontend/src/projection.cpp	        if (in_ghost || in_proof_syntax) {	        if (false && (in_ghost || in_proof_syntax)) {	^negative_erasure$
 declarator-list-ends-clauses	compiler/frontend/src/recognizer.cpp	nesting == 0 && token.is_punctuator(",")	false && (nesting == 0 && token.is_punctuator(","))	^unit_recognizer_test$
 specifier-scope-is-a-name	compiler/frontend/src/recognizer.cpp	if (next >= tokens.size() || names_a_scope(tokens, index)) {	if (next >= tokens.size()) {	^unit_recognizer_test$|^conformance_words_as_cpp$
 specifier-word-scope-is-a-name	compiler/frontend/src/recognizer.cpp	tokens[index].is_identifier(word) && !names_a_scope(tokens, index);	tokens[index].is_identifier(word) && true;	^unit_recognizer_test$

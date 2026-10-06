@@ -3630,10 +3630,12 @@ conditional operator or of a loop, an operand of `&&`, `||` or `!`, the
 initializer of a `bool` local, a returned value or an argument. Its validation
 fact is then a fact of the `bool` it yields, used wherever that value selects a
 path. A contract clause, a loop clause, a Law, a proof and a refinement predicate
-state propositions, not runtime code, so a validation expression in one, in a
-declaration, in a function that is not verified, or in an unsafe block, is
-refused. Where the translation unit gives `validate` any other meaning, C++ comes
-first (WORD-013): the expression is ordinary C++, and a warning says so.
+state propositions, not runtime code, and a ghost declaration, a claim that a
+path cannot occur and a case split never run, so a validation expression in
+one, in a declaration, in a function that is not verified, or in an unsafe
+block, is refused. Where the translation unit gives `validate` any other
+meaning, C++ comes first (WORD-013): the expression is ordinary C++, and a
+warning says so.
 
 [RUNTIMECHECK-020] `R`'s predicate MUST be one the program can evaluate on every value of its base
 type: an ordinary C++ Boolean expression, with no formal proposition form (a
