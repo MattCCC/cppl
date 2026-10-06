@@ -77,8 +77,15 @@ function(cppl_add_fuzz_target name)
                      "-artifact_prefix=${work}/artifacts/"
                      "${work}/corpus"
                      "${corpus}")
+    # AddressSanitizer keeps freed memory in its quarantine and its free lists,
+    # so a search's resident size climbs with the inputs it has run, not with
+    # any one of them, until the RSS limit stops a search no input was too
+    # large for. Memory is returned to the system every second and the
+    # quarantine is bounded; a use after free is still caught until 64 MiB of
+    # later frees have passed through it.
     set_tests_properties(${target}_search PROPERTIES
         LABELS "fuzz"
+        ENVIRONMENT "ASAN_OPTIONS=allocator_release_to_os_interval_ms=1000:quarantine_size_mb=64"
         TIMEOUT ${CPPL_TEST_TIMEOUT})
 endfunction()
 
