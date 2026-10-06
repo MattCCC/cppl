@@ -482,6 +482,7 @@ cppl_add_script_test(negative_termination negative/termination.sh)
 cppl_add_script_test(negative_ghost_state negative/ghost_state.sh)
 cppl_add_script_test(negative_unsafe_boundary negative/unsafe_boundary.sh)
 cppl_add_script_test(negative_unsafe_callees negative/unsafe_callees.sh)
+cppl_add_script_test(negative_global_constants negative/global_constants.sh)
 cppl_add_script_test(negative_contradictions negative/contradictions.sh)
 # Induction over unsigned machine integers (SPEC.md 21): kernel-checked proofs
 # with their erasure, and the refused twin of each.

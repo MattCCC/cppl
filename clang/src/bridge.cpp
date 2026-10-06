@@ -625,9 +625,15 @@ Type convert_type(CXType type, unsigned depth = 0, ReferenceModel references = R
             break;
         }
         case CXType_Enum: {
+            // An enumeration holds a value of its underlying type. A scoped one,
+            // or an unscoped one with a fixed underlying type, holds exactly that
+            // type's values; an unscoped one without a fixed type holds a subset
+            // of them, so reading it as the whole type asks more, never less.
+            // Its enumerators are its named states either way (SPEC.md 20.1).
             const CXCursor declaration = clang_getTypeDeclaration(canonical);
             const CXCursor definition = clang_getCursorDefinition(declaration);
-            if (clang_EnumDecl_isScoped(declaration) == 0 || clang_Cursor_isNull(definition) != 0)
+            const bool opaque_enumeration = clang_Cursor_isNull(definition) != 0;
+            if (opaque_enumeration)
                 break;
             const Type underlying = convert_type(clang_getEnumDeclIntegerType(declaration));
             // Bool-backed and wide enums remain outside this initial model.
@@ -3241,6 +3247,27 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
                 return integral_conversion(build_expression(inner[0], signature, locals, depth + 1), converted, cursor,
                                            false);
             }
+            // An unscoped enumeration converts implicitly to an integer type:
+            // its value is a value of its underlying type, which is what Clang
+            // converts (SPEC.md ARITH-008). A scoped one never does.
+            if (kind == CXCursor_UnexposedExpr && integral(converted) && nested.kind == CXType_Enum &&
+                clang_EnumDecl_isScoped(clang_getTypeDeclaration(nested)) == 0) {
+                Expr value = build_expression(inner[0], signature, locals, depth + 1);
+                if (std::holds_alternative<Unsupported>(value.node)) {
+                    return value;
+                }
+                Type underlying = convert_type(clang_getEnumDeclIntegerType(clang_getTypeDeclaration(nested)));
+                if (!integral(underlying)) {
+                    return unsupported_expression(cursor, "the underlying type of '" +
+                                                              take(clang_getTypeSpelling(nested)) + "' is not modeled");
+                }
+                value.type = underlying;
+                if (same_modeled_value(converted, underlying)) {
+                    value.type = converted;
+                    return value;
+                }
+                return integral_conversion(std::move(value), converted, cursor, false);
+            }
             return unsupported_expression(cursor, "implicit conversion from '" + take(clang_getTypeSpelling(nested)) +
                                                       "' to '" + take(clang_getTypeSpelling(outer)) +
                                                       "' is not modeled");
@@ -3297,6 +3324,23 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
             Expr literal = build_integer_literal(cursor);
             if (!std::holds_alternative<Unsupported>(literal.node)) {
                 return literal;
+            }
+        }
+        // A namespace-scope or static constant, `constexpr` or `const` and not
+        // `volatile`, holds the value its constant initializer gives it for the
+        // whole run: writing it is undefined behavior. That value is the one
+        // Clang computes. One whose initializer Clang cannot compute is not a
+        // constant here and is refused.
+        if (clang_getCursorKind(referenced) == CXCursor_VarDecl &&
+            clang_Cursor_hasVarDeclGlobalStorage(referenced) != 0) {
+            const CXType declared = clang_getCursorType(referenced);
+            if (clang_isConstQualifiedType(declared) != 0 && clang_isVolatileQualifiedType(declared) == 0) {
+                Expr constant = build_integer_literal(cursor);
+                if (!std::holds_alternative<Unsupported>(constant.node)) {
+                    return constant;
+                }
+                return unsupported_expression(cursor, "'" + take(clang_getCursorSpelling(referenced)) +
+                                                          "' is a constant whose value Clang cannot compute");
             }
         }
         // C++ puts a local in scope inside its own initializer, so scoping

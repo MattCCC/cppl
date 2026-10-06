@@ -3,9 +3,9 @@
 // its built-in operator after promoting it. Overload resolution considers the
 // operator template as well, and deducing it instantiates Inject<Color>, which
 // defines adl(Tag<0>), before the deduction fails: in the program verified,
-// before E::A is initialized. An unscoped enumeration is not modeled, so the
-// Law would be refused further on in any case; the instantiation is refused
-// first, at the operator that makes it.
+// before E::A is initialized. The enumeration is modeled, and the Law would be
+// read as the comparison it states; the instantiation is refused before that,
+// at the operator that makes it.
 #include "../include/stateful_friend.hpp"
 
 #include <cstdio>

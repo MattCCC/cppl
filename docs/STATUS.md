@@ -346,7 +346,7 @@ Six representation families are `IMPLEMENTED`:
 
 | Representation      | States                                                                                       |
 | ------------------- | -------------------------------------------------------------------------------------------- |
-| scoped enumerations | one case per distinct enumerator value, residual `unnamed`                                   |
+| enumerations        | one case per distinct enumerator value, residual `unnamed`                                   |
 | `std::variant`      | `alternative<i>` per index, residual `valueless`                                             |
 | `std::optional`     | `some(value)`, residual `none`                                                               |
 | `std::expected`     | `value(payload)`, residual `error(reason)`                                                   |
@@ -1678,11 +1678,19 @@ comparisons are modeled exactly at every width from 1 to 64 bits, each operation
 defines only under a condition owing it where it is evaluated (RFC 0019).
 Signed arithmetic and division are `PARTIAL` because a product of two unknowns
 is decided only where their types bound it, and a quotient by an unknown divisor
-is left unknown; conversions are `PARTIAL` because those to or from `bool`,
-enumerations and floating point are refused, as is compound assignment of a
+is left unknown; conversions are `PARTIAL` because those to or from `bool`
+and floating point, and from an integer to an enumeration, are refused, as is
+compound assignment of a
 promoted type, and `char8_t`, `char16_t`, `char32_t`, `wchar_t` and bit-fields,
 whose promotion is not modeled, are refused where they are named. Shifts and
-bitwise operators are refused. `Wrapping arithmetic`
+bitwise operators are refused. An enumeration, scoped or not, is a value of
+its underlying type: an unscoped one converts implicitly to an integer type as
+that value, and one without a fixed underlying type, which holds a subset of
+that type's values, is read as the whole type, which asks more and never less.
+A namespace-scope or static constant, `constexpr` or `const` and not
+`volatile`, is read as the value Clang computes from its constant initializer;
+writing one is undefined behavior, and one whose initializer Clang cannot
+compute is refused by name (`negative_global_constants`). `Wrapping arithmetic`
 above means the explicit `Wrapping<T>` facility of the roadmap, which is not the
 same as C++ unsigned arithmetic.
 

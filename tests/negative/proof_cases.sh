@@ -137,9 +137,11 @@ reject unknown_label 'no member named' <<'CPP'
 enum class E { a };
 proof bad(E s) proves (s == s) { cases s { E::unknown => { refl; } unnamed(v) => { refl; } } }
 CPP
-reject unscoped 'not modeled' <<'CPP'
+# An unscoped enumeration is split like a scoped one: its enumerators, and the
+# residual every other value of its underlying type falls in.
+reject unscoped_missing_residual "non-exhaustive cases: 'unnamed' has no arm" <<'CPP'
 enum E { a };
-proof bad(E s) proves (true) { cases s { E::a => { refl; } unnamed(v) => { refl; } } }
+proof bad(E s) proves (true) { cases s { E::a => { refl; } } }
 CPP
 reject opaque 'not modeled' <<'CPP'
 enum class E : unsigned;
