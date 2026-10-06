@@ -4194,7 +4194,7 @@ std::optional<bool> holds_init_statement(CXCursor statement) {
     if (parts.empty()) {
         return std::nullopt;
     }
-    const CXTranslationUnit unit = clang_Cursor_getTranslationUnit(statement);
+    CXTranslationUnit unit = clang_Cursor_getTranslationUnit(statement);
     const CXSourceRange head = clang_getRange(clang_getRangeStart(clang_getCursorExtent(statement)),
                                               clang_getRangeStart(clang_getCursorExtent(parts.back())));
     CXToken* tokens = nullptr;
@@ -4232,11 +4232,12 @@ bool is_fallthrough(CXCursor statement) {
     if (parts.size() != 1 || clang_getCursorKind(parts.front()) != CXCursor_NullStmt) {
         return false;
     }
-    const CXTranslationUnit unit = clang_Cursor_getTranslationUnit(statement);
+    CXTranslationUnit unit = clang_Cursor_getTranslationUnit(statement);
     CXToken* tokens = nullptr;
     unsigned count = 0;
     clang_tokenize(unit, clang_getCursorExtent(statement), &tokens, &count);
     std::vector<std::string> spelled;
+    spelled.reserve(count);
     for (unsigned index = 0; index < count; ++index) {
         spelled.push_back(take(clang_getTokenSpelling(unit, tokens[index])));
     }
@@ -7690,7 +7691,8 @@ struct BodyLowering {
         truth.kind = TypeKind::Bool;
         truth.spelling = "bool";
         for (std::size_t index = entries.size(); index-- > 0;) {
-            if (!literals[index].has_value()) {
+            std::optional<Expr>& literal = literals[index];
+            if (!literal.has_value()) {
                 continue;
             }
             if (return_paths(entered[index]) + return_paths(*chain) > kMaxReturnPaths) {
@@ -7704,7 +7706,7 @@ struct BodyLowering {
             Expr matches;
             matches.type = truth;
             matches.location = at;
-            matches.node = Binary{BinaryOp::Equal, {std::move(read), std::move(*literals[index])}};
+            matches.node = Binary{BinaryOp::Equal, {std::move(read), std::move(*literal)}};
             Expr branch;
             branch.type = chain->type;
             branch.location = at;
