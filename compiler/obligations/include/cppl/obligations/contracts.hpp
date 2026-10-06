@@ -152,6 +152,14 @@ struct ContractVerification {
     // one stands, the body's termination is not established.
     std::vector<source::SourceLocation> unmeasured_loops;
 
+    // The other contracts it calls that are not total, as indices into
+    // `Program::contracts`, each once in the order its calls are met. With
+    // `unmeasured_loops` and `unsafe_regions` this is why a contract is not
+    // total: `settle_totality` sets it from the fixed point that decides
+    // `total`, so what a diagnostic names is what the report counts (SPEC.md
+    // CORRECT-003, CORRECT-005).
+    std::vector<std::size_t> partial_callees;
+
     // The recursion group the function belongs to, this contract included, as
     // indices into `Program::contracts`: functions that call each other,
     // directly or through one another. Empty when the function does not

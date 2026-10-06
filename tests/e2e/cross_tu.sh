@@ -104,8 +104,17 @@ in_standard() {
     grep -Eq '^depends [0-9a-f]{64} c:@F@clamp4#i#$' "middle-$standard.cppli" || fail "middle did not record clamp4"
 
     "$CPPL" "-std=$standard" -c client.cpp -o "client-$standard.o" "--cppl-import-interface=$interface" \
-        "--cppl-import-interface=middle-$standard.cppli" --cppl-trust-report > "client-$standard.report"
+        "--cppl-import-interface=middle-$standard.cppli" --cppl-trust-report > "client-$standard.report" \
+        2> "client-$standard.err"
     report="client-$standard.report"
+    # SPEC: CORRECT-005, TUBOUND-007 -- a contract proven through one recorded
+    # as partial is partial too, and the warning names the imported callee.
+    grep -Fq "warning [partial-correctness]: the contract of 'counted_up' is proven for partial correctness only: it \
+calls 'count_up', whose termination is not established" "client-$standard.err" ||
+        { cat "client-$standard.err" >&2; fail "counted_up was not warned partial through count_up ($standard)"; }
+    grep -Fq "warning [partial-correctness]: the contract of 'reading' is proven for partial correctness only: it \
+calls 'sensor', whose termination is not established" "client-$standard.err" ||
+        { cat "client-$standard.err" >&2; fail "reading was not warned partial through sensor ($standard)"; }
     grep -Eq '^Function contracts proven: +12$' "$report"
     grep -Eq '^Function contracts imported: +11$' "$report"
     grep -Eq '^Unresolved obligations: +0$' "$report"

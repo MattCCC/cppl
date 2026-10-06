@@ -91,6 +91,75 @@ diagnostics::Category convert(clangbridge::Category category) {
     return diagnostics::Category::Internal;
 }
 
+// Where a reason names a construct, as the author can find it.
+std::string written_at(const source::SourceLocation& location) {
+    return location.file + ":" + std::to_string(location.line) + ":" + std::to_string(location.column);
+}
+
+// Warns at each contract proven for partial correctness only (SPEC.md
+// CORRECT-001 to CORRECT-003). A build that succeeds would otherwise leave it to
+// the trust report alone to say that such a contract holds only if the
+// function returns.
+//
+// The contracts warned about are the claims the trust report lists as partial
+// (CORRECT-006), and the reasons named are those `settle_totality` decided
+// that from, so the warning and the report cannot disagree. It is a warning:
+// it changes no verdict, no status and no exit code. A function whose
+// `decreases` asks that it terminate is not warned about, since not being
+// total already refuses it (TERMINATION-006).
+void warn_partial_contracts(const obligations::Program& program, const vir::Module& module,
+                            const obligations::TrustClosure& closure, diagnostics::Engine& engine) {
+    for (const obligations::ClaimClosure& claim : closure.claims) {
+        if (claim.kind != obligations::ClaimKind::Contract || claim.total) {
+            continue;
+        }
+        const auto contract =
+            std::ranges::find_if(program.contracts, [&claim](const obligations::ContractVerification& candidate) {
+                return !candidate.imported.has_value() && candidate.symbol == claim.symbol &&
+                       candidate.name == claim.subject;
+            });
+        if (contract == program.contracts.end()) {
+            continue;
+        }
+        const auto function = std::ranges::find(module.functions, contract->function, &vir::Function::id);
+        if (function != module.functions.end() && function->contract.has_value() &&
+            !function->contract->measures.empty()) {
+            continue;
+        }
+
+        diagnostics::Diagnostic diagnostic;
+        diagnostic.severity = diagnostics::Severity::Warning;
+        diagnostic.category = diagnostics::Category::PartialCorrectness;
+        diagnostic.location = function != module.functions.end() ? function->range.begin : claim.location;
+        std::vector<std::string> reasons;
+        for (const source::SourceLocation& loop : contract->unmeasured_loops) {
+            reasons.push_back("the loop at " + written_at(loop) +
+                              " states no 'decreases', so it is not shown to terminate (SPEC.md CORRECT-002)");
+            diagnostic.notes.push_back(diagnostics::Note{"the loop that states no 'decreases'", loop});
+        }
+        for (const source::SourceLocation& block : contract->unsafe_regions) {
+            reasons.push_back("it passes through the unsafe block at " + written_at(block) +
+                              ", which need not return (SPEC.md CORRECT-003)");
+            diagnostic.notes.push_back(diagnostics::Note{"the unsafe block, which need not return", block});
+        }
+        for (const std::size_t callee : contract->partial_callees) {
+            if (callee < program.contracts.size()) {
+                reasons.push_back("it calls '" + program.contracts[callee].name +
+                                  "', whose termination is not established, so the call is not shown to return "
+                                  "(SPEC.md CORRECT-005)");
+            }
+        }
+        if (reasons.empty()) {
+            reasons.emplace_back("its termination is not established (SPEC.md CORRECT-003)");
+        }
+        diagnostic.message = "the contract of '" + claim.subject + "' is proven for partial correctness only: ";
+        for (std::size_t index = 0; index < reasons.size(); ++index) {
+            diagnostic.message += (index == 0 ? "" : "; ") + reasons[index];
+        }
+        engine.report(std::move(diagnostic));
+    }
+}
+
 // A file the preprocessor read, as it is on disk, so tokens can be given the
 // columns their author wrote them at rather than the preprocessor's.
 std::optional<std::string> written_text(const std::string& path) {
@@ -604,6 +673,7 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
     for (const std::string& fault : outcome.counters.closure.faults) {
         report(engine, diagnostics::Category::Internal, "what a claim rests on cannot be reported: " + fault);
     }
+    warn_partial_contracts(program, elaborated.module, outcome.counters.closure, engine);
     // What an interface of this unit would record. The driver writes it only
     // once the whole unit, and its object, were produced without error.
     outcome.exported = obligations::exported_contracts(program, outcome.counters.closure);

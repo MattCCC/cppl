@@ -211,6 +211,65 @@ CPPL_TEST(a_refusal_of_cpp_clang_accepted_is_not_shown_as_a_cpp_error) {
         published, [](const Diagnostic& diagnostic) { return diagnostic.code == "cppl.cpp.semantic"; }));
 }
 
+CPPL_TEST(a_partial_correctness_contract_is_shown_as_a_warning_naming_why) {
+    // SPEC: CORRECT-002, CORRECT-005, CORRECT-006
+    // The warning the command line prints (e2e/partial_correctness.sh), at
+    // the function, as a warning and never an error, with the loop it names
+    // as related information. A total contract is not warned about.
+    Server server = fixture_server();
+    const std::vector<Diagnostic> published = published_on_open(server, "file:///partial.cpp",
+                                                                "verified unsigned loop_nodec(unsigned n)\n"
+                                                                "    ensures (result >= n)\n"
+                                                                "{\n"
+                                                                "    unsigned i = 0u;\n"
+                                                                "    while (i < n)\n"
+                                                                "        invariant (i <= n)\n"
+                                                                "    {\n"
+                                                                "        i = i + 0u;\n"
+                                                                "    }\n"
+                                                                "    return i;\n"
+                                                                "}\n"
+                                                                "\n"
+                                                                "verified unsigned calls_partial(unsigned n)\n"
+                                                                "    ensures (result >= n)\n"
+                                                                "{\n"
+                                                                "    return loop_nodec(n);\n"
+                                                                "}\n"
+                                                                "\n"
+                                                                "verified unsigned straight(unsigned n)\n"
+                                                                "    expects (n < 100u)\n"
+                                                                "    ensures (result == n + 1u)\n"
+                                                                "{\n"
+                                                                "    return n + 1u;\n"
+                                                                "}\n");
+    const auto loop = std::ranges::find_if(published, [](const Diagnostic& diagnostic) {
+        return diagnostic.message.find("the contract of 'loop_nodec' is proven for partial correctness only") !=
+               std::string::npos;
+    });
+    CPPL_CHECK(loop != published.end());
+    if (loop != published.end()) {
+        CPPL_CHECK_EQ(loop->code, std::string("cppl.partial.correctness"));
+        CPPL_CHECK(loop->severity == DiagnosticSeverity::Warning);
+        CPPL_CHECK(loop->message.find("states no 'decreases'") != std::string::npos);
+        CPPL_CHECK_EQ(loop->range.start.line, 0u);
+        CPPL_CHECK_EQ(loop->range.start.character, 18u);
+        CPPL_CHECK_EQ(loop->relatedInformation.size(), std::size_t{1});
+        if (loop->relatedInformation.size() == 1) {
+            CPPL_CHECK_EQ(loop->relatedInformation[0].location.range.start.line, 4u);
+            CPPL_CHECK_EQ(loop->relatedInformation[0].location.range.start.character, 4u);
+        }
+    }
+    CPPL_CHECK(published_with(published, "cppl.partial.correctness", DiagnosticSeverity::Warning,
+                              "the contract of 'calls_partial' is proven for partial correctness only: it calls "
+                              "'loop_nodec', whose termination is not established"));
+    CPPL_CHECK(std::ranges::none_of(published, [](const Diagnostic& diagnostic) {
+        return diagnostic.code == "cppl.partial.correctness" &&
+               diagnostic.message.find("'straight'") != std::string::npos;
+    }));
+    CPPL_CHECK(std::ranges::none_of(
+        published, [](const Diagnostic& diagnostic) { return diagnostic.severity == DiagnosticSeverity::Error; }));
+}
+
 CPPL_TEST(server_document_change_republishes) {
     Server server;
 

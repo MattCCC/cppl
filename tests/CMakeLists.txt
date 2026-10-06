@@ -475,6 +475,9 @@ cppl_add_script_test(e2e_safety_subset e2e/safety_subset.sh)
 cppl_add_script_test(e2e_unsafe_boundary e2e/unsafe_boundary.sh)
 cppl_add_script_test(e2e_ghost_state e2e/ghost_state.sh)
 cppl_add_script_test(e2e_termination e2e/termination.sh)
+# A contract proven for partial correctness only is warned about where it is
+# compiled, with every reason it is partial.
+cppl_add_script_test(e2e_partial_correctness e2e/partial_correctness.sh)
 cppl_add_script_test(negative_termination negative/termination.sh)
 cppl_add_script_test(negative_ghost_state negative/ghost_state.sh)
 cppl_add_script_test(negative_unsafe_boundary negative/unsafe_boundary.sh)

@@ -30,8 +30,13 @@ enum class Category : std::uint8_t {
     // from ProofFailure, because the fix is to the build rather than to a
     // proof (SPEC.md TUBOUND-003, TUBOUND-005).
     VerificationInterface,
-    Policy,   // the build policy refuses the result
-    Style,    // canonical formatting is violated; never blocks a build
+    Policy, // the build policy refuses the result
+    Style,  // canonical formatting is violated; never blocks a build
+    // A contract is proven for partial correctness only: it holds if the
+    // function returns, and nothing shows that it does (SPEC.md CORRECT-001 to
+    // CORRECT-003). Nothing failed, so it is neither a ProofFailure nor any
+    // other refusal; like Style, it never blocks a build.
+    PartialCorrectness,
     Internal, // the compiler failed; never a verification result
 };
 

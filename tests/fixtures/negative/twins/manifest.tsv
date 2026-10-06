@@ -32,6 +32,7 @@ twin	equivalence/providers.cpp	negative/twins/equivalence_providers.cpp	error \[
 twin	equivalence/quantified_propositions.cpp	negative/twins/equivalence_quantified_propositions.cpp	error \[kernel-rejection\]: proof 'identity_everywhere_holds' does not establish law 'identity_everywh	-	-
 twin	equivalence/refinements.cpp	negative/twins/equivalence_refinements.cpp	error \[proof-failure\]: verified function 'fifty' does not satisfy its contract	-	-
 twin	equivalence/rewritten_proof.cpp	negative/twins/equivalence_rewritten_proof.cpp	error \[kernel-rejection\]: proof 'identity_at_zero_holds' does not establish law 'identity_at_zero'	-	-
+twin	partial_correctness.cpp	negative/twins/partial_correctness.cpp	error \[kernel-rejection\]: return path 'loop_nodec path [0-9]+' does not satisfy its contract	-	-
 twin	positions/columns.cpp	negative/twins/positions_columns.cpp	error \[proof-failure\]: verified function 'at' does not satisfy its contract	-	-
 twin	equivalence/termination.cpp	negative/twins/equivalence_termination.cpp	error \[kernel-rejection\]: return path 'even_steps path [0-9]+' does not satisfy its contract	-	-
 twin	equivalence/unsafe_boundaries.cpp	negative/twins/equivalence_unsafe_boundaries.cpp	error \[kernel-rejection\]: return path 'clamped_reading path [0-9]+' does not satisfy its contract	-	-

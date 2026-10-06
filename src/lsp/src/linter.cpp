@@ -382,6 +382,9 @@ Diagnostic Linter::convert_diagnostic(const diagnostics::Diagnostic& diag, const
         case diagnostics::Category::Style:
             lsp_diag.code = "cppl.style";
             break;
+        case diagnostics::Category::PartialCorrectness:
+            lsp_diag.code = "cppl.partial.correctness";
+            break;
         case diagnostics::Category::Internal:
             lsp_diag.code = "cppl.internal";
             break;

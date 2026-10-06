@@ -14,7 +14,8 @@
 # same, each record packed and each `__builtin_LINE()` the line it is written
 # on; must be the same text once preprocessed and the same assembly at -O0 and
 # -O2; and Clang must compile the C++L unit without a warning, which a
-# `#pragma pack(pop)` left without its push would raise. The records' sizes
+# `#pragma pack(pop)` left without its push would raise (C++L's own warning
+# that `count` is proven for partial correctness only aside). The records' sizes
 # are claimed by contracts too, so the program verified is packed as the
 # program run (the refused twin in `negative/twins/` claims them unpacked).
 set -euo pipefail
@@ -60,9 +61,20 @@ compared() {
             exit 1
         fi
     done
-    if [ -s "$base.err" ]; then
-        echo "Clang warned compiling the directives unit ($standard):" >&2
+    # The one warning C++L itself gives: the loop in `count` states no
+    # measure, so its contract is proven for partial correctness only (SPEC.md
+    # CORRECT-002). Anything else on the error stream is Clang's.
+    if ! grep -q "warning \[partial-correctness\]: the contract of 'count' is proven for partial correctness only" \
+        "$base.err"; then
+        echo "the directives unit ($standard) did not warn that 'count' is proven for partial correctness only:" >&2
         cat "$base.err" >&2
+        exit 1
+    fi
+    grep -v -e "warning \[partial-correctness\]: the contract of 'count' is proven for partial correctness only" \
+        -e "note: the loop that states no 'decreases'\$" "$base.err" > "$base.clang.err" || true
+    if [ -s "$base.clang.err" ]; then
+        echo "Clang warned compiling the directives unit ($standard):" >&2
+        cat "$base.clang.err" >&2
         exit 1
     fi
     if grep -q '__cppl_' "$base.runtime.ii"; then

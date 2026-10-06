@@ -2446,6 +2446,16 @@ void settle_totality(Program& program, const Contracts& contracts, diagnostics::
     }
     for (std::size_t index = 0; index < count; ++index) {
         program.contracts[index].total = total[index];
+        // Another unit's contract is as it was recorded, and names nothing it
+        // calls (SPEC.md TUBOUND-007).
+        if (program.contracts[index].imported.has_value()) {
+            continue;
+        }
+        for (const std::size_t callee : callees[index]) {
+            if (callee != index && !total[callee]) {
+                program.contracts[index].partial_callees.push_back(callee);
+            }
+        }
     }
 
     for (const auto& [usr, function] : contracts) {

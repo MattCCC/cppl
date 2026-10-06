@@ -27,6 +27,8 @@ std::string describe(Category category) {
             return "policy";
         case Category::Style:
             return "style";
+        case Category::PartialCorrectness:
+            return "partial-correctness";
         case Category::Internal:
             return "internal";
     }
