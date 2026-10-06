@@ -254,12 +254,24 @@ switch continues the loop around it. A condition variable is a local the
 condition initializes, and `[[fallthrough]];` is an empty statement. Refused by
 name: a `case` or `default` label anywhere but directly in its switch's body
 (Duff's device), a statement before the first label, a GNU case range, and an
-init-statement, which libclang does not expose and which would otherwise be
-dropped; an `if` with an init-statement is refused for the same reason, since
-libclang lists the init where the condition otherwise stands. A comma operator
-as a statement, `a = 1, b = 2;`, or as a `for` increment, `++i, --j`, runs its
-operands in order as statements of their own; one inside another expression is
-refused by name (`e2e/switch_statements.sh`, `negative/switch_statements.sh`).
+init-statement, which libclang does not expose as a part of the switch at all
+(not as a child, nor at its position) and which would otherwise be dropped. A
+comma operator as a statement, `a = 1, b = 2;`, or as a `for` increment,
+`++i, --j`, runs its operands in order as statements of their own; one inside
+another expression is refused by name (`e2e/switch_statements.sh`,
+`negative/switch_statements.sh`).
+
+An `if` may have an init-statement and a condition variable (C++ [stmt.if]):
+the init-statement runs first, in a scope around the whole statement, so what
+it declares is visible in the condition and both branches; a condition
+variable is a local the condition reads. libclang lists the init-statement
+where the condition otherwise stands, so which part is which is read from the
+tokens of the head: the parts written inside its parentheses, split at the `;`
+that ends the init-statement, and the branches after them. `if constexpr` runs
+only the branch its constant condition selects, as Clang evaluates it, which in
+a template specialization is the only one instantiated. `if consteval` is
+refused by name: which branch runs depends on whether the evaluation is a
+constant one (`e2e/if_statements.sh`, `negative/if_statements.sh`).
 
 A verified function may state `decreases (...)` over its parameters, one
 measure or a lexicographic list, to ask that it terminate (TERMINATION-004).
