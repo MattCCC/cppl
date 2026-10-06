@@ -234,8 +234,11 @@ unset CCC_OVERRIDE_OPTIONS
 # asked to, so a unit is never read in that mode, let alone analysed: it is
 # refused whatever the variables say. A clang-cl mode cppl could read would
 # have to refuse them as it refuses CCC_OVERRIDE_OPTIONS.
+# The unit is named relative to the run directory: clang-cl reads an absolute
+# path such as /workspace/... or /Users/... as one of its own options.
 ln -s "$CLANG" clang-cl
-if CL=/J _CL_=/J "$CPPL" "--cppl-clang=$run/clang-cl" -c "$TARGET/$beside_host.cpp" -o cl_mode.o \
+cp "$TARGET/$beside_host.cpp" cl_mode.cpp
+if CL=/J _CL_=/J "$CPPL" "--cppl-clang=$run/clang-cl" -c cl_mode.cpp -o cl_mode.o \
     --cppl-trust-report > cl_mode.out 2> cl_mode.err; then
     fail "a unit was verified in clang-cl mode"
 fi
