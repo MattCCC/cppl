@@ -12,6 +12,7 @@ add_library(cppl_clang STATIC
     src/aliasing.cpp
     src/bridge.cpp
     src/call_objects.cpp
+    src/calls.cpp
     src/conversions.cpp
     src/cursors.cpp
     src/default_arguments.cpp

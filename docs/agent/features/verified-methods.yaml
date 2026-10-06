@@ -88,6 +88,7 @@ implementation:
     - clang/src/aliasing.cpp
     - clang/src/bridge.cpp
     - clang/src/call_objects.cpp
+    - clang/src/calls.cpp
     - clang/src/formed_places.cpp
     - clang/src/lowering.cpp
     - clang/src/signature.cpp

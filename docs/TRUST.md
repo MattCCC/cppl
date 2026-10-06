@@ -1478,7 +1478,7 @@ No path turns a failure to prove into a site: an unproved refinement crossing is
 - the same call could store a value outside a refined element type in a `std::vector<Positive>`, after which `0u < v[0]` was PROVEN and false (STDMODEL-027);
 - a span parameter passed on to a writing call kept its elements' old values in the same way.
 
-`handed_storage` (`clang/src/bridge.cpp`) now follows a copied span to the storage the copied span designates. Every case is a permanent regression in `negative_sequence_boundaries` (`x_span_local_*`, `x_span_param_passed_on`, `c_span_local_writable_call`), and the mutation entry `span-copy-hands-storage` restores the defect and must be caught.
+`handed_storage` (`clang/src/calls.cpp`) now follows a copied span to the storage the copied span designates. Every case is a permanent regression in `negative_sequence_boundaries` (`x_span_local_*`, `x_span_param_passed_on`, `c_span_local_writable_call`), and the mutation entry `span-copy-hands-storage` restores the defect and must be caught.
 
 **Finding, fixed: a soundness defect in quantifier lowering.** A binder of a refinement type ranges over that refinement's values (`SPEC.md` FORALL-001), and instantiating it at a term owes the term's membership (8.1, REFINE-003). The bridge read a `forall` binder's type canonicalized, so `forall (Small s) { P }` with `Small = unsigned where (self < 10u)` reached the kernel as `forall u32. P`, and a law's or proof's refined parameter was quantified the same way. Where such a quantifier is a premise it states more than was written, so a law could be proven from a true premise and be false:
 
