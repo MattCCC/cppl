@@ -38,7 +38,7 @@ Normative sources: `REFINE-*` (SPEC §17), `REFINEOBL-*` (Annex I), `DEP-*`
 | Component | Responsibility | Paths |
 | --- | --- | --- |
 | frontend | Recognize refinement declarations, `self`, indexed refinements. Keep the words contextual. | `compiler/frontend/src/recognizer.cpp`, `compiler/frontend/src/projection.cpp`, `compiler/frontend/include/cppl/frontend/syntax.hpp` |
-| places | Designate storage: a root plus a path of projections. One access resolver, one read, one write. | `vir/include/cppl/vir/place.hpp`, `clang/src/bridge.cpp` (`resolve_access`, `read_place`, `BodyLowering::write`) |
+| places | Designate storage: a root plus a path of projections. One access resolver, one read, one write. | `vir/include/cppl/vir/place.hpp`, `clang/src/places.hpp` (`Local`, `ResolvedAccess`), `clang/src/bridge.cpp` (`resolve_access`, `read_place`, `BodyLowering::write`) |
 | capabilities | Carry `readable`/`writable` as context hypotheses, never as kernel propositions. Gate every dereference. | `vir/include/cppl/vir/capability.hpp`, `compiler/frontend/src/formal_projection.cpp` (`capability_form`), `clang/src/bridge.cpp` (`resolve_storage`) |
 | elaboration | Elaborate the predicate into a formal proposition over the base type. | `compiler/elaboration/src/elaborate.cpp` |
 | obligations | Emit a membership obligation at every semantic crossing. | `compiler/obligations/src/generate.cpp`, `compiler/obligations/src/contracts.cpp` |
