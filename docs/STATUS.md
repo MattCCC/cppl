@@ -954,7 +954,7 @@ unverified caller relying on it is as unverified as one writing the value out.
 Across units a caller relies on its own declaration's default: a contract's
 identity in a verification interface depends on no default, so a declaration
 stating one matches a definition stating none. Refused, each by name: a default
-the bridge cannot evaluate at the call, such as one reading a global, naming the
+the bridge cannot evaluate at the call, such as one reading a mutable global, naming the
 parameter and the function whose default it is; a default calling a function
 that is not pure, naming that function and the default; a reference parameter's
 default, which binds storage the call does not name; a default whose end
