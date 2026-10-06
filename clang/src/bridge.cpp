@@ -4155,6 +4155,44 @@ bool terminates(CXCursor statement, unsigned depth) {
     return false;
 }
 
+// Whether the parenthesized head of an `if` or a `switch` holds an
+// init-statement, `if (init; condition)` (C++ [stmt.select]): a `;` directly
+// inside the parentheses that follow the keyword. libclang does not expose a
+// switch's init-statement as a child at all, so the head's tokens are read.
+// Nothing when they cannot be read, which the caller refuses rather than
+// guessing that there is none.
+std::optional<bool> holds_init_statement(CXCursor statement) {
+    const std::vector<CXCursor> parts = children_of(statement);
+    if (parts.empty()) {
+        return std::nullopt;
+    }
+    const CXTranslationUnit unit = clang_Cursor_getTranslationUnit(statement);
+    const CXSourceRange head = clang_getRange(clang_getRangeStart(clang_getCursorExtent(statement)),
+                                              clang_getRangeStart(clang_getCursorExtent(parts.back())));
+    CXToken* tokens = nullptr;
+    unsigned count = 0;
+    clang_tokenize(unit, head, &tokens, &count);
+    std::optional<bool> found;
+    std::size_t nesting = 0;
+    for (unsigned index = 0; index < count && !found.has_value(); ++index) {
+        if (clang_getTokenKind(tokens[index]) != CXToken_Punctuation) {
+            continue;
+        }
+        const std::string spelled = take(clang_getTokenSpelling(unit, tokens[index]));
+        if (spelled == "(" || spelled == "[" || spelled == "{") {
+            ++nesting;
+        } else if ((spelled == ")" || spelled == "]" || spelled == "}") && nesting > 0) {
+            if (--nesting == 0) {
+                found = false;
+            }
+        } else if (spelled == ";" && nesting == 1) {
+            found = true;
+        }
+    }
+    clang_disposeTokens(unit, tokens, count);
+    return found;
+}
+
 // The declaration the projector put just inside an unsafe block's `{`, when
 // `statement` is such a block (SPEC.md 26). A nested block has none: it is part
 // of the region holding it.
@@ -6664,6 +6702,19 @@ struct BodyLowering {
             return lower_update(statement, next, locals, depth);
         }
         const std::vector<CXCursor> parts = children_of(statement);
+        // libclang lists an `if`'s init-statement as its first child, where
+        // the condition otherwise stands: read as the condition, it would
+        // decide the branch in place of the real one.
+        if (kind == CXCursor_IfStmt) {
+            const std::optional<bool> init = holds_init_statement(statement);
+            if (!init.has_value()) {
+                return reject("the head of this 'if' statement could not be read, so whether it holds an "
+                              "init-statement is not known");
+            }
+            if (*init) {
+                return reject("an 'if' statement with an init-statement is not modeled");
+            }
+        }
         if (kind == CXCursor_IfStmt && (parts.size() == 2 || parts.size() == 3) &&
             clang_isExpression(clang_getCursorKind(parts[0])) != 0) {
             return lower_branch(statement, parts, next, locals, depth);

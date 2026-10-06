@@ -68,8 +68,12 @@ reject short_circuit_false_route 'return path.*does not satisfy' \
     'verified unsigned f(unsigned x) ensures (result <= 10u) { if (x <= 10u && x != 0u) return 0u; return x; }'
 reject switch_statement 'only if/else' \
     'verified unsigned f(unsigned x) ensures (result <= 10u) { switch (x) { case 0: return 0u; default: return 10u; } }'
-reject if_initializer 'only if/else' \
+reject if_initializer "an 'if' statement with an init-statement is not modeled" \
     'verified unsigned f(unsigned x) ensures (result <= 10u) { if (unsigned y = x; y <= 10u) return y; return 10u; }'
+# libclang lists the init-statement first, where the condition otherwise stands,
+# and it was once read as the condition: this claim held only under that reading.
+reject if_initializer_read_as_condition "an 'if' statement with an init-statement is not modeled" \
+    'verified bool above(unsigned x) ensures (true) { return x > 3u; } verified unsigned f(unsigned x) ensures (result == 7u) { unsigned y = 7u; if (y == 7u; above(x)) { y = 0u; } return y; }'
 reject branch_call_precondition 'call-site precondition' \
     'verified unsigned g(unsigned x) expects (x <= 10u) ensures (result <= 10u) { return x; } verified unsigned f(unsigned x) ensures (result <= 10u) { if (x <= 10u) return 10u; else return g(x); }'
 reject future_guard 'call-site precondition' \

@@ -68,6 +68,8 @@ partial-contract-warned	compiler/driver/src/pipeline.cpp	warn_partial_contracts(
 partial-warning-only-partial	compiler/driver/src/pipeline.cpp	if (claim.kind != obligations::ClaimKind::Contract || claim.total) {	if (claim.kind != obligations::ClaimKind::Contract) {	^e2e_partial_correctness$
 partial-callees-recorded	compiler/obligations/src/contracts.cpp	if (callee != index && !total[callee]) {	if (false && callee != index && !total[callee]) {	^(e2e_partial_correctness|e2e_cross_tu)$
 partial-warning-not-for-refused	compiler/driver/src/pipeline.cpp	!function->contract->measures.empty()) {	false) {	^e2e_partial_correctness$
+if-init-statement-refused	clang/src/bridge.cpp	return reject("an 'if' statement with an init-statement is not modeled");	(void)0;	^negative_verified_paths$
+init-statement-detected	clang/src/bridge.cpp	} else if (spelled == ";" && nesting == 1) {	} else if (false) {	^negative_verified_paths$
 lexer-records-directives	compiler/frontend/src/lexer.cpp	directives_.push_back(Directive{source::ByteSpan{offset_, cursor - offset_}, is_marker});	(void)is_marker;	^(unit_projection_test|e2e_erasure_directives)$
 erasure-blank-keeps-directives	compiler/frontend/src/projection.cpp	if (const Directive* directive = directive_at(stream, base + offset); directive != nullptr) {	if (const Directive* directive = directive_at(stream, base + offset); false && directive != nullptr) {	^(unit_projection_test|e2e_erasure_directives)$
 erasure-directive-kept	compiler/erasure/src/erase.cpp	directives_kept = false; // a directive erased with the C++L around it	directives_kept = true; // a directive erased with the C++L around it	^unit_projection_test$
