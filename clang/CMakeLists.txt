@@ -17,6 +17,8 @@ add_library(cppl_clang STATIC
     src/editor_navigation.cpp
     src/editor_structure.cpp
     src/proof_instantiation.cpp
+    src/proof_instantiation_cursors.cpp
+    src/proof_instantiation_hazards.cpp
     src/statements.cpp)
 
 target_include_directories(cppl_clang PUBLIC

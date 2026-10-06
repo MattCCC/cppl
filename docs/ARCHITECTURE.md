@@ -496,7 +496,7 @@ The projector records the runs of the analysis text the runtime text lacks
 (`Projection::proof_only`), and the bridge refuses any of them whose Clang
 resolution reaches a template of the program's own, a member of one's
 specialization, or a standard template at such an argument, before anything
-is lowered (`clang/src/proof_instantiation.cpp`, `SPEC.md` `ERASE-019`,
+is lowered (`clang/src/proof_instantiation*.cpp`, `SPEC.md` `ERASE-019`,
 `TRUST.md` `TCB-SOURCE-010`).
 
 ---
