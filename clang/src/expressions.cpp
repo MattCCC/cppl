@@ -12,6 +12,7 @@
 #include "places.hpp"
 #include "sequences.hpp"
 #include "signature.hpp"
+#include "statements.hpp"
 #include "types.hpp"
 #include "unsafe.hpp"
 
@@ -118,6 +119,12 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
                       bool sequenced_call) {
     if (depth > kMaxExpressionDepth) {
         return unsupported_expression(cursor, "expression nests deeper than the bridge allows");
+    }
+    // A selection the route being lowered evaluates one arm of is that arm, or
+    // the constant no expression writes (statements.hpp `ChosenArm`).
+    if (const ChosenArm* chosen = signature.chosen != nullptr ? chosen_for(*signature.chosen, cursor) : nullptr) {
+        return chosen->arm ? build_expression(*chosen->arm, signature, locals, depth + 1, sequenced_call)
+                           : chosen->constant;
     }
 
     const CXCursorKind kind = clang_getCursorKind(cursor);

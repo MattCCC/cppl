@@ -343,7 +343,9 @@ void extract_body(Function& function, CXCursor cursor, const Signature& signatur
     function.has_body = true;
 
     const std::vector<CXCursor> statements = children_of(members[body_index]);
-    BodyLowering lowering{.signature = signature,
+    // The body reads a selection as the arm the route being lowered chose.
+    Signature routed = signature;
+    BodyLowering lowering{.signature = routed,
                           .parameters = parameters,
                           .result_type = function.result,
                           .invariant_prefix = invariant_prefix,
@@ -351,6 +353,7 @@ void extract_body(Function& function, CXCursor cursor, const Signature& signatur
                           .unsafe_effects = &unsafe_effects,
                           .executable_state = executable_state,
                           .capabilities = capabilities};
+    routed.chosen = &lowering.chosen_arms;
     lowering.completion_location = presumed_location(clang_getRangeEnd(clang_getCursorExtent(members[body_index])));
     lowering.escaped = escaped_locals(members[body_index]);
     lowering.unconfined = unconfined_locals(members[body_index]);

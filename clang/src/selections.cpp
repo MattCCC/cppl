@@ -59,7 +59,7 @@ std::optional<Expr> BodyLowering::lower_returned(CXCursor value, CXCursor statem
 // The selected value `statement` computes that it is lowered once per route
 // for, unless this route already evaluates one of its arms in its place.
 std::optional<SelectedValue> BodyLowering::selection_to_split(CXCursor statement) const {
-    auto selected = signature.clause ? std::nullopt : selected_reading(statement);
+    auto selected = signature.clause ? std::nullopt : selected_reading(statement, chosen_arms);
     if (!selected || chosen_for(chosen_arms, selected->selection) != nullptr) {
         return std::nullopt;
     }

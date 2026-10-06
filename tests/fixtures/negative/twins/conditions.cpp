@@ -4,7 +4,7 @@
 // Conditions in verified bodies, from the shapes realistic programs write: an
 // element read in an `if` or loop condition; `&&` and `||` computed as values;
 // a returned, declared or assigned `?:`, `&&` or `||` whose arms read
-// elements; loop invariants
+// elements, and one that is a call's argument or an operand; loop invariants
 // stating `&&` and `||`, nested in each other, each operand specified on its
 // own; `&&` and `||` as values in a definition and a contract's term; a ghost
 // snapshot related to the loop case by case; callers taking apart the
@@ -83,6 +83,38 @@ verified bool beyond_or_zero(const std::vector<int>& v, std::size_t i)
 {
     bool empty = i >= v.size() || v[i] == 0;
     return empty;
+}
+
+// A selection inside a larger expression -- a call's argument, an operand --
+// reads the element on the route that evaluates it as well, the rest of the
+// expression evaluated on every route.
+verified int kept(int x)
+    ensures (result == x)
+{
+    return x;
+}
+
+verified int kept_or_zero(const std::vector<int>& v, std::size_t i)
+    ensures (i < v.size() || result == 0)
+{
+    return kept(i < v.size() ? v[i] : 0);
+}
+
+verified unsigned zeros_seen(const std::vector<unsigned>& v, std::size_t i, unsigned count)
+    expects (count < 1000u)
+    ensures (result == count || result == count + 1u)
+{
+    const unsigned next = count + (i < v.size() && v[i] == 0u ? 1u : 0u);
+    return next;
+}
+
+verified unsigned sum_present(const std::vector<unsigned>& v, std::size_t i, std::size_t j)
+    expects (v.size() < 4u)
+    ensures (true)
+{
+    unsigned total = 0u;
+    total = (i < v.size() ? v[i] % 100u : 0u) + (j < v.size() ? v[j] % 100u : 0u);
+    return total;
 }
 
 // `&&` and `||` as values are what C++ evaluates: the division happens only
@@ -296,6 +328,9 @@ int main() {
                 at_or(v, 3, -1), past_or_zero(v, 1) ? 1 : 0, past_or_zero(v, 0) ? 1 : 0);
     std::printf("%d %d %d %d\n", found_at(v, 1, 0) ? 1 : 0, found_at(v, 4, 0) ? 1 : 0, value_or(v, 2, -1),
                 beyond_or_zero(v, 9) ? 1 : 0);
+    const std::vector<unsigned> u{5u, 0u, 7u};
+    std::printf("%d %d %u %u %u\n", kept_or_zero(v, 2), kept_or_zero(v, 5), zeros_seen(u, 1, 4u),
+                zeros_seen(u, 8, 4u), sum_present(u, 0, 2));
     std::printf("%d %d %d %d %d %d\n", divides(9u, 3u) ? 1 : 0, divides(9u, 0u) ? 1 : 0,
                 zero_or_divides(9u, 0u) ? 1 : 0, zero_or_divides(9u, 2u) ? 1 : 0, ordered(1, 2, 3) ? 1 : 0,
                 ordered(2, 1, 3) ? 1 : 0);

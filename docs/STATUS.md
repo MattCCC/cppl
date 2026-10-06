@@ -2560,8 +2560,10 @@ one a member of the implicit object holds, is its `N` element places, each
 caller storage, read and written at a term within its extent; a clause reads
 its element as the parameter's at the state the clause describes. An element or a dereference read in an `if` or loop condition, or in
 an arm of a `?:`, `&&` or `||` that is returned, declares one local or is
-assigned, is formed where it is evaluated, and owes its bound or capability
-only on the routes that evaluate it (`e2e/conditions.sh`). A container handed to a verified call by value is copied into the
+assigned, or that stands inside such a statement's value, a call statement or
+a returned value as an operand or a call's argument, is formed where it is
+evaluated, and owes its bound or capability only on the routes that evaluate
+it (`e2e/conditions.sh`). A container handed to a verified call by value is copied into the
 parameter, and the caller's is unchanged. A signed index is bounded as the
 size-type value C++ converts it to, and dividing by a length owes it non-zero,
 through the machine-arithmetic rules (`SPEC.md` ARITH-008, ARITH-009). The same

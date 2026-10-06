@@ -6,7 +6,8 @@
 # `fixtures/conditions.cpp` states a contract for each shape: an element read
 # in an `if` condition and in a loop condition guarded by `&&`; a returned
 # `&&`, `?:` and `||` reading an element on one arm, and a declared and an
-# assigned one; `&&` and `||` as values in
+# assigned one, and one that is a call's argument or an operand; `&&` and `||`
+# as values in
 # a declaration and an assignment whose second operand divides, and in a pure
 # function's definition and a contract's term; a loop invariant
 # that is a disjunction of conjunctions, and one that is a conjunction holding
@@ -32,6 +33,7 @@ run=$(mktemp -d "$WORK/conditions.XXXXXX")
 expected='4 -1 2 3
 1 0 7 -1 1 0
 1 0 7 1
+7 0 5 4 12
 1 0 1 0 1 0
 1 3 1 0 1 0
 1 0 2 4
@@ -55,7 +57,7 @@ for standard in c++20 c++23; do
         cat "$base.err" >&2
         fail "verifying the conditions warned ($standard)"
     fi
-    for line in 'Laws proven: +3' 'Function contracts proven: +27' '  partial correctness only: +0' 'Loop invariants proven: +16' \
+    for line in 'Laws proven: +3' 'Function contracts proven: +31' '  partial correctness only: +0' 'Loop invariants proven: +16' \
         'Loop measures proven: +8' 'Unresolved obligations: +0' 'Laws trusted: +0'; do
         grep -Eq "^$line\$" "$base.report" || { cat "$base.report" >&2; fail "the report does not state '$line'"; }
     done
@@ -68,6 +70,7 @@ for standard in c++20 c++23; do
         'return i < v.size() && v[i] == key;' 'return i < v.size() ? v[i] : fallback;' \
         'return i >= v.size() || v[i] == 0;' \
         'const bool hit = i < v.size() && v[i] == key;' 'value = i < v.size() ? v[i] : fallback;' 'const bool even = b != 0u && a % b == 0u;' \
+        'return kept(i < v.size() ? v[i] : 0);' 'const unsigned next = count + (i < v.size() && v[i] == 0u ? 1u : 0u);' \
         'divided = b == 0u || a % b == 0u;' 'while (!found && i < v.size())' 'while (i > 0u)' 'if (i == mark) {' 'for (unsigned i = 0u; i < n; ++i)' 'if (i < limit) {' \
         'while (b != 0u)' 'return min_of(max_of(v, lo), hi);' 'const bool any = x > 0u || y > 0u;' \
         'return count + (x > 0u ? 1u : 0u);'; do

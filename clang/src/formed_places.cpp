@@ -10,6 +10,7 @@
 #include "refinements.hpp"
 #include "sequences.hpp"
 #include "signature.hpp"
+#include "statements.hpp"
 #include "types.hpp"
 
 #include <algorithm>
@@ -519,6 +520,12 @@ std::optional<bool> BodyLowering::form_pointee_receiver(CXCursor call, Locals& s
 bool BodyLowering::materialize_derefs(CXCursor cursor, Locals& state, unsigned depth) {
     if (depth > kMaxExpressionDepth) {
         return true;
+    }
+    // A selection the route being lowered evaluates one arm of forms what that
+    // arm reads, and nothing the other arm or its condition reads: the
+    // condition was split on before the statement was lowered on this route.
+    if (const ChosenArm* chosen = chosen_for(chosen_arms, cursor)) {
+        return !chosen->arm.has_value() || materialize_derefs(*chosen->arm, state, depth + 1);
     }
     const auto kind = clang_getCursorKind(cursor);
     // A subscript of a vector, a string or a span forms its element place

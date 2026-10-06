@@ -91,13 +91,6 @@ struct SelectedValue {
 
 [[nodiscard]] std::optional<SelectedValue> selected_value(CXCursor value);
 
-// The selected value a declaration of one local or an assignment computes,
-// when an arm of it reads storage through a subscript or a pointer: the
-// statement is then lowered once on each route its condition selects, with
-// the arm that route evaluates in place of the selection (`ChosenArm`), so
-// what the arm reads owes its bound or capability on that route alone.
-[[nodiscard]] std::optional<SelectedValue> selected_reading(CXCursor statement);
-
 // The arm a route evaluates in place of `selection`: a cursor, or else the
 // constant no expression of the program writes.
 struct ChosenArm {
@@ -105,6 +98,21 @@ struct ChosenArm {
     std::optional<CXCursor> arm;
     Expr constant;
 };
+
+// The next selected value a statement computes whose arm reads storage through
+// a subscript or a pointer, and of which the route being lowered, having taken
+// the arms `chosen`, has not chosen an arm: the statement's whole value, or one
+// standing anywhere C++ evaluates it whatever the selection does -- an operand,
+// a call's argument, a member's initializer -- in the order C++ evaluates them,
+// and inside an arm the route chose. The statement is a declaration of one
+// local, an assignment, a compound assignment, a call or a return whose value
+// is not itself a selection, which the return lowers arm by arm. The statement
+// is then lowered once on each route the selection's condition selects, with
+// the arm that route evaluates in place of the selection, so what the arm reads
+// owes its bound or capability on that route alone. Within one statement only
+// its outermost call may write, so every condition reads the state before it,
+// as C++ reads it.
+[[nodiscard]] std::optional<SelectedValue> selected_reading(CXCursor statement, const std::vector<ChosenArm>& chosen);
 
 // The arm `chosen` holds for `selection` on this route, if any.
 [[nodiscard]] const ChosenArm* chosen_for(const std::vector<ChosenArm>& chosen, CXCursor selection);

@@ -87,6 +87,8 @@ struct Receiver {
 
 class UnsafeEffects;
 
+struct ChosenArm;
+
 // What a body or a clause is lowered against: the parameters Clang resolved for
 // its declaration and, for a non-static member function, its implicit object.
 // The verified callable takes the implicit object's leaves first and the
@@ -109,6 +111,11 @@ struct Signature {
     // runs, where such a call is followed only as a statement of its own; a
     // clause runs nothing.
     UnsafeEffects* unsafe_effects = nullptr;
+    // The arms the route being lowered evaluates in place of the selections
+    // that hold them (statements.hpp `ChosenArm`): the body lowering's own,
+    // so a selection standing anywhere in a statement's value is read as the
+    // arm its route takes. None for a clause, which takes no route.
+    const std::vector<ChosenArm>* chosen = nullptr;
 
     [[nodiscard]] std::uint32_t leaves() const {
         return receiver.has_value() ? static_cast<std::uint32_t>(receiver->leaves.size()) : 0;

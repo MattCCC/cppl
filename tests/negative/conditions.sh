@@ -160,6 +160,84 @@ verified int value_or(const std::vector<int>& v, std::size_t i, int fallback)
 int main() { return 0; }
 CPP
 
+# As a call's argument or an operand, the selection reads the element at the
+# end, or on the arm where the index is out of range.
+refused argument_reads_at_end "$unbounded" <<'CPP'
+#include <cstddef>
+#include <vector>
+verified int kept(int x)
+    ensures (result == x)
+{
+    return x;
+}
+verified int kept_or_zero(const std::vector<int>& v, std::size_t i)
+    ensures (true)
+{
+    return kept(i <= v.size() ? v[i] : 0);
+}
+int main() { return 0; }
+CPP
+
+refused argument_reads_other_arm "$unbounded" <<'CPP'
+#include <cstddef>
+#include <vector>
+verified int kept(int x)
+    ensures (result == x)
+{
+    return x;
+}
+verified int kept_or_zero(const std::vector<int>& v, std::size_t i)
+    ensures (true)
+{
+    return kept(i < v.size() ? 0 : v[i]);
+}
+int main() { return 0; }
+CPP
+
+refused operand_reads_past_or "$unbounded" <<'CPP'
+#include <cstddef>
+#include <vector>
+verified unsigned zeros_seen(const std::vector<unsigned>& v, std::size_t i, unsigned count)
+    expects (count < 1000u)
+    ensures (true)
+{
+    const unsigned next = count + (i < v.size() || v[i] == 0u ? 1u : 0u);
+    return next;
+}
+int main() { return 0; }
+CPP
+
+refused second_operand_reads_at_end "$unbounded" <<'CPP'
+#include <cstddef>
+#include <vector>
+verified unsigned sum_present(const std::vector<unsigned>& v, std::size_t i, std::size_t j)
+    expects (v.size() < 4u)
+    ensures (true)
+{
+    unsigned total = 0u;
+    total = (i < v.size() ? v[i] % 100u : 0u) + (j <= v.size() ? v[j] % 100u : 0u);
+    return total;
+}
+int main() { return 0; }
+CPP
+
+# The argument is zero only where the index is out of range.
+refused argument_claimed_zero "$false_claim" <<'CPP'
+#include <cstddef>
+#include <vector>
+verified int kept(int x)
+    ensures (result == x)
+{
+    return x;
+}
+verified int kept_or_zero(const std::vector<int>& v, std::size_t i)
+    ensures (result == 0)
+{
+    return kept(i < v.size() ? v[i] : 0);
+}
+int main() { return 0; }
+CPP
+
 # A declared `&&` is false where its first operand is.
 refused declared_and_claimed_true "$false_claim" <<'CPP'
 #include <cstddef>

@@ -292,25 +292,57 @@ bool reads_through(CXCursor cursor, unsigned depth = 0) {
                                [depth](CXCursor child) { return reads_through(child, depth + 1); });
 }
 
-} // namespace
-
-std::optional<SelectedValue> selected_reading(CXCursor statement) {
-    std::optional<CXCursor> value;
-    const std::vector<CXCursor> parts = children_of(statement);
-    if (clang_getCursorKind(statement) == CXCursor_DeclStmt && parts.size() == 1 &&
-        clang_getCursorKind(parts.front()) == CXCursor_VarDecl &&
-        clang_Cursor_isNull(clang_Cursor_getVarDeclInitializer(parts.front())) == 0) {
-        value = clang_Cursor_getVarDeclInitializer(parts.front());
-    } else if (clang_getCursorKind(statement) == CXCursor_BinaryOperator && parts.size() == 2 &&
-               clang_getCursorBinaryOperatorKind(statement) == CXBinaryOperator_Assign) {
-        value = parts[1];
-    }
-    std::optional<SelectedValue> selected = value ? selected_value(*value) : std::nullopt;
-    if (!selected || !((selected->when_true && reads_through(*selected->when_true)) ||
-                       (selected->when_false && reads_through(*selected->when_false)))) {
+// The first selection in `cursor` that the route having taken `chosen` has not
+// chosen an arm of and whose arm reads through a subscript or a pointer, walking
+// only what C++ evaluates whatever an unchosen selection does: a chosen
+// selection is its chosen arm, and a selection none of whose arms reads through
+// is its condition, the one part of it always evaluated.
+std::optional<SelectedValue> first_reading(CXCursor cursor, const std::vector<ChosenArm>& chosen, unsigned depth) {
+    if (depth > kMaxStatementDepth) {
         return std::nullopt;
     }
-    return selected;
+    if (const ChosenArm* taken = chosen_for(chosen, cursor)) {
+        return taken->arm ? first_reading(*taken->arm, chosen, depth + 1) : std::nullopt;
+    }
+    if (std::optional<SelectedValue> selected = selected_value(cursor)) {
+        if (chosen_for(chosen, selected->selection) != nullptr) {
+            return first_reading(selected->selection, chosen, depth + 1);
+        }
+        if ((selected->when_true && reads_through(*selected->when_true)) ||
+            (selected->when_false && reads_through(*selected->when_false))) {
+            return selected;
+        }
+        return first_reading(selected->condition, chosen, depth + 1);
+    }
+    for (const CXCursor child : children_of(cursor)) {
+        if (std::optional<SelectedValue> found = first_reading(child, chosen, depth + 1)) {
+            return found;
+        }
+    }
+    return std::nullopt;
+}
+
+} // namespace
+
+std::optional<SelectedValue> selected_reading(CXCursor statement, const std::vector<ChosenArm>& chosen) {
+    std::optional<CXCursor> value;
+    const CXCursorKind kind = clang_getCursorKind(statement);
+    const std::vector<CXCursor> parts = children_of(statement);
+    if (kind == CXCursor_DeclStmt && parts.size() == 1 && clang_getCursorKind(parts.front()) == CXCursor_VarDecl &&
+        clang_Cursor_isNull(clang_Cursor_getVarDeclInitializer(parts.front())) == 0) {
+        value = clang_Cursor_getVarDeclInitializer(parts.front());
+    } else if ((kind == CXCursor_BinaryOperator &&
+                clang_getCursorBinaryOperatorKind(statement) == CXBinaryOperator_Assign) ||
+               kind == CXCursor_CompoundAssignOperator) {
+        if (parts.size() == 2) {
+            value = parts[1];
+        }
+    } else if (kind == CXCursor_CallExpr) {
+        value = statement;
+    } else if (kind == CXCursor_ReturnStmt && parts.size() == 1 && !selected_value(parts.front()).has_value()) {
+        value = parts.front();
+    }
+    return value ? first_reading(*value, chosen, 0) : std::nullopt;
 }
 
 const ChosenArm* chosen_for(const std::vector<ChosenArm>& chosen, CXCursor selection) {
