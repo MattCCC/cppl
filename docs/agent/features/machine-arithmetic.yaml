@@ -105,6 +105,7 @@ implementation:
     - clang/src/conversions.cpp
     - clang/src/expressions.cpp
     - clang/src/types.cpp
+    - clang/src/writes.cpp
   elaboration:
     - compiler/elaboration/src/elaborate_expressions.cpp
   vir:

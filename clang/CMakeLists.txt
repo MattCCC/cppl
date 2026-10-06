@@ -43,7 +43,8 @@ add_library(cppl_clang STATIC
     src/switches.cpp
     src/types.cpp
     src/unsafe.cpp
-    src/write_scan.cpp)
+    src/write_scan.cpp
+    src/writes.cpp)
 
 target_include_directories(cppl_clang PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)

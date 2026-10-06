@@ -51,6 +51,7 @@ implementation:
     - clang/src/lowering.cpp
     - clang/src/refinements.cpp
     - clang/src/types.cpp
+    - clang/src/writes.cpp
   frontend:
     - compiler/frontend/src/recognizer_laws.cpp
     - compiler/frontend/src/projection_refinements.cpp
