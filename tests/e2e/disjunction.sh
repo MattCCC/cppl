@@ -99,6 +99,8 @@ CPP
 reject wrong_type <<'CPP'
 proof wrong(unsigned x) proves (Eq<unsigned>(x, x) || 7u) { refl; }
 CPP
+# As a returned value, `||` is the value C++ evaluates, here always true, so a
+# contract that says it is `x` does not hold.
 reject as_a_value <<'CPP'
 verified bool wrong(unsigned x) ensures (result == x) { return x == x || x == x; }
 CPP
@@ -127,6 +129,7 @@ CPP
 grep -q 'kernel-rejection' "$run/excluded_middle.log"
 grep -q 'kernel-rejection' "$run/side_from_a_premise.log"
 grep -q 'kernel-rejection' "$run/one_case_fails.log"
+grep -q 'does not satisfy its contract' "$run/as_a_value.log"
 grep -q 'does not hold on entry' "$run/in_an_invariant.log"
 grep -q 'nested or malformed formal syntax' "$run/in_an_argument.log"
 grep -q 'no proof or assumed premise' "$run/written_failure.log"

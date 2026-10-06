@@ -137,8 +137,8 @@ logical equivalence `<->` lowers to both implications, using those same rules.
 Disjunction is `PROTOTYPE` on two further kernel rules (core/kernel 0.5.0), again
 with no assumptions or axioms: `||` is introduced from one side and used by a
 case analysis over both, automation shapes both and the kernel checks them, and
-nothing grants `P || not P`. In a verified `if` condition, `&&`, `||` and `!`
-are elaborated into the routes they select between (SPEC.md 12.7). A loop
+nothing grants `P || not P`. In a verified `if` or loop condition, `&&`, `||`
+and `!` are elaborated into the routes they select between (SPEC.md 12.7). A loop
 invariant states `&&` and `||` as a contract does, the conjunction and the
 disjunction of its operands, each specified on its own and nested to any depth
 (EXPR-016, SPECEXPR-002; `e2e/conditions.sh`, `negative/conditions.sh`).
@@ -151,8 +151,13 @@ closes a goal, on a selection a premise states something about, such as the
 route fact of a Boolean local holding `c ? true : d`. Such a local read in a
 later condition is split where that condition stands, as the composed
 contract nests it. Each case is a kernel rule checked on its own; none adds
-an assumption. Value uses of `&&` and `||` remain unsupported, because a
-proposition is not a value (SPEC.md 7.6-7.8).
+an assumption. A value a body computes with `&&` or `||`, in a declaration, an
+assignment or a call's argument, is the `?:` C++ evaluates, `a ? b : false` and
+`a ? true : b`, so an operation in the second operand owes its conditions only
+where it is evaluated (VERIFIED-021, EXPR-015); a returned `?:`, `&&` or `||`
+is a return of its own on each route its condition selects. In a pure
+function's definition they remain unsupported, because a proposition is not a
+value there (SPEC.md 7.6-7.8).
 Everything else is reported as unsupported and produces no obligation. See
 `docs/ARCHITECTURE.md` 95 for the implemented structure and `TRUST.md` 4 for what
 must be trusted.
@@ -2529,9 +2534,10 @@ refused, and so is one naming a model this compiler does not have. Iterators, ra
 allocators, `std::vector<bool>`, element types other than integers and `bool`,
 refined element types anywhere but a `vector` local (parameters, results, spans
 and `std::array`), and an element of a `std::array` a reference designates are
-refused. An element read directly in an `if` or loop
-condition is refused, as a dereference there is; it is read into a local
-first. A container handed to a verified call by value is copied into the
+refused. An element or a dereference read in an `if` or loop condition, or in
+an arm of a returned `?:`, `&&` or `||`, is formed where it is evaluated, and
+owes its bound or capability only on the routes that evaluate it
+(`e2e/conditions.sh`). A container handed to a verified call by value is copied into the
 parameter, and the caller's is unchanged. A signed index is bounded as the
 size-type value C++ converts it to, and dividing by a length owes it non-zero,
 through the machine-arithmetic rules (`SPEC.md` ARITH-008, ARITH-009). The same

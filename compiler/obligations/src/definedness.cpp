@@ -100,7 +100,8 @@ void collect(const vir::Expr& expression, Guards& guards, std::vector<Definednes
     // `?:` evaluates one arm, selected by its condition, so an operation in an
     // arm is guarded by the condition's outcome. `&&` and `||` never stand
     // here as values: a condition a path is taken on is already split into
-    // the routes they select (BOUNDARYEX-001), a specification states them as
+    // the routes they select (BOUNDARYEX-001), a value a body computes with
+    // them is the `?:` C++ evaluates, a specification states them as
     // connectives whose operands are each specified, and anywhere else they
     // are refused. Were one to reach here, its operands would owe their
     // conditions unguarded, which asks more, never less.

@@ -186,6 +186,24 @@ verified int pos_loop_condition(int raw)
 }
 
 CPP
+accepted pos_loop_condition_and "3=2" "-4=1" "5=2" <<'CPP'
+verified int pos_loop_condition_and(int raw)
+    ensures (result > 0)
+{
+    int v = raw;
+    int last = 1;
+    while (validate<Positive>(v) && v > 1)
+        invariant (last > 0)
+        decreases (static_cast<unsigned>(v))
+    {
+        Positive p = v;
+        last = p;
+        v = v - 1;
+    }
+    return last;
+}
+
+CPP
 accepted pos_returned "5=1" "0=0" <<'CPP'
 verified bool pos_returned(int raw)
     ensures (true)

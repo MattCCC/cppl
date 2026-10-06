@@ -1,5 +1,8 @@
 #include "statements.hpp"
 
+#include "cppl/clang/ast.hpp"
+#include "places.hpp"
+
 #include <algorithm>
 #include <clang-c/CXFile.h>
 #include <clang-c/CXSourceLocation.h>
@@ -8,6 +11,8 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 namespace cppl::clangbridge::detail {
@@ -34,6 +39,49 @@ std::vector<CXCursor> children_of(CXCursor cursor) {
         },
         &children);
     return children;
+}
+
+std::size_t file_offset(CXSourceLocation location) {
+    unsigned offset = 0;
+    clang_getFileLocation(location, nullptr, nullptr, nullptr, &offset);
+    return static_cast<std::size_t>(offset);
+}
+
+Expr short_circuit(Expr value, unsigned depth = 0) {
+    if (depth > kMaxStatementDepth) {
+        return value;
+    }
+    std::visit(
+        [depth](auto& node) {
+            if constexpr (requires { node.operands; }) {
+                for (Expr& operand : node.operands) {
+                    operand = short_circuit(std::move(operand), depth + 1);
+                }
+            } else if constexpr (requires { node.arguments; }) {
+                for (Expr& argument : node.arguments) {
+                    argument = short_circuit(std::move(argument), depth + 1);
+                }
+            }
+        },
+        value.node);
+    auto* binary = std::get_if<Binary>(&value.node);
+    if (binary == nullptr || (binary->op != BinaryOp::And && binary->op != BinaryOp::Or) ||
+        binary->operands.size() != 2 || value.type.kind != TypeKind::Bool) {
+        return value;
+    }
+    const bool conjunction = binary->op == BinaryOp::And;
+    Expr constant;
+    constant.type = value.type;
+    constant.location = value.location;
+    constant.node = IntLiteral{conjunction ? 0 : 1};
+    Expr first = std::move(binary->operands[0]);
+    Expr second = std::move(binary->operands[1]);
+    Expr chosen;
+    chosen.type = value.type;
+    chosen.location = value.location;
+    chosen.node = conjunction ? Conditional{{std::move(first), std::move(second), std::move(constant)}}
+                              : Conditional{{std::move(first), std::move(constant), std::move(second)}};
+    return chosen;
 }
 
 FilePosition file_position(CXSourceLocation location) {
@@ -151,6 +199,104 @@ bool is_fallthrough(CXCursor statement) {
     const std::vector<std::string> standard{"[", "[", "fallthrough", "]", "]"};
     const std::vector<std::string> qualified{"[", "[", "clang", "::", "fallthrough", "]", "]"};
     return spelled == standard || spelled == qualified;
+}
+
+std::optional<ForParts> for_parts(CXCursor statement) {
+    const std::vector<CXCursor> children = children_of(statement);
+    if (children.empty()) {
+        return std::nullopt;
+    }
+    CXTranslationUnit unit = clang_Cursor_getTranslationUnit(statement);
+    CXToken* tokens = nullptr;
+    unsigned count = 0;
+    clang_tokenize(unit, clang_getCursorExtent(statement), &tokens, &count);
+    struct Release {
+        CXTranslationUnit unit;
+        CXToken* tokens;
+        unsigned count;
+        ~Release() {
+            if (tokens != nullptr) {
+                clang_disposeTokens(unit, tokens, count);
+            }
+        }
+    } release{unit, tokens, count};
+
+    std::vector<std::size_t> separators;
+    int nesting = 0;
+    for (unsigned index = 0; index < count; ++index) {
+        if (clang_getTokenKind(tokens[index]) != CXToken_Punctuation) {
+            continue;
+        }
+        const std::string spelling = take(clang_getTokenSpelling(unit, tokens[index]));
+        if (spelling == "(" || spelling == "[" || spelling == "{") {
+            ++nesting;
+        } else if (spelling == ")" || spelling == "]" || spelling == "}") {
+            if (--nesting == 0) {
+                break;
+            }
+        } else if (spelling == ";" && nesting == 1) {
+            separators.push_back(file_offset(clang_getTokenLocation(unit, tokens[index])));
+        }
+    }
+    if (separators.size() != 2) {
+        return std::nullopt;
+    }
+
+    ForParts parts;
+    parts.body = children.back();
+    for (std::size_t index = 0; index + 1 < children.size(); ++index) {
+        const std::size_t start = file_offset(clang_getRangeStart(clang_getCursorExtent(children[index])));
+        std::optional<CXCursor>& part = start < separators[0]   ? parts.initialization
+                                        : start < separators[1] ? parts.condition
+                                                                : parts.increment;
+        if (part.has_value()) {
+            return std::nullopt;
+        }
+        part = children[index];
+    }
+    return parts;
+}
+
+std::optional<SelectedValue> selected_value(CXCursor value) {
+    for (std::vector<CXCursor> wrapped = children_of(value);
+         (clang_getCursorKind(value) == CXCursor_ParenExpr || clang_getCursorKind(value) == CXCursor_UnexposedExpr) &&
+         wrapped.size() == 1 &&
+         bridge::same_modeled_value(bridge::convert_type(clang_getCursorType(value)),
+                                    bridge::convert_type(clang_getCursorType(wrapped.front())));
+         wrapped = children_of(value)) {
+        value = wrapped.front();
+    }
+    const std::vector<CXCursor> parts = children_of(value);
+    const Type type = bridge::convert_type(clang_getCursorType(value));
+    if (type.kind != TypeKind::Int && type.kind != TypeKind::Bool) {
+        return std::nullopt;
+    }
+    SelectedValue selected{parts.empty() ? value : parts.front(), std::nullopt, std::nullopt, {}};
+    selected.constant.type = type;
+    selected.constant.location = bridge::presumed_location(clang_getCursorLocation(value));
+    if (clang_getCursorKind(value) == CXCursor_ConditionalOperator && parts.size() == 3) {
+        selected.when_true = parts[1];
+        selected.when_false = parts[2];
+        return selected;
+    }
+    if (clang_getCursorKind(value) != CXCursor_BinaryOperator || parts.size() != 2) {
+        return std::nullopt;
+    }
+    if (clang_getCursorBinaryOperatorKind(value) == CXBinaryOperator_LAnd) {
+        selected.when_true = parts[1];
+        selected.constant.node = IntLiteral{0};
+        return selected;
+    }
+    if (clang_getCursorBinaryOperatorKind(value) == CXBinaryOperator_LOr) {
+        selected.when_false = parts[1];
+        selected.constant.node = IntLiteral{1};
+        return selected;
+    }
+    return std::nullopt;
+}
+
+Expr runtime_value(Expr value, bool clause) {
+    return clause ? std::move(value) : short_circuit(std::move(value));
 }
 
 } // namespace cppl::clangbridge::detail

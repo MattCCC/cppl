@@ -1,9 +1,14 @@
 #pragma once
 
 // What the bridge reads of a statement's shape before it lowers it: the head
-// of an `if` or a `switch`, a switch's labels and `[[fallthrough]];` (C++
-// [stmt.select], [stmt.switch]). Nothing here decides what a statement means;
-// the body lowering (lowering.hpp) lowers it from what this reads.
+// of an `if` or a `switch`, the parts of a `for`, a switch's labels,
+// `[[fallthrough]];`, the arms of a returned value a condition selects, and the
+// value of a logical operator a runtime expression uses (C++ [stmt.select],
+// [stmt.switch], [stmt.for], [expr.cond], [expr.log.and], [expr.log.or]).
+// Nothing here decides what a statement means; the body lowering
+// (lowering.hpp) lowers it from what this reads.
+
+#include "cppl/clang/ast.hpp"
 
 #include <clang-c/CXFile.h>
 #include <clang-c/Index.h>
@@ -57,5 +62,42 @@ struct SelectionHead {
 // label is reached by falling into it (C++ [dcl.attr.fallthrough]). Any other
 // attribute on an empty statement, such as `[[assume(e)]]`, is not this one.
 [[nodiscard]] bool is_fallthrough(CXCursor statement);
+
+// The parts of a `for` header. libclang omits an empty part instead of marking
+// it, so each part is placed by where it starts relative to the header's two
+// top-level semicolons.
+struct ForParts {
+    std::optional<CXCursor> initialization;
+    std::optional<CXCursor> condition;
+    std::optional<CXCursor> increment;
+    CXCursor body = clang_getNullCursor();
+};
+
+[[nodiscard]] std::optional<ForParts> for_parts(CXCursor statement);
+
+// The arms of a returned scalar value that a condition selects between, seen
+// through the parentheses and conversions that keep its value: `c ? a : b`;
+// `a && b`, which is `a ? b : false`; and `a || b`, which is `a ? true : b`
+// (C++ [expr.cond], [expr.log.and], [expr.log.or]). An arm with no cursor is
+// the constant, which no expression of the program writes.
+struct SelectedValue {
+    CXCursor condition = clang_getNullCursor();
+    std::optional<CXCursor> when_true;
+    std::optional<CXCursor> when_false;
+    Expr constant;
+};
+
+[[nodiscard]] std::optional<SelectedValue> selected_value(CXCursor value);
+
+// A value a body's code computes, with every logical operator it uses as a
+// value, `a && b` and `a || b`, written as the conditional C++ evaluates:
+// `a ? b : false` and `a ? true : b` ([expr.log.and], [expr.log.or]). The
+// second operand is then an arm the first selects, so an operation in it owes
+// its conditions only where it is evaluated, as an arm of `?:` does. A
+// `clause`, or a definition the formal core reads, keeps them as the
+// connectives a specification states (SPEC.md 7.6, 7.8). A condition a path
+// is taken on never reaches here as one value: it is split into the routes it
+// selects first.
+[[nodiscard]] Expr runtime_value(Expr value, bool clause);
 
 } // namespace cppl::clangbridge::detail

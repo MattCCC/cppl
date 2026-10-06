@@ -1,13 +1,13 @@
 // SPEC: STDMODEL-012
-// A condition reads no storage the statement holding it has not formed: an
-// element read directly in an `if` condition is refused, as a dereference
-// there is, rather than read at a place no bound was owed for. Accepted twin:
-// `skip_digits`, which reads the element into a local first.
+// An element read in an `if` condition is formed where the condition reads it,
+// and owes its bound there: with nothing bounding `i`, the read is refused.
+// Accepted twin: `digit_at` in fixtures/conditions.cpp, whose precondition
+// bounds it.
 #include <cstddef>
 #include <span>
 
 verified bool is_digit_at(std::span<const char> in, std::size_t i)
-    expects (readable(in) && i < in.size())
+    expects (readable(in))
     ensures (result == result)
 {
     if (in[i] < '0' || in[i] > '9') {

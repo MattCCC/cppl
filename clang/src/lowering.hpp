@@ -334,7 +334,7 @@ struct BodyLowering {
     // what it does when it does not. Each is built on demand because condition
     // elaboration places it on more than one route, and every route needs its
     // own subtree rather than a shared one.
-    using Branch = std::function<std::optional<Expr>()>;
+    using Branch = std::function<std::optional<Expr>(const Locals&)>;
 
     // One storage leaf of an aggregate's initialization: the path reaching it
     // from the object, the type it was declared with, and the initializer
@@ -394,6 +394,8 @@ struct BodyLowering {
     std::optional<std::string> view_arguments(CXCursor call, const std::vector<CXCursor>& formals, Locals& state,
                                               std::vector<std::size_t>& invalidated,
                                               std::vector<std::size_t>& written_roots, bool unsafe_callee);
+    bool form_places(CXCursor cursor, Locals& state);
+    template <typename Lower> std::optional<Expr> forming(CXCursor at, Lower&& lower);
     std::optional<Expr> evaluate(CXCursor cursor, Locals& state, std::vector<std::size_t>& invalidated);
     std::optional<Expr> lower_call(CXCursor statement, const Continuation& next, const Locals& locals, unsigned depth);
 
@@ -413,6 +415,7 @@ struct BodyLowering {
                                         unsigned depth);
     std::optional<Expr> lower_statement_form(CXCursor statement, const Continuation& next, const Locals& locals,
                                              unsigned depth);
+    std::optional<Expr> lower_returned(CXCursor value, CXCursor statement, const Locals& locals, unsigned depth);
     std::optional<Expr> lower_for(CXCursor statement, const Continuation& next, const Locals& locals, unsigned depth);
     std::optional<Expr> lower_condition(CXCursor condition, const Branch& when_true, const Branch& when_false,
                                         const Locals& locals, unsigned depth);

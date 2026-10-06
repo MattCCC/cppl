@@ -2680,78 +2680,6 @@ std::size_t return_paths(const Expr& expression) {
     return 1;
 }
 
-std::size_t file_offset(CXSourceLocation location) {
-    unsigned offset = 0;
-    clang_getFileLocation(location, nullptr, nullptr, nullptr, &offset);
-    return static_cast<std::size_t>(offset);
-}
-
-// The parts of a `for` header. libclang omits an empty part instead of marking
-// it, so each part is placed by where it starts relative to the header's two
-// top-level semicolons.
-struct ForParts {
-    std::optional<CXCursor> initialization;
-    std::optional<CXCursor> condition;
-    std::optional<CXCursor> increment;
-    CXCursor body = clang_getNullCursor();
-};
-
-std::optional<ForParts> for_parts(CXCursor statement) {
-    const std::vector<CXCursor> children = children_of(statement);
-    if (children.empty()) {
-        return std::nullopt;
-    }
-    CXTranslationUnit unit = clang_Cursor_getTranslationUnit(statement);
-    CXToken* tokens = nullptr;
-    unsigned count = 0;
-    clang_tokenize(unit, clang_getCursorExtent(statement), &tokens, &count);
-    struct Release {
-        CXTranslationUnit unit;
-        CXToken* tokens;
-        unsigned count;
-        ~Release() {
-            if (tokens != nullptr) {
-                clang_disposeTokens(unit, tokens, count);
-            }
-        }
-    } release{unit, tokens, count};
-
-    std::vector<std::size_t> separators;
-    int nesting = 0;
-    for (unsigned index = 0; index < count; ++index) {
-        if (clang_getTokenKind(tokens[index]) != CXToken_Punctuation) {
-            continue;
-        }
-        const std::string spelling = take(clang_getTokenSpelling(unit, tokens[index]));
-        if (spelling == "(" || spelling == "[" || spelling == "{") {
-            ++nesting;
-        } else if (spelling == ")" || spelling == "]" || spelling == "}") {
-            if (--nesting == 0) {
-                break;
-            }
-        } else if (spelling == ";" && nesting == 1) {
-            separators.push_back(file_offset(clang_getTokenLocation(unit, tokens[index])));
-        }
-    }
-    if (separators.size() != 2) {
-        return std::nullopt;
-    }
-
-    ForParts parts;
-    parts.body = children.back();
-    for (std::size_t index = 0; index + 1 < children.size(); ++index) {
-        const std::size_t start = file_offset(clang_getRangeStart(clang_getCursorExtent(children[index])));
-        std::optional<CXCursor>& part = start < separators[0]   ? parts.initialization
-                                        : start < separators[1] ? parts.condition
-                                                                : parts.increment;
-        if (part.has_value()) {
-            return std::nullopt;
-        }
-        part = children[index];
-    }
-    return parts;
-}
-
 // Whether a range-based `for` states an initialization statement before its
 // loop variable, `for (init; x : range)`: a `;` in its header outside every
 // nested bracket. libclang exposes no cursor for that statement, so it is
@@ -4802,6 +4730,21 @@ std::optional<std::string> BodyLowering::view_arguments(CXCursor call, const std
     return std::nullopt;
 }
 
+// Form the place of every dereference and subscript `cursor` reads, for the
+// statement or condition evaluating it to bind (`bind_formed_derefs`).
+bool BodyLowering::form_places(CXCursor cursor, Locals& state) {
+    const std::size_t formed = state.size();
+    if (!materialize_derefs(cursor, state)) {
+        return false;
+    }
+    for (std::size_t index = formed; index < state.size(); ++index) {
+        if (state[index].is_deref() || state[index].symbolic) {
+            formed_derefs.push_back(state[index]);
+        }
+    }
+    return true;
+}
+
 // Evaluate a full expression once, then advance the storage touched by its
 // call. The continuation sees only these post-call versions.
 std::optional<Expr> BodyLowering::evaluate(CXCursor cursor, Locals& state, std::vector<std::size_t>& invalidated) {
@@ -4816,16 +4759,10 @@ std::optional<Expr> BodyLowering::evaluate(CXCursor cursor, Locals& state, std::
     // what is evaluated is that value: the call whose effects follow, when
     // it is one (TRUST.md TCB-AGGREGATE-001).
     cursor = aggregates::copied_value(cursor);
-    const std::size_t before = state.size();
-    if (!materialize_derefs(cursor, state)) {
+    if (!form_places(cursor, state)) {
         return std::nullopt;
     }
-    for (std::size_t index = before; index < state.size(); ++index) {
-        if (state[index].is_deref() || state[index].symbolic) {
-            formed_derefs.push_back(state[index]);
-        }
-    }
-    Expr value = build_expression(cursor, signature, state, 0, true);
+    Expr value = runtime_value(build_expression(cursor, signature, state, 0, true), signature.clause);
     auto* call = std::get_if<Call>(&value.node);
     if (!call)
         return value;
@@ -5523,23 +5460,7 @@ std::optional<Expr> BodyLowering::lower_statement_form(CXCursor statement, const
             return completed(void_value(statement), locals, statement);
         if (returned.size() != 1)
             return reject("a return requires one value");
-        Locals state = locals;
-        std::vector<std::size_t> invalidated;
-        auto value = evaluate(returned.front(), state, invalidated);
-        if (!value)
-            return std::nullopt;
-        const auto* call = std::get_if<Call>(&value->node);
-        if (call == nullptr || call->effects.empty())
-            return completed(std::move(*value), state, statement);
-        const auto version = next_version++;
-        Expr read;
-        read.type = value->type;
-        read.location = value->location;
-        read.node = PlaceRef{version, anonymous_place("return value")};
-        Expr body = completed(std::move(read), state, statement);
-        for (auto changed : invalidated)
-            body = unknown(state, changed, std::move(body), statement);
-        return bind(version, anonymous_place("return value"), std::move(*value), std::move(body), statement);
+        return lower_returned(returned.front(), statement, locals, depth);
     }
     if (kind == CXCursor_DeclStmt) {
         // The projector puts one declaration in a templated body to make
@@ -5605,6 +5526,58 @@ std::optional<Expr> BodyLowering::lower_statement_form(CXCursor statement, const
         return lower_range_for(statement, next, locals, depth);
     }
     return reject(unmodeled_statement(statement_name(kind)));
+}
+
+// A returned value. `c ? a : b`, `a && b` and `a || b` return what the arm
+// their condition selects evaluates to (C++ [expr.cond], [expr.log.and],
+// [expr.log.or]), so each arm is a return of its own on the routes that reach
+// it, and what an arm reads through a subscript or a pointer is formed, and
+// owes its bound or capability, only where it is evaluated.
+std::optional<Expr> BodyLowering::lower_returned(CXCursor value, CXCursor statement, const Locals& locals,
+                                                 unsigned depth) {
+    if (const auto selected = signature.clause ? std::nullopt : selected_value(value)) {
+        const auto arm = [&](std::optional<CXCursor> part) -> Branch {
+            return [&, part](const Locals& state) -> std::optional<Expr> {
+                return part ? lower_returned(*part, statement, state, depth + 1)
+                            : completed(selected->constant, state, statement);
+            };
+        };
+        return lower_condition(selected->condition, arm(selected->when_true), arm(selected->when_false), locals,
+                               depth + 1);
+    }
+    return forming(statement, [&]() -> std::optional<Expr> {
+        Locals state = locals;
+        std::vector<std::size_t> invalidated;
+        auto returned = evaluate(value, state, invalidated);
+        if (!returned)
+            return std::nullopt;
+        const auto* call = std::get_if<Call>(&returned->node);
+        if (call == nullptr || call->effects.empty())
+            return completed(std::move(*returned), state, statement);
+        const auto version = next_version++;
+        Expr read;
+        read.type = returned->type;
+        read.location = returned->location;
+        read.node = PlaceRef{version, anonymous_place("return value")};
+        Expr body = completed(std::move(read), state, statement);
+        for (auto changed : invalidated)
+            body = unknown(state, changed, std::move(body), statement);
+        return bind(version, anonymous_place("return value"), std::move(*returned), std::move(body), statement);
+    });
+}
+
+// What `lower` returns, with the places it formed bound around it: a bound or
+// a capability such a place owes is owed on the routes reaching it and nowhere
+// else.
+template <typename Lower> std::optional<Expr> BodyLowering::forming(CXCursor at, Lower&& lower) {
+    std::vector<Local> enclosing;
+    enclosing.swap(formed_derefs);
+    std::optional<Expr> result = std::forward<Lower>(lower)();
+    if (result) {
+        result = bind_formed_derefs(std::move(*result), at);
+    }
+    formed_derefs = std::move(enclosing);
+    return result;
 }
 
 std::optional<Expr> BodyLowering::lower_for(CXCursor statement, const Continuation& next, const Locals& locals,
@@ -6474,47 +6447,51 @@ std::optional<Expr> BodyLowering::lower_loop(const LoopHeader& header, const Loc
         measures.push_back(range_measure(*header.range, frame.head));
     }
 
-    frames.push_back(&frame);
     const std::vector<CXCursor> rest(statements.begin() + static_cast<std::ptrdiff_t>(first), statements.end());
     Continuation iteration;
     iteration.iteration = &frame;
-    std::optional<Expr> once =
-        header.range != nullptr
-            ? lower_range_iteration(*header.range, Continuation{&iteration, &rest, 0}, frame.head, depth + 1)
-            : lower_statements(Continuation{&iteration, &rest, 0}, frame.head, depth + 1);
-    frames.pop_back();
-    if (!once) {
-        revoked_by = enclosing_revocation;
-        return std::nullopt;
-    }
+    // One iteration from the head, and what follows the loop.
+    const Branch iterate = [&](const Locals& state) {
+        frames.push_back(&frame);
+        std::optional<Expr> once =
+            header.range != nullptr
+                ? lower_range_iteration(*header.range, Continuation{&iteration, &rest, 0}, state, depth + 1)
+                : lower_statements(Continuation{&iteration, &rest, 0}, state, depth + 1);
+        frames.pop_back();
+        return once;
+    };
+    const Branch leave = [&](const Locals& state) {
+        return lower_statements(*header.exit, state, depth + 1);
+    };
 
-    const source::SourceLocation location = presumed_location(clang_getCursorLocation(header.statement));
-    Expr head;
-    head.type = result_type;
-    head.location = location;
     // What happens from the head on. A `do` loop runs its body first and
     // decides at each iteration's end; a `for` without a condition always
     // runs it, and is left only by a `break` or a `return` (SPEC.md
-    // LOOP-001). Otherwise the condition decides before each iteration.
+    // LOOP-001). Otherwise the condition decides before each iteration,
+    // split into the routes it selects as an `if`'s is.
+    std::optional<Expr> decided;
     if (header.condition_last || (clang_Cursor_isNull(header.condition) != 0 && header.range == nullptr)) {
-        revoked_by = enclosing_revocation;
-        if (return_paths(*once) > kMaxReturnPaths) {
-            return reject("more than " + std::to_string(kMaxReturnPaths) + " return paths are not modeled");
+        decided = iterate(frame.head);
+    } else if (header.range == nullptr) {
+        decided = lower_condition(header.condition, iterate, leave, frame.head, depth + 1);
+    } else if (std::optional<Expr> once = iterate(frame.head); once) {
+        if (std::optional<Expr> after = leave(frame.head); after) {
+            decided.emplace();
+            decided->type = result_type;
+            decided->node =
+                Conditional{{range_condition(*header.range, frame.head), std::move(*once), std::move(*after)}};
         }
-        head = std::move(*once);
-    } else {
-        Expr condition = header.range != nullptr ? range_condition(*header.range, frame.head)
-                                                 : build_expression(header.condition, signature, frame.head, 0);
-        std::optional<Expr> after = lower_statements(*header.exit, frame.head, depth + 1);
-        revoked_by = enclosing_revocation;
-        if (!after) {
-            return std::nullopt;
-        }
-        if (return_paths(*once) + return_paths(*after) > kMaxReturnPaths) {
-            return reject("more than " + std::to_string(kMaxReturnPaths) + " return paths are not modeled");
-        }
-        head.node = Conditional{{std::move(condition), std::move(*once), std::move(*after)}};
     }
+    revoked_by = enclosing_revocation;
+    if (!decided) {
+        return std::nullopt;
+    }
+    if (return_paths(*decided) > kMaxReturnPaths) {
+        return reject("more than " + std::to_string(kMaxReturnPaths) + " return paths are not modeled");
+    }
+    const source::SourceLocation location = presumed_location(clang_getCursorLocation(header.statement));
+    Expr head = std::move(*decided);
+    head.location = location;
 
     Loop loop;
     loop.loop = frame.id;
@@ -6583,22 +6560,20 @@ std::optional<Expr> BodyLowering::end_iteration(const LoopFrame& frame, bool aft
     // A `do` loop decides here, where its body ends or a `continue` leaves
     // it, whether another iteration begins; when not, what follows the loop
     // runs under the versions current here and outside the loop.
-    Expr condition = build_expression(frame.condition, signature, locals, 0);
-    const std::vector<const LoopFrame*> inside = frames;
-    const std::vector<const SwitchFrame*> switches = switch_frames;
-    frames.resize(frame.frames_outside);
-    leave_switches_inside(frame);
-    std::optional<Expr> after = lower_statements(*frame.exit, locals, depth + 1);
-    frames = inside;
-    switch_frames = switches;
-    if (!after) {
-        return std::nullopt;
-    }
-    Expr decided;
-    decided.type = result_type;
-    decided.location = iterated.location;
-    decided.node = Conditional{{std::move(condition), std::move(iterated), std::move(*after)}};
-    return decided;
+    const Branch again = [&](const Locals&) -> std::optional<Expr> {
+        return iterated;
+    };
+    const Branch leave = [&](const Locals& state) {
+        const std::vector<const LoopFrame*> inside = frames;
+        const std::vector<const SwitchFrame*> switches = switch_frames;
+        frames.resize(frame.frames_outside);
+        leave_switches_inside(frame);
+        std::optional<Expr> after = lower_statements(*frame.exit, state, depth + 1);
+        frames = inside;
+        switch_frames = switches;
+        return after;
+    };
+    return lower_condition(frame.condition, again, leave, locals, depth + 1);
 }
 
 // `break` continues with what follows the innermost loop or switch, under
@@ -6880,28 +6855,33 @@ std::optional<Expr> BodyLowering::lower_condition(CXCursor condition, const Bran
             const bool conjunction = op == CXBinaryOperator_LAnd;
             // The second operand is evaluated only on the route the first
             // operand's outcome leads to, which is where it is placed.
-            const Branch rest = [&]() -> std::optional<Expr> {
-                return lower_condition(operands[1], when_true, when_false, locals, depth + 1);
+            const Branch rest = [&](const Locals& state) -> std::optional<Expr> {
+                return lower_condition(operands[1], when_true, when_false, state, depth + 1);
             };
             return lower_condition(operands[0], conjunction ? rest : when_true, conjunction ? when_false : rest, locals,
                                    depth + 1);
         }
     }
-    Expr value = build_expression(condition, signature, locals, 0);
-    std::optional<Expr> taken = when_true();
-    if (!taken)
-        return std::nullopt;
-    std::optional<Expr> untaken = when_false();
-    if (!untaken)
-        return std::nullopt;
-    if (return_paths(*taken) + return_paths(*untaken) > kMaxReturnPaths) {
-        return reject("more than " + std::to_string(kMaxReturnPaths) + " return paths are not modeled");
-    }
-    Expr result;
-    result.type = taken->type;
-    result.location = value.location;
-    result.node = Conditional{{std::move(value), std::move(*taken), std::move(*untaken)}};
-    return result;
+    // What the leaf reads through a subscript or a pointer is formed where the
+    // leaf is evaluated, and owes its bound or capability on the routes that
+    // reach it and nowhere else.
+    return forming(condition, [&]() -> std::optional<Expr> {
+        Locals state = locals;
+        if (!signature.clause && !form_places(condition, state))
+            return std::nullopt;
+        Expr value = runtime_value(build_expression(condition, signature, state, 0), signature.clause);
+        std::optional<Expr> taken = when_true(state);
+        std::optional<Expr> untaken = taken ? when_false(state) : std::nullopt;
+        if (!taken || !untaken)
+            return std::nullopt;
+        if (return_paths(*taken) + return_paths(*untaken) > kMaxReturnPaths)
+            return reject("more than " + std::to_string(kMaxReturnPaths) + " return paths are not modeled");
+        Expr result;
+        result.type = taken->type;
+        result.location = value.location;
+        result.node = Conditional{{std::move(value), std::move(*taken), std::move(*untaken)}};
+        return result;
+    });
 }
 
 // An `if` statement (C++ [stmt.if]). An init-statement runs first, in a
@@ -6985,12 +6965,12 @@ std::optional<Expr> BodyLowering::lower_branch(const IfHeader& header, const Loc
 
 std::optional<Expr> BodyLowering::lower_branch(CXCursor statement, const std::vector<CXCursor>& parts,
                                                const Continuation& next, const Locals& locals, unsigned depth) {
-    const Branch when_true = [&]() -> std::optional<Expr> {
-        return lower_statement(parts[1], next, locals, depth + 1);
+    const Branch when_true = [&](const Locals& state) -> std::optional<Expr> {
+        return lower_statement(parts[1], next, state, depth + 1);
     };
-    const Branch when_false = [&]() -> std::optional<Expr> {
-        return parts.size() == 3 ? lower_statement(parts[2], next, locals, depth + 1)
-                                 : lower_statements(next, locals, depth + 1);
+    const Branch when_false = [&](const Locals& state) -> std::optional<Expr> {
+        return parts.size() == 3 ? lower_statement(parts[2], next, state, depth + 1)
+                                 : lower_statements(next, state, depth + 1);
     };
     std::optional<Expr> result = lower_condition(parts[0], when_true, when_false, locals, depth);
     if (!result)

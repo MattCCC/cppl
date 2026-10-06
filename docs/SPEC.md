@@ -5381,6 +5381,8 @@ This subsection governs `+`, `-`, `*`, `/`, and `%`.
   false.
 - The false path of `A || B` receives both `!A` and `!B`; the true continuation is a union
   and does not by itself establish either disjunct.
+- Where C++ evaluates `A && B` or `A || B` as a value, it is the value of `A ? B : false` or
+  `A ? true : B`, and `B` is verified only where that conditional evaluates it.
 
 ## B.11 Logical AND and OR in proposition context
 

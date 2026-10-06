@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# SPEC: EXPR-016, SPECEXPR-002, LOOP-004
-# Conditions that must be refused.
+# SPEC: VERIFIED-021, EXPR-014, EXPR-015, EXPR-016, SPECEXPR-002, STDMODEL-012, LOOP-004
+# Conditions and logical values that must be refused.
 #
 # Each program below is a twin of a function `fixtures/conditions.cpp` proves,
 # the same body with one thing changed so that it would be proven only if the
 # lowering got the meaning of `&&` and `||` wrong (C++ [expr.log.and],
-# [expr.log.or]): an invariant whose cases do not cover the loop, one operand
+# [expr.log.or], [expr.cond]): an element read on a route that does not bound
+# it, an operand evaluated where C++ would not evaluate it, an invariant whose
+# cases do not cover the loop, one operand
 # of a conjunction not stated, a claim that holds of the other connective, a
 # case of a callee's disjunction left out, or a case split that would grant
 # what neither case shows.
@@ -38,8 +40,186 @@ refused() {
 }
 
 false_claim='does not satisfy its contract'
+unbounded="element index' is not proven"
+
+# --- element reads in conditions and returned arms --------------------------
+
+# A non-digit returns -1, so the result is not always a digit.
+refused digit_claimed_always "$false_claim" <<'CPP'
+#include <cstddef>
+#include <span>
+verified int digit_at(std::span<const char> in, std::size_t i)
+    expects (readable(in) && i < in.size())
+    ensures (0 <= result && result <= 9)
+{
+    if (in[i] < '0' || in[i] > '9') {
+        return -1;
+    }
+    return in[i] - '0';
+}
+int main() { return 0; }
+CPP
+
+# The element is read before the operand that bounds its index.
+refused loop_condition_reads_first "$unbounded" <<'CPP'
+#include <cstddef>
+#include <vector>
+verified std::size_t find(const std::vector<int>& v, int key)
+    ensures (result <= v.size())
+{
+    std::size_t i = 0;
+    while (v[i] != key && i < v.size())
+        invariant (i <= v.size())
+        decreases (v.size() - i)
+    {
+        ++i;
+    }
+    return i;
+}
+int main() { return 0; }
+CPP
+
+# The loop also ends where the key is missing, at the end.
+refused find_claims_found "$false_claim" <<'CPP'
+#include <cstddef>
+#include <vector>
+verified std::size_t find(const std::vector<int>& v, int key)
+    ensures (result < v.size())
+{
+    std::size_t i = 0;
+    while (i < v.size() && v[i] != key)
+        invariant (i <= v.size())
+        decreases (v.size() - i)
+    {
+        ++i;
+    }
+    return i;
+}
+int main() { return 0; }
+CPP
+
+# `i <= v.size()` lets the read happen at the end.
+refused returned_and_reads_at_end "$unbounded" <<'CPP'
+#include <cstddef>
+#include <vector>
+verified bool holds_at(const std::vector<int>& v, std::size_t i, int key)
+    ensures (result -> i <= v.size())
+{
+    return i <= v.size() && v[i] == key;
+}
+int main() { return 0; }
+CPP
+
+# The arms swapped: the element is read where the index is out of range.
+refused returned_conditional_reads_other_arm "$unbounded" <<'CPP'
+#include <cstddef>
+#include <vector>
+verified int at_or(const std::vector<int>& v, std::size_t i, int fallback)
+    ensures (true)
+{
+    return i < v.size() ? fallback : v[i];
+}
+int main() { return 0; }
+CPP
+
+refused returned_or_reads_at_end "$unbounded" <<'CPP'
+#include <cstddef>
+#include <vector>
+verified bool past_or_zero(const std::vector<int>& v, std::size_t i)
+    ensures (i > v.size() -> result)
+{
+    return i > v.size() || v[i] == 0;
+}
+int main() { return 0; }
+CPP
+
+# A returned `&&` is false where its first operand is.
+refused returned_and_claims_true "$false_claim" <<'CPP'
+#include <cstddef>
+#include <vector>
+verified bool holds_at(const std::vector<int>& v, std::size_t i, int key)
+    ensures (i < v.size() -> result)
+{
+    return i < v.size() && v[i] == key;
+}
+int main() { return 0; }
+CPP
+
+# --- `&&` and `||` as values -----------------------------------------------
+
+# The division is evaluated first, whatever the divisor.
+refused and_value_divides_first "division by zero" <<'CPP'
+verified bool divides(unsigned a, unsigned b)
+    ensures (result -> b != 0u)
+{
+    const bool even = a % b == 0u && b != 0u;
+    return even;
+}
+int main() { return 0; }
+CPP
+
+refused or_value_divides_first "division by zero" <<'CPP'
+verified bool zero_or_divides(unsigned a, unsigned b)
+    ensures (b == 0u -> result)
+{
+    bool divided = false;
+    divided = a % b == 0u || b == 0u;
+    return divided;
+}
+int main() { return 0; }
+CPP
+
+# `&&` is not `||`.
+refused and_value_claimed_as_or "$false_claim" <<'CPP'
+verified bool ordered(int a, int b, int c)
+    ensures (result <-> (a <= b || b <= c))
+{
+    const bool low = a <= b;
+    bool both = low && b <= c;
+    return both;
+}
+int main() { return 0; }
+CPP
+
+# `||` is true by its second operand too: 9 % 3 == 0 with 3 != 0.
+refused or_value_claimed_first_only "$false_claim" <<'CPP'
+verified bool zero_or_divides(unsigned a, unsigned b)
+    ensures (result -> b == 0u)
+{
+    bool divided = false;
+    divided = b == 0u || a % b == 0u;
+    return divided;
+}
+int main() { return 0; }
+CPP
+
 
 # --- `&&` and `||` in loop invariants ----------------------------------------
+
+# Where the key is missing the loop ends with `i == v.size()` and nothing found.
+refused invariant_disjunction_not_preserved "is not preserved by an iteration" <<'CPP'
+#include <cstddef>
+#include <vector>
+verified std::size_t index_of(const std::vector<int>& v, int key)
+    ensures (result <= v.size())
+{
+    std::size_t i = 0;
+    bool found = false;
+    while (!found && i < v.size())
+        invariant ((found && i < v.size()) || (!found && i < v.size()))
+        decreases (v.size() - i, found ? 0u : 1u)
+    {
+        if (v[i] == key) {
+            found = true;
+        } else {
+            ++i;
+        }
+    }
+    return found ? i : v.size();
+}
+int main() { return 0; }
+CPP
+
 
 # Neither case holds at entry, where `i == n`.
 refused invariant_cases_miss_entry "does not hold on entry" <<'CPP'
@@ -215,7 +395,7 @@ refused flag_on_one_operand "$false_claim" <<'CPP'
 verified unsigned either(unsigned x, unsigned y)
     ensures (result == 0u || x > 0u)
 {
-    const bool any = x > 0u ? true : y > 0u;
+    const bool any = x > 0u || y > 0u;
     if (any) {
         return 1u;
     }
@@ -224,12 +404,26 @@ verified unsigned either(unsigned x, unsigned y)
 int main() { return 0; }
 CPP
 
-# Selected the other way, the flag is 0 where only one operand holds.
-refused flag_selected_as_both "$false_claim" <<'CPP'
+# Computed with `&&`, the flag is 0 where only one operand holds.
+refused flag_computed_with_and "$false_claim" <<'CPP'
 verified unsigned either(unsigned x, unsigned y)
     ensures (result == 1u || (x == 0u && y == 0u))
 {
-    const bool any = x > 0u ? y > 0u : false;
+    const bool any = x > 0u && y > 0u;
+    if (any) {
+        return 1u;
+    }
+    return 0u;
+}
+int main() { return 0; }
+CPP
+
+# Spelled as the selection `||` is, the flag holds for `y > 0u` alone too.
+refused flag_selected_on_one_operand "$false_claim" <<'CPP'
+verified unsigned either(unsigned x, unsigned y)
+    ensures (result == 0u || x > 0u)
+{
+    const bool any = x > 0u ? true : y > 0u;
     if (any) {
         return 1u;
     }

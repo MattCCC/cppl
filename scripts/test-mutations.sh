@@ -79,6 +79,13 @@ switch-nested-label-refused	clang/src/bridge.cpp	if (holds_switch_label(statemen
 switch-unreachable-prefix-refused	clang/src/bridge.cpp	if (entries.empty() && !is_switch_label(statement)) {	if (false && entries.empty() && !is_switch_label(statement)) {	^negative_switch_statements$
 switch-case-range-refused	clang/src/bridge.cpp	if (!fallback && label.size() == 3) {	if (false && !fallback && label.size() == 3) {	^negative_switch_statements$
 switch-fallthrough-only	clang/src/statements.cpp	return spelled == standard || spelled == qualified;	return true;	^negative_switch_statements$
+logical-value-and-guard	clang/src/statements.cpp	chosen.node = conjunction ? Conditional{{std::move(first), std::move(second), std::move(constant)}}	chosen.node = conjunction ? Conditional{{std::move(second), std::move(first), std::move(constant)}}	^(e2e_conditions|negative_conditions)$
+logical-value-or-guard	clang/src/statements.cpp	: Conditional{{std::move(first), std::move(constant), std::move(second)}};	: Conditional{{std::move(second), std::move(constant), std::move(first)}};	^(e2e_conditions|negative_conditions)$
+returned-arm-or-selects-false	clang/src/statements.cpp	selected.when_false = parts[1];	selected.when_true = parts[1];	^(e2e_conditions|negative_conditions)$
+returned-arm-split	clang/src/bridge.cpp	if (const auto selected = signature.clause ? std::nullopt : selected_value(value)) {	if (const auto selected = std::optional<detail::SelectedValue>{}) {	^(e2e_conditions|negative_conditions)$
+returned-arm-binds-formed	clang/src/bridge.cpp	result = bind_formed_derefs(std::move(*result), at);	(void)at;	^(e2e_conditions|negative_conditions|e2e_containers|negative_containers)$
+condition-leaf-formed	clang/src/bridge.cpp	if (!signature.clause && !form_places(condition, state))	if (false)	^(e2e_conditions|negative_containers)$
+condition-route-loop	clang/src/bridge.cpp	decided = lower_condition(header.condition, iterate, leave, frame.head, depth + 1);	decided = lower_condition(header.condition, leave, iterate, frame.head, depth + 1);	^(e2e_conditions|e2e_verified_loops)$
 switch-condition-read-once	clang/src/bridge.cpp	read.node = PlaceRef{version, anonymous_place("switch condition")};	read = *value;	^(e2e_switch_statements|negative_switch_statements)$
 switch-condition-effects	clang/src/bridge.cpp	body = unknown(state, changed, std::move(body), header.statement);	(void)changed;	^(e2e_switch_statements|negative_switch_statements)$
 switch-case-compares-equal	clang/src/bridge.cpp	matches.node = Binary{BinaryOp::Equal, {std::move(read), std::move(*literal)}};	matches.node = Binary{BinaryOp::NotEqual, {std::move(read), std::move(*literal)}};	^(e2e_switch_statements|negative_switch_statements|e2e_safety_subset)$

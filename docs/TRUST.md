@@ -728,6 +728,8 @@ Formal equality and logical connectives are checked by the logical TCB, while th
 
 **[TCB-LOGIC-003]** C++ short-circuit behavior relevant to definedness of lifted operands MUST be represented exactly where `SPEC.md` requires C++ evaluation semantics.
 
+In this implementation a condition a path is taken on, an `if`'s or a loop's, is split into the routes its `&&`, `||` and `!` select (`lower_condition` in `clang/src/bridge.cpp`), and what a route's leaf reads through a subscript or a pointer is formed, owing its bound or capability, on that route alone. A value a body computes with `&&` or `||` is written as the conditional C++ evaluates, `a ? b : false` and `a ? true : b` (`runtime_value` in `clang/src/statements.cpp`), so the second operand is an arm whose operations owe their conditions under the first operand's outcome, as an arm of `?:` does; a returned `?:`, `&&` or `||` is a return on each route its condition selects (`selected_value`, `lower_returned`). A clause and a pure function's definition keep `&&` and `||` as the connectives a specification states. TCB delta: none in the kernel, no axiom and no assumption; the correspondence code named here. Pinned by `e2e_conditions`, `negative_conditions` and the `logical-value-*`, `condition-leaf-*` and `returned-arm-*` mutation entries.
+
 **[TCB-LOGIC-004]** Universal/existential binder scope and substitution MUST be capture-safe.
 
 **[TCB-LOGIC-005]** `assume` MUST name context-supplied evidence only; it MUST NOT create a new proposition.

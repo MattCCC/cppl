@@ -104,24 +104,21 @@ CPP
 
 # --- Where a validation's fact holds and where it does not: its failure path, a route a disjunction or a failed conjunction takes, a later write, call, unsafe block, alias or loop, another value or refinement (RUNTIMECHECK-007, RUNTIMECHECK-011 to RUNTIMECHECK-013)
 begin paths
-refused neg_loop_condition_and "'&&' states a proposition and is not modeled as a value: this position requires a value, such as a loop's condition or a value a body computes, so state each side separately" <<'CPP'
+refused neg_loop_condition_and "does not satisfy its contract" <<'CPP'
 verified int neg_loop_condition_and(int raw)
     ensures (result > 0)
 {
     int v = raw;
-    int last = 1;
     while (validate<Positive>(v) && v > 1)
         decreases (static_cast<unsigned>(v))
     {
-        Positive p = v;
-        last = p;
         v = v - 1;
     }
-    return last;
+    return v;
 }
 
 CPP
-refused neg_loop_failed_validation_measure "loop measure 'neg_loop_failed_validation_measure loop at line 35 measure' is not shown to decrease on every iteration" <<'CPP'
+refused neg_loop_failed_validation_measure "loop measure 'neg_loop_failed_validation_measure loop at line 32 measure' is not shown to decrease on every iteration" <<'CPP'
 verified int neg_loop_failed_validation_measure(int raw)
     ensures (result > 0)
 {
@@ -338,11 +335,12 @@ verified int neg_member_other(Reading r)
 }
 
 CPP
-refused neg_element_validated_directly "this element access is not one the statement holding it formed" <<'CPP'
-verified int neg_element_validated_directly(const std::vector<int>& v, std::size_t i)
+refused neg_element_validated_directly "this value is not shown to satisfy refinement type 'Positive'" <<'CPP'
+verified int neg_element_validated_directly(std::vector<int>& v, std::size_t i)
     ensures (result > 0)
 {
     if (i < v.size() && validate<Positive>(v[i])) {
+        v[i] = v[i] - 1;
         Positive p = v[i];
         return p;
     }
