@@ -152,10 +152,10 @@ so a construct the specification adds is refused until it is classified.
 | CONSTRUCT-067 | reinterpret_cast | refused | local 'view' has type 'const int *', which is not modeled |
 | CONSTRUCT-068 | C-style cast | verified | -- |
 | CONSTRUCT-069 | functional cast | verified | -- |
-| CONSTRUCT-070 | sizeof | refused | 'UnaryExpr' is not modeled |
-| CONSTRUCT-071 | alignof | refused | 'UnaryExpr' is not modeled |
+| CONSTRUCT-070 | sizeof | verified | -- |
+| CONSTRUCT-071 | alignof | verified | -- |
 | CONSTRUCT-072 | decltype | verified | -- |
-| CONSTRUCT-073 | noexcept expression | refused | 'UnaryExpr' is not modeled |
+| CONSTRUCT-073 | noexcept expression | verified | -- |
 | CONSTRUCT-074 | typeid | refused | local 'type' has type 'const std::type_info', which is not modeled |
 | CONSTRUCT-075 | new expression | refused | local 'cell' has type 'unsigned int *', which is not modeled |
 | CONSTRUCT-076 | delete expression | refused | only if/else, while and for loops, blocks, local declarations, assignments, and  |
@@ -210,7 +210,7 @@ so a construct the specification adds is refused until it is classified.
 | CONSTRUCT-125 | defaulted function | verified | -- |
 | CONSTRUCT-126 | deleted function | verified | -- |
 | CONSTRUCT-127 | friend declaration | verified | -- |
-| CONSTRUCT-128 | static_assert | refused | only variable declarations are modeled inside a verified body; found 'StaticAsse |
+| CONSTRUCT-128 | static_assert | verified | -- |
 | CONSTRUCT-129 | attribute specifier | verified | -- |
 | CONSTRUCT-130 | alignas specifier | verified | -- |
 | CONSTRUCT-131 | extern linkage declaration | refused | error [unsupported-semantics]: 'verified' is applied outside namespace scope |

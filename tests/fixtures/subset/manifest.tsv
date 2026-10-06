@@ -69,10 +69,10 @@ CONSTRUCT-066	const_cast	refused	x066_const_cast.cpp	local 'writable_view' has t
 CONSTRUCT-067	reinterpret_cast	refused	x067_reinterpret_cast.cpp	local 'view' has type 'const int \*', which is not modeled
 CONSTRUCT-068	C-style cast	verified	x068_c_style_cast.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-069	functional cast	verified	x069_functional_cast.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
-CONSTRUCT-070	sizeof	refused	x070_sizeof.cpp	'UnaryExpr' is not modeled
-CONSTRUCT-071	alignof	refused	x071_alignof.cpp	'UnaryExpr' is not modeled
+CONSTRUCT-070	sizeof	verified	x070_sizeof.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-071	alignof	verified	x071_alignof.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-072	decltype	verified	x072_decltype.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
-CONSTRUCT-073	noexcept expression	refused	x073_noexcept_expression.cpp	'UnaryExpr' is not modeled
+CONSTRUCT-073	noexcept expression	verified	x073_noexcept_expression.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
 CONSTRUCT-074	typeid	refused	x074_typeid.cpp	local 'type' has type 'const std::type_info', which is not modeled
 CONSTRUCT-075	new expression	refused	x075_new_expression.cpp	local 'cell' has type 'unsigned int \*', which is not modeled
 CONSTRUCT-076	delete expression	refused	x076_delete_expression.cpp	only if/else, while and for loops, blocks, local declarations, assignments, and
@@ -127,7 +127,7 @@ CONSTRUCT-124	function definition	verified	x124_function_definition.cpp	error \[
 CONSTRUCT-125	defaulted function	verified	x125_defaulted_function.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-126	deleted function	verified	x126_deleted_function.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-127	friend declaration	verified	x127_friend_declaration.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
-CONSTRUCT-128	static_assert	refused	x128_static_assert.cpp	only variable declarations are modeled inside a verified body; found 'StaticAsse
+CONSTRUCT-128	static_assert	verified	x128_static_assert.cpp	error \[cpp-semantic\]: static assertion failed
 CONSTRUCT-129	attribute specifier	verified	x129_attribute_specifier.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-130	alignas specifier	verified	x130_alignas_specifier.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-131	extern linkage declaration	refused	x131_extern_linkage_declaration.cpp	error \[unsupported-semantics\]: 'verified' is applied outside namespace scope

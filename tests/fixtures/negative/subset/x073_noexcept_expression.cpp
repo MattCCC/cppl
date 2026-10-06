@@ -1,12 +1,12 @@
 // SPEC: CONSTRUCT-073
-// RFC 0022, the V1 verified subset: a verified body that uses this construct,
-// noexcept expression, is refused.
+// RFC 0022: the refused twin of subset/x073_noexcept_expression.cpp (noexcept expression), the same program
+// with one thing changed, so the construct is shown modeled rather than passed over.
 
 verified unsigned probe(unsigned x)
     ensures (result == x)
 {
     if (noexcept(x + 1u)) {
-        return x;
+        return x + 1u;
     }
     return x;
 }

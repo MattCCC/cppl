@@ -1,11 +1,11 @@
 // SPEC: CONSTRUCT-070
-// RFC 0022, the V1 verified subset: a verified body that uses this construct,
-// sizeof, is refused.
+// RFC 0022: the refused twin of subset/x070_sizeof.cpp (sizeof), the same program
+// with one thing changed, so the construct is shown modeled rather than passed over.
 
 verified unsigned long probe()
-    ensures (result >= 1ul)
+    ensures (result == 8ul)
 {
     return sizeof(unsigned);
 }
 
-int main() { return probe() >= 1ul ? 0 : 1; }
+int main() { return probe() == 4ul ? 0 : 1; }

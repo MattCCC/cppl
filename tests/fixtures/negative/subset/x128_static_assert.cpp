@@ -1,11 +1,11 @@
 // SPEC: CONSTRUCT-128
-// RFC 0022, the V1 verified subset: a verified body that uses this construct,
-// static_assert, is refused.
+// RFC 0022: the refused twin of subset/x128_static_assert.cpp (static_assert), the same program
+// with one thing changed, so the construct is shown modeled rather than passed over.
 
 verified unsigned probe(unsigned x)
     ensures (result == x)
 {
-    static_assert(sizeof(unsigned) >= 2, "a 16-bit unsigned at least");
+    static_assert(sizeof(unsigned) >= 64, "a 512-bit unsigned at least");
     return x;
 }
 

@@ -3301,6 +3301,19 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
         return build_integer_literal(cursor);
     }
 
+    // `sizeof`, `alignof` and `noexcept` are constants Clang computes for the
+    // target the unit is compiled for, and their operand is never evaluated, so
+    // it owes nothing. One Clang cannot compute, the size of a variable-length
+    // array, is refused.
+    if (kind == CXCursor_UnaryExpr) {
+        Expr constant = build_integer_literal(cursor);
+        if (std::holds_alternative<Unsupported>(constant.node)) {
+            return unsupported_expression(cursor, "this 'sizeof', 'alignof' or 'noexcept' expression is not a "
+                                                  "constant Clang computes");
+        }
+        return constant;
+    }
+
     // Unary `+` and `-` on an integer operand C++ has already promoted: the
     // promotion is the operand's own conversion. `+x` is that value. `-x` is
     // its negation, which for a signed type owes representability like a
@@ -7754,6 +7767,11 @@ struct BodyLowering {
         }
         const CXCursor declaration = declared[index];
         const std::string name = take(clang_getCursorSpelling(declaration));
+        // A static assertion is decided by Clang where it is compiled, and one
+        // that fails is a compile error: there is nothing left to model.
+        if (clang_getCursorKind(declaration) == CXCursor_StaticAssert) {
+            return lower_declaration(declared, index + 1, next, locals, depth);
+        }
         if (clang_getCursorKind(declaration) != CXCursor_VarDecl) {
             return reject("only variable declarations are modeled inside a verified body; found '" +
                           take(clang_getCursorKindSpelling(clang_getCursorKind(declaration))) + "'");
