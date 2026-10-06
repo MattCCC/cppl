@@ -104,7 +104,7 @@ implementation:
   analysis:
     - compiler/analysis/src/analyze.cpp
   obligations:
-    - compiler/obligations/src/generate.cpp
+    - compiler/obligations/src/generate_cases.cpp
     - compiler/obligations/src/contracts_conditions.cpp
   automation:
     - compiler/automation/src/composition.cpp

@@ -110,7 +110,7 @@ implementation:
   obligations:
     - compiler/obligations/src/definedness.hpp
     - compiler/obligations/src/definedness.cpp
-    - compiler/obligations/src/generate.cpp
+    - compiler/obligations/src/generate_terms.cpp
     - compiler/obligations/src/contracts_evaluation.cpp
     - compiler/obligations/include/cppl/obligations/obligation.hpp
   automation:

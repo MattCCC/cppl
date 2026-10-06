@@ -6,6 +6,12 @@
 add_library(cppl_obligations STATIC
     src/aggregates.cpp
     src/generate.cpp
+    src/generate_cases.cpp
+    src/generate_evidence.cpp
+    src/generate_identity.cpp
+    src/generate_proofs.cpp
+    src/generate_propositions.cpp
+    src/generate_terms.cpp
     src/contracts.cpp
     src/contracts_build.cpp
     src/contracts_conditions.cpp

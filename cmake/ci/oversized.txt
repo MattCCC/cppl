@@ -13,5 +13,4 @@ clang/src/bridge.cpp 9782
 compiler/elaboration/src/elaborate.cpp 2844
 compiler/frontend/src/projection.cpp 1892
 compiler/frontend/src/recognizer.cpp 3712
-compiler/obligations/src/generate.cpp 3089
 tests/unit/projection_test.cpp 1184

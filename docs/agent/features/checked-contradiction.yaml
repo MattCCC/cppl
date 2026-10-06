@@ -90,7 +90,7 @@ implementation:
   obligations:
     - compiler/obligations/src/contradiction.hpp
     - compiler/obligations/src/contradiction.cpp
-    - compiler/obligations/src/generate.cpp
+    - compiler/obligations/src/generate_cases.cpp
     - compiler/obligations/src/contracts_conditions.cpp
     - compiler/obligations/include/cppl/obligations/obligation.hpp
     - compiler/obligations/src/status.cpp
