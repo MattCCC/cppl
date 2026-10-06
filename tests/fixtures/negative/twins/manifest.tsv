@@ -20,6 +20,7 @@ twin	equivalence/abi_library.cpp	negative/twins/equivalence_abi_library.cpp	erro
 twin	equivalence/conditional_proof.cpp	negative/twins/equivalence_conditional_proof.cpp	error \[proof-failure\]: 'premise' has no matching premise to stand for	-	-
 twin	equivalence/contextual_words.cpp	negative/twins/equivalence_contextual_words.cpp	error \[kernel-rejection\]: proof 'identity_holds_proof' does not establish law 'identity_holds'	-	-
 twin	equivalence/contracts.cpp	negative/twins/equivalence_contracts.cpp	error \[proof-failure\]: verified function 'successor' does not satisfy its contract	-	-
+twin	equivalence/default_arguments.cpp	negative/twins/equivalence_default_arguments.cpp	error \[kernel-rejection\]: call-site precondition for 'caller -> need' is not proven	-	-
 twin	equivalence/disjunction.cpp	negative/twins/equivalence_disjunction.cpp	error \[kernel-rejection\]: proof 'from_the_left_holds' does not establish law 'from_the_left'	-	-
 twin	equivalence/formal_equality.cpp	negative/twins/equivalence_formal_equality.cpp	error \[kernel-rejection\]: proof 'explicit_identity_holds' does not establish law 'explicit_identity'	-	-
 twin	equivalence/ghost_state.cpp	negative/twins/equivalence_ghost_state.cpp	error \[kernel-rejection\]: return path 'count path [0-9]+' does not satisfy its contract	-	-

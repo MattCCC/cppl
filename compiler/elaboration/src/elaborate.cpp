@@ -974,6 +974,44 @@ void collect_callees(const vir::Expr& expr, std::vector<vir::SymbolId>& callees)
         expr.node);
 }
 
+// The first call a resolved body makes, wherever it stands, to a function
+// `modeled` does not admit, for a diagnostic to name: the function, and the
+// default argument it stands in when it stands in one a call relies on, since
+// no call there shows it (SPEC.md R.16). A library summary and a validation's
+// probe are no function of this unit, as in `collect_callees`.
+const clangbridge::Call* first_unmodeled_call(const clangbridge::Expr& expr,
+                                              const std::function<bool(const std::string&)>& modeled) {
+    if (const auto* call = std::get_if<clangbridge::Call>(&expr.node);
+        call != nullptr && !call->library.has_value() && !call->validation.has_value() && !modeled(call->callee_usr)) {
+        return call;
+    }
+    const clangbridge::Call* found = nullptr;
+    const auto search = [&](const std::vector<clangbridge::Expr>& children) {
+        for (const clangbridge::Expr& child : children) {
+            if (found == nullptr) {
+                found = first_unmodeled_call(child, modeled);
+            }
+        }
+    };
+    std::visit(
+        [&](const auto& node) {
+            if constexpr (requires { node.operands; }) {
+                search(node.operands);
+            }
+            if constexpr (requires { node.arguments; }) {
+                search(node.arguments);
+            }
+            if constexpr (requires { node.extent; }) {
+                search(node.extent);
+            }
+            if constexpr (requires { node.body; }) {
+                search(node.body);
+            }
+        },
+        expr.node);
+    return found;
+}
+
 // The standard-library model a type is an instance of, recorded in `models`
 // when it is one (RFC 0020 §10).
 void note_model(const vir::Type& type, std::set<source::RepresentationKind>& models) {
@@ -1970,6 +2008,48 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
     // is written at them. It is matched like any other declaration.
     const std::vector<clangbridge::TemplateArgument>* arguments =
         function.primary_usr.empty() || declaration.explicit_specialization ? nullptr : &function.template_arguments;
+
+    // A clause is read back from a probe restating the function's parameters,
+    // without their default arguments (SPEC.md R.16), and for a postcondition of
+    // a function with a result `result` after them. A position in the clause is
+    // the function's parameter at that position only while the two lists agree,
+    // so a probe whose list does not is refused: reading its clause could bind a
+    // parameter to another one, or `result` to a parameter.
+    const auto restates_parameters = [&](std::string_view probe_name, const source::SourceLocation& written,
+                                         bool states_result, const std::string& subject) {
+        const clangbridge::Function* probe = proposition_function(request, probe_name, written, arguments);
+        if (probe == nullptr) {
+            return true; // not resolved, which reading it reports
+        }
+        const std::size_t count = function.parameters.size();
+        bool agrees = probe->parameters.size() ==
+                      count + (states_result && function.result.kind != clangbridge::TypeKind::Void ? 1 : 0);
+        // A member function's probe takes its implicit object's leaves first,
+        // as the function does, read-only where the function may write them.
+        for (std::size_t index = 0; agrees && index < count; ++index) {
+            agrees = probe->parameters[index].type == function.parameters[index].type;
+        }
+        if (!agrees) {
+            report(engine, diagnostics::Category::Elaboration, written,
+                   subject + " was not stated over the parameters of verified function '" + function.qualified_name +
+                       "'",
+                   "the declaration generated to state it does not restate the function's parameter list");
+        }
+        return agrees;
+    };
+    if (!restates_parameters(projected.postcondition_name, postcondition_location, true,
+                             "the postcondition of verified function '" + function.qualified_name + "'")) {
+        return;
+    }
+    const std::vector<const frontend::Clause*> written_preconditions = declaration.preconditions();
+    for (std::size_t index = 0; index < projected.precondition_names.size() && index < written_preconditions.size();
+         ++index) {
+        if (!restates_parameters(projected.precondition_names[index], written_preconditions[index]->location, false,
+                                 "the precondition of verified function '" + function.qualified_name + "'")) {
+            return;
+        }
+    }
+
     std::optional<vir::Expr> ensured = convert_projected(
         request, projected.postcondition_name, postcondition_location, next_expression_id,
         "the postcondition of verified function '" + function.qualified_name + "'", engine, arguments);
@@ -2041,6 +2121,10 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
             return;
         }
         for (const std::string& name : projected.measure_names) {
+            if (!restates_parameters(name, measure->location, false,
+                                     "the measure of verified function '" + function.qualified_name + "'")) {
+                return;
+            }
             std::optional<vir::Expr> component =
                 convert_projected(request, name, measure->location, next_expression_id,
                                   "the measure of verified function '" + function.qualified_name + "'", engine);
@@ -2633,6 +2717,19 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
                 } else if (!calls_modeled) {
                     rejection = "it calls a function that is not declared pure, so its value is not "
                                 "a mathematical function of its arguments";
+                    if (const clangbridge::Call* unmodeled = first_unmodeled_call(
+                            *function->returned_value,
+                            [&](const std::string& usr) {
+                                return pure_symbols.contains(usr) ||
+                                       (candidate.contract != nullptr && verified_symbols.contains(usr));
+                            });
+                        unmodeled != nullptr) {
+                        rejection += ": '" + unmodeled->callee_name + "'";
+                        if (!unmodeled->default_argument.empty()) {
+                            rejection += ", called by the default argument of " + unmodeled->default_argument +
+                                         ", which a call in it relies on (SPEC.md R.16)";
+                        }
+                    }
                 } else if (candidate.pure && calls_only_pure &&
                            !std::holds_alternative<vir::Conditional>(converted.returned_value->node) &&
                            !std::holds_alternative<vir::PlaceVersion>(converted.returned_value->node) &&

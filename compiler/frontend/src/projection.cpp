@@ -288,6 +288,83 @@ std::string spelled_indices(const TokenStream& stream, const RefinementType& ref
     return spelled_tokens(stream, refinement.indices);
 }
 
+// A verified function's parameter list as its probes declare it: the list as
+// written, without its default arguments (SPEC.md R.16).
+//
+// A default argument is a value a call relying on it evaluates at the call, so
+// it belongs to the call, never to the contract: a probe states the clause over
+// the parameters, and the bridge lowers a default where a call uses it. A probe
+// that kept one would also need one for every parameter after it, `result`
+// included, and a template's probes are declared twice, where C++ forbids
+// stating a default again. The function's own declaration keeps its defaults in
+// both texts; only the generated copies leave them out.
+//
+// A default runs from a `=` outside every bracket to the first comma outside
+// every bracket after it, or to the end of the list. A comma after a `<` the
+// default leaves open may instead separate the arguments of a template-id, and
+// which it is depends on lookup Clang has not done yet: there the default is
+// not delimited, and `ambiguous` holds the `=` it starts at. A comma before
+// which every `<` is closed separates parameters, since a template-id that
+// contains a comma has a `<` still open there whose `>` follows it. Everything
+// kept is copied from the scanned text, comments and attributes included.
+struct ProbeParameters {
+    Generated text;
+    std::optional<source::SourceLocation> ambiguous;
+};
+
+ProbeParameters without_default_arguments(const TokenStream& stream, const source::ByteSpan& span) {
+    ProbeParameters parameters;
+    std::size_t kept_from = span.offset;
+    std::size_t default_end = span.offset; // the end of the default's last token
+    source::SourceLocation default_at;     // and its `=`
+    bool in_default = false;
+    unsigned depth = 0;  // (), [], {} open within the list
+    unsigned angles = 0; // `<` a default leaves open outside every bracket
+    for (const Token& token : stream.tokens()) {
+        if (token.kind == TokenKind::EndOfFile || token.span.offset >= span.end()) {
+            break;
+        }
+        if (token.span.offset < span.offset) {
+            continue;
+        }
+        if (token.is_punctuator("(") || token.is_punctuator("[") || token.is_punctuator("{")) {
+            ++depth;
+        } else if ((token.is_punctuator(")") || token.is_punctuator("]") || token.is_punctuator("}")) && depth > 0) {
+            --depth;
+        } else if (depth == 0 && !in_default && token.is_punctuator("=")) {
+            parameters.text.copy(stream, source::ByteSpan{kept_from, token.span.offset - kept_from});
+            in_default = true;
+            angles = 0;
+            default_end = token.span.end();
+            default_at = stream.location_of(token);
+            continue;
+        } else if (depth == 0 && in_default && token.is_punctuator(",")) {
+            if (angles != 0 && !parameters.ambiguous.has_value()) {
+                parameters.ambiguous = default_at;
+            }
+            in_default = false;
+            kept_from = default_end;
+            continue;
+        } else if (depth == 0 && in_default) {
+            if (token.is_punctuator("<")) {
+                ++angles;
+            } else if (token.is_punctuator(">") || token.is_punctuator(">=")) {
+                angles = angles > 0 ? angles - 1 : 0;
+            } else if (token.is_punctuator(">>") || token.is_punctuator(">>=")) {
+                angles = angles > 1 ? angles - 2 : 0;
+            }
+        }
+        if (in_default) {
+            default_end = token.span.end();
+        }
+    }
+    if (in_default) {
+        kept_from = default_end;
+    }
+    parameters.text.copy(stream, source::ByteSpan{kept_from, span.end() - kept_from});
+    return parameters;
+}
+
 // The names a template header introduces, as an argument list: from
 // `template <unsigned N, typename T>` this yields `N, T`.
 //
@@ -1229,36 +1306,26 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             parameters = {};
         }
         const bool has_parameters = parameters.find_first_not_of(" \t\r\n") != std::string_view::npos;
-        // A default argument is a value the caller does not write, and a call
-        // relying on one is not modeled; a contract's probes would also need
-        // one for every parameter after it, `result` included.
-        {
-            int depth = 0;
-            for (const Token& token : stream.tokens()) {
-                if (token.span.offset < verified.parameters.offset || token.span.end() > verified.parameters.end()) {
-                    continue;
-                }
-                if (token.is_punctuator("(") || token.is_punctuator("[") || token.is_punctuator("{")) {
-                    ++depth;
-                } else if (token.is_punctuator(")") || token.is_punctuator("]") || token.is_punctuator("}")) {
-                    --depth;
-                } else if (depth == 0 && token.is_punctuator("=")) {
-                    diagnostics::Diagnostic diagnostic;
-                    diagnostic.severity = diagnostics::Severity::Error;
-                    diagnostic.category = diagnostics::Category::UnsupportedSemantics;
-                    diagnostic.location = stream.location_of(token);
-                    diagnostic.message =
-                        "a parameter of verified function '" + verified.function_name +
-                        "' has a default argument, which is not modeled: a call relying on it passes a value its "
-                        "caller does not write";
-                    projection.diagnostics.push_back(std::move(diagnostic));
-                    break;
-                }
-            }
-        }
+        // Every probe declares the parameters without their default arguments,
+        // which a call relying on one evaluates where it is made (SPEC.md
+        // R.16); the function's own declaration keeps them.
         Generated parameter_list;
         if (!parameters.empty()) {
-            parameter_list.copy(stream, verified.parameters);
+            ProbeParameters probe_parameters = without_default_arguments(stream, verified.parameters);
+            if (probe_parameters.ambiguous.has_value()) {
+                diagnostics::Diagnostic diagnostic;
+                diagnostic.severity = diagnostics::Severity::Error;
+                diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+                diagnostic.location = *probe_parameters.ambiguous;
+                diagnostic.message = "a default argument of verified function '" + verified.function_name +
+                                     "' is not delimited: a comma after a '<' it leaves open may separate the "
+                                     "parameters or the arguments of a template-id, which only lookup decides";
+                diagnostic.notes.push_back(
+                    {"parenthesize the default argument, so the parameter it belongs to ends where it does",
+                     *probe_parameters.ambiguous});
+                projection.diagnostics.push_back(std::move(diagnostic));
+            }
+            parameter_list = std::move(probe_parameters.text);
         }
 
         Generated result_parameter;
@@ -1381,7 +1448,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                     declared += "bool ";
                     declared += precondition;
                     declared += "(";
-                    declared += parameters;
+                    declared += parameter_list.text;
                     declared += ");";
                 }
                 const std::size_t before =

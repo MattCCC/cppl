@@ -494,6 +494,9 @@ cppl_add_script_test(negative_trusted_dependencies negative/trusted_dependencies
 cppl_add_script_test(e2e_rewritten_proof e2e/rewritten_proof.sh)
 cppl_add_script_test(e2e_verified_functions e2e/verified_functions.sh)
 cppl_add_script_test(e2e_verified_calls e2e/verified_calls.sh)
+# A call relying on a default argument, verified where it stands (SPEC.md R.16).
+cppl_add_script_test(e2e_default_arguments e2e/default_arguments.sh)
+cppl_add_script_test(negative_default_arguments negative/default_arguments.sh)
 cppl_add_script_test(e2e_verified_paths e2e/verified_paths.sh)
 cppl_add_script_test(e2e_verified_locals e2e/verified_locals.sh)
 cppl_add_script_test(e2e_verified_arithmetic e2e/verified_arithmetic.sh)

@@ -1271,6 +1271,55 @@ bool designates_storage(CXType written) {
            convert_type(canonical).representation.kind == source::RepresentationKind::Span;
 }
 
+// Whether `argument`, an argument of a call, is the default argument of its
+// parameter, which Clang supplies where the call writes none (SPEC.md R.16).
+// libclang exposes that node as an unexposed expression with no children and no
+// extent: nothing at the call wrote it, and the expression it stands for is the
+// parameter's.
+bool is_default_argument(CXCursor argument) {
+    return clang_getCursorKind(argument) == CXCursor_UnexposedExpr &&
+           clang_Range_isNull(clang_getCursorExtent(argument)) != 0 && children_of(argument).empty();
+}
+
+// The parameter at `index` of `callee` whose default argument a call relies
+// on, as a diagnostic names it: "parameter 'p' of 'f'".
+std::string default_owner(CXCursor callee, unsigned index) {
+    const std::string name = clang_Cursor_getNumArguments(callee) > static_cast<int>(index)
+                                 ? take(clang_getCursorSpelling(clang_Cursor_getArgument(callee, index)))
+                                 : std::string();
+    return (name.empty() ? "parameter " + std::to_string(index + 1) : "parameter '" + name + "'") + " of '" +
+           qualified_name_of(callee) + "'";
+}
+
+// The expression a call relies on for its argument at `index`, which Clang
+// supplied from its parameter's default (`is_default_argument`), or why it is
+// not one this implementation evaluates at the call (SPEC.md R.16).
+//
+// It is the default the declaration the call names states, as Clang resolved
+// it: an earlier declaration's default is inherited by the later one, and a
+// template's is instantiated at the specialization called. Clang gave the
+// argument the parameter's type, so an initializer of another type is not the
+// expression it stands for, and is refused rather than evaluated in its place.
+std::expected<CXCursor, std::string> default_argument_of(CXCursor call, CXCursor callee, unsigned index,
+                                                         CXCursor argument) {
+    const int parameters = clang_Cursor_getNumArguments(callee);
+    if (parameters < 0 || clang_Cursor_getNumArguments(call) != parameters ||
+        index >= static_cast<unsigned>(parameters)) {
+        return std::unexpected("the argument at position " + std::to_string(index + 1) + " of this call to '" +
+                               qualified_name_of(callee) +
+                               "' is a default argument that is not matched with a parameter of it");
+    }
+    const CXCursor parameter = clang_Cursor_getArgument(callee, index);
+    const CXCursor initializer = clang_Cursor_getVarDeclInitializer(parameter);
+    if (clang_Cursor_isNull(initializer) != 0 ||
+        clang_equalTypes(clang_getCanonicalType(clang_getCursorType(initializer)),
+                         clang_getCanonicalType(clang_getCursorType(argument))) == 0) {
+        return std::unexpected("the default argument of " + default_owner(callee, index) +
+                               " was not resolved to the expression this call evaluates");
+    }
+    return initializer;
+}
+
 // Whether an element place of a sequence is still the place its subscript
 // names: formed at the generation of its sequence that is current (RFC 0020
 // §4). One formed earlier is never matched again, so an access after the
@@ -2981,6 +3030,69 @@ Expr sequence_expression(const SequenceCall& call, CXCursor cursor, const Signat
                                               " (SPEC.md STDMODEL-019)");
 }
 
+// Marks every part of a lowered default argument as standing in it: each call
+// it makes names `owner` as the default it comes from, and each construct it
+// holds that is not modeled is refused as the default of `owner`, since the
+// call relying on it does not show it (SPEC.md R.16).
+void attribute_to_default(Expr& expression, const std::string& owner, unsigned depth) {
+    if (depth > kMaxExpressionDepth) {
+        expression.node = Unsupported{"the default argument of " + owner + " nests deeper than the bridge allows"};
+        return;
+    }
+    if (auto* refused = std::get_if<Unsupported>(&expression.node)) {
+        refused->reason = "the default argument of " + owner +
+                          ", on which this call relies, is not modeled: " + refused->reason + " (SPEC.md R.16)";
+        return;
+    }
+    if (auto* call = std::get_if<Call>(&expression.node); call != nullptr && call->default_argument.empty()) {
+        call->default_argument = owner;
+    }
+    std::visit(
+        [&](auto& node) {
+            if constexpr (requires { node.operands; }) {
+                for (Expr& child : node.operands)
+                    attribute_to_default(child, owner, depth + 1);
+            }
+            if constexpr (requires { node.arguments; }) {
+                for (Expr& child : node.arguments)
+                    attribute_to_default(child, owner, depth + 1);
+            }
+            if constexpr (requires { node.extent; }) {
+                for (Expr& child : node.extent)
+                    attribute_to_default(child, owner, depth + 1);
+            }
+            if constexpr (requires { node.body; }) {
+                for (Expr& child : node.body)
+                    attribute_to_default(child, owner, depth + 1);
+            }
+        },
+        expression.node);
+}
+
+// A default argument a call relies on, lowered as the expression its callee's
+// declaration states, evaluated where the call stands, before the call, exactly
+// as if the caller had written it there (SPEC.md R.16). Whatever it calls owes
+// at this call what any call owes, and the callee's contract, its refined
+// parameters and its measure meet its value as they meet any argument's.
+//
+// C++ lets a default argument use no parameter, no local and no `this`
+// ([dcl.fct.default]), so it is lowered with none of the caller's in scope:
+// anything of the caller's state it would read is refused, never read in place
+// of what C++ reads.
+Expr lower_default_argument(CXCursor call, CXCursor callee, unsigned index, CXCursor argument,
+                            const Signature& signature, unsigned depth) {
+    const std::expected<CXCursor, std::string> initializer = default_argument_of(call, callee, index, argument);
+    if (!initializer) {
+        Expr refused = unsupported_expression(call, initializer.error() + " (SPEC.md R.16)");
+        refused.type = convert_type(clang_getCursorType(argument));
+        return refused;
+    }
+    const Signature declaration_scope{{}, std::nullopt, signature.clause, signature.refinements};
+    Expr lowered = build_expression(*initializer, declaration_scope, Locals{}, depth + 1);
+    attribute_to_default(lowered, default_owner(callee, index), 0);
+    return lowered;
+}
+
 Expr build_expression(CXCursor cursor, const Signature& signature, const Locals& locals, unsigned depth,
                       bool sequenced_call) {
     if (depth > kMaxExpressionDepth) {
@@ -3514,6 +3626,13 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
         }
         for (int index = 0; index < argument_count; ++index) {
             const CXCursor argument = clang_Cursor_getArgument(cursor, static_cast<unsigned>(index));
+            // An argument the call does not write is its parameter's default,
+            // evaluated here as though written here (SPEC.md R.16).
+            if (is_default_argument(argument)) {
+                call.arguments.push_back(lower_default_argument(cursor, referenced, static_cast<unsigned>(index),
+                                                                argument, signature, depth));
+                continue;
+            }
             // A container's data pointer is admitted here and nowhere else: as
             // an argument whose parameter a callee's capability describes, over
             // the container's length (RFC 0020 §7, STDMODEL-017).
@@ -4370,6 +4489,26 @@ std::optional<std::string> ghost_effect(CXCursor cursor, unsigned depth) {
             return found;
         }
     }
+    // A default argument a call relies on is evaluated by the call, so its
+    // effects are the initializer's too (SPEC.md R.16).
+    if (kind == CXCursor_CallExpr) {
+        const CXCursor callee = clang_getCursorReferenced(cursor);
+        const int count = clang_Cursor_getNumArguments(cursor);
+        for (int index = 0; index < count; ++index) {
+            const CXCursor argument = clang_Cursor_getArgument(cursor, static_cast<unsigned>(index));
+            if (!is_default_argument(argument)) {
+                continue;
+            }
+            const std::expected<CXCursor, std::string> initializer =
+                default_argument_of(cursor, callee, static_cast<unsigned>(index), argument);
+            if (!initializer) {
+                return "a default argument that is not resolved: " + initializer.error();
+            }
+            if (std::optional<std::string> found = ghost_effect(*initializer, depth + 1)) {
+                return *found + " in the default argument of " + default_owner(callee, static_cast<unsigned>(index));
+            }
+        }
+    }
     return std::nullopt;
 }
 
@@ -4479,6 +4618,20 @@ class GhostScan {
             calls.push_back(Function::GhostCall{
                 clang_Cursor_isNull(callee) != 0 ? std::string{} : take(clang_getCursorUSR(callee)),
                 take(clang_getCursorSpelling(cursor)), ghost, presumed_location(clang_getCursorLocation(cursor))});
+            // What a default argument the call relies on calls, the initializer
+            // calls too (SPEC.md R.16). One that is not resolved has been
+            // refused by `ghost_effect` already.
+            const int count = clang_Cursor_getNumArguments(cursor);
+            for (int index = 0; index < count; ++index) {
+                const CXCursor argument = clang_Cursor_getArgument(cursor, static_cast<unsigned>(index));
+                if (!is_default_argument(argument)) {
+                    continue;
+                }
+                if (const std::expected<CXCursor, std::string> initializer =
+                        default_argument_of(cursor, callee, static_cast<unsigned>(index), argument)) {
+                    collect_calls(*initializer, ghost, depth + 1);
+                }
+            }
         }
         for (const CXCursor child : children_of(cursor)) {
             collect_calls(child, ghost, depth + 1);
@@ -5911,6 +6064,15 @@ struct BodyLowering {
             const source::ParameterPassing passing = passing_of(clang_getCursorType(params[index]));
             if (!source::aliases_storage(passing))
                 continue;
+            // A reference parameter's default binds storage the call does not
+            // name -- a global, or a temporary -- so there is no place of this
+            // body to hand the callee, as for a written argument that is not
+            // one (SPEC.md R.16).
+            if (is_default_argument(clang_Cursor_getArgument(cursor, static_cast<unsigned>(index)))) {
+                return reject("the default argument of reference " +
+                              default_owner(callee, static_cast<unsigned>(index)) +
+                              " binds storage this call does not name, which is not modeled (SPEC.md R.16)");
+            }
             const CXCursor argument = clang_Cursor_getArgument(cursor, static_cast<unsigned>(index));
             std::optional<std::size_t> target;
             if (source::may_write(passing)) {

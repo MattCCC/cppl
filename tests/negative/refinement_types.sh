@@ -890,13 +890,29 @@ verified unsigned read_index() ensures (result < 4u) {
 int main() { return read_index() == 3u ? 0 : 1; }
 CPP
 
-# A default argument is refused with its own diagnostic.
-reject a_default_argument_of_a_verified_function <<'CPP'
-verified int take(int p = 50) ensures (result == p) { return p; }
+# A refined parameter's default enters the type where a verified call relies on
+# it, and owes the predicate there exactly as the value written out would
+# (SPEC.md R.16). The declaration alone evaluates nothing and owes nothing.
+accept a_refined_parameter_default_inside_its_refinement <<'CPP'
+type Small = int where (self >= 0 && self < 100);
+verified int narrow(Small s = 7) ensures (result == s) { return s; }
+verified int relies() ensures (result == 7) { return narrow(); }
+int main() { return relies() == 7 ? 0 : 1; }
 CPP
-grep -qF "a parameter of verified function 'take' has a default argument, which is not modeled" \
-    "$run/a_default_argument_of_a_verified_function.log" ||
-    { cat "$run/a_default_argument_of_a_verified_function.log" >&2; echo "the default argument was not named" >&2; exit 1; }
+reject a_refined_parameter_default_outside_its_refinement <<'CPP'
+type Small = int where (self >= 0 && self < 100);
+verified int narrow(Small s = 700) ensures (result == s) { return s; }
+verified int relies() ensures (result == 700) { return narrow(); }
+CPP
+grep -qF "call-site precondition for 'relies -> narrow' is not proven" \
+    "$run/a_refined_parameter_default_outside_its_refinement.log" ||
+    { cat "$run/a_refined_parameter_default_outside_its_refinement.log" >&2; echo "the default's membership was not owed at the call" >&2; exit 1; }
+accept a_refined_parameter_default_no_verified_call_relies_on <<'CPP'
+type Small = int where (self >= 0 && self < 100);
+verified int narrow(Small s = 700) ensures (result == s) { return s; }
+verified int writes_it_out() ensures (result == 5) { return narrow(5); }
+int main() { return writes_it_out() == 5 ? 0 : 1; }
+CPP
 
 # The twin at the base type states nothing to charge, and is proven.
 accept a_class_template_local_at_the_base_type <<'CPP'

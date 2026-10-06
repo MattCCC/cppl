@@ -140,6 +140,13 @@ struct Call {
     // a declaration the projector generated, which is never a function of the
     // program.
     std::optional<std::string> validation = std::nullopt;
+
+    // The default argument this call stands in, when it stands in one a call
+    // relies on: the parameter and the function whose default it is, as a
+    // diagnostic names them. It is evaluated where that call stands, exactly
+    // as if written there (SPEC.md R.16), so it changes nothing about what is
+    // verified; it only says where a call nobody wrote at the call comes from.
+    std::string default_argument = {};
 };
 
 struct Binary {
