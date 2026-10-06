@@ -397,7 +397,19 @@ struct BodyLowering {
                                               std::vector<std::size_t>& invalidated,
                                               std::vector<std::size_t>& written_roots, bool unsafe_callee);
     bool form_places(CXCursor cursor, Locals& state);
-    template <typename Lower> std::optional<Expr> forming(CXCursor at, Lower&& lower);
+    // What `lower` returns, with the places it formed bound around it: a bound or
+    // a capability such a place owes is owed on the routes reaching it and nowhere
+    // else.
+    template <typename Lower> std::optional<Expr> forming(CXCursor at, Lower&& lower) {
+        std::vector<Local> enclosing;
+        enclosing.swap(formed_derefs);
+        std::optional<Expr> result = std::forward<Lower>(lower)();
+        if (result) {
+            result = bind_formed_derefs(std::move(*result), at);
+        }
+        formed_derefs = std::move(enclosing);
+        return result;
+    }
     std::optional<Expr> evaluate(CXCursor cursor, Locals& state, std::vector<std::size_t>& invalidated);
     std::optional<Expr> lower_call(CXCursor statement, const Continuation& next, const Locals& locals, unsigned depth);
 
@@ -418,6 +430,9 @@ struct BodyLowering {
     std::optional<Expr> lower_statement_form(CXCursor statement, const Continuation& next, const Locals& locals,
                                              unsigned depth);
     std::optional<Expr> lower_returned(CXCursor value, CXCursor statement, const Locals& locals, unsigned depth);
+    [[nodiscard]] std::optional<SelectedValue> selection_to_split(CXCursor statement) const;
+    std::optional<Expr> lower_selected_statement(CXCursor statement, const SelectedValue& selected,
+                                                 const Continuation& next, const Locals& locals, unsigned depth);
     std::optional<Expr> lower_for(CXCursor statement, const Continuation& next, const Locals& locals, unsigned depth);
     std::optional<Expr> lower_condition(CXCursor condition, const Branch& when_true, const Branch& when_false,
                                         const Locals& locals, unsigned depth);

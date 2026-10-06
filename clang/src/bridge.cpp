@@ -2038,20 +2038,8 @@ std::optional<Expr> BodyLowering::lower_statement_form(CXCursor statement, const
         const std::vector<CXCursor> nested = children_of(statement);
         return lower_statements(Continuation{&next, &nested, 0}, locals, depth + 1);
     }
-    if (const auto selected = signature.clause ? std::nullopt : selected_reading(statement);
-        selected && chosen_for(chosen_arms, selected->selection) == nullptr) {
-        const auto route = [&](std::optional<CXCursor> arm) -> Branch {
-            return [&, arm](const Locals& state) {
-                chosen_arms.push_back(ChosenArm{selected->selection, arm, selected->constant});
-                std::optional<Expr> lowered =
-                    forming(statement, [&] { return lower_statement_form(statement, next, state, depth + 1); });
-                chosen_arms.pop_back();
-                return lowered;
-            };
-        };
-        return lower_condition(selected->condition, route(selected->when_true), route(selected->when_false), locals,
-                               depth + 1);
-    }
+    if (const auto selected = selection_to_split(statement))
+        return lower_selected_statement(statement, *selected, next, locals, depth);
     if (kind == CXCursor_CallExpr)
         return lower_call(statement, next, locals, depth);
     // A container mutator whose argument is a temporary stands inside the
@@ -2160,58 +2148,6 @@ std::optional<Expr> BodyLowering::lower_statement_form(CXCursor statement, const
         return lower_range_for(statement, next, locals, depth);
     }
     return reject(unmodeled_statement(statement_name(kind)));
-}
-
-// A returned value. `c ? a : b`, `a && b` and `a || b` return what the arm
-// their condition selects evaluates to (C++ [expr.cond], [expr.log.and],
-// [expr.log.or]), so each arm is a return of its own on the routes that reach
-// it, and what an arm reads through a subscript or a pointer is formed, and
-// owes its bound or capability, only where it is evaluated.
-std::optional<Expr> BodyLowering::lower_returned(CXCursor value, CXCursor statement, const Locals& locals,
-                                                 unsigned depth) {
-    if (const auto selected = signature.clause ? std::nullopt : selected_value(value)) {
-        const auto arm = [&](std::optional<CXCursor> part) -> Branch {
-            return [&, part](const Locals& state) -> std::optional<Expr> {
-                return part ? lower_returned(*part, statement, state, depth + 1)
-                            : completed(selected->constant, state, statement);
-            };
-        };
-        return lower_condition(selected->condition, arm(selected->when_true), arm(selected->when_false), locals,
-                               depth + 1);
-    }
-    return forming(statement, [&]() -> std::optional<Expr> {
-        Locals state = locals;
-        std::vector<std::size_t> invalidated;
-        auto returned = evaluate(value, state, invalidated);
-        if (!returned)
-            return std::nullopt;
-        const auto* call = std::get_if<Call>(&returned->node);
-        if (call == nullptr || call->effects.empty())
-            return completed(std::move(*returned), state, statement);
-        const auto version = next_version++;
-        Expr read;
-        read.type = returned->type;
-        read.location = returned->location;
-        read.node = PlaceRef{version, anonymous_place("return value")};
-        Expr body = completed(std::move(read), state, statement);
-        for (auto changed : invalidated)
-            body = unknown(state, changed, std::move(body), statement);
-        return bind(version, anonymous_place("return value"), std::move(*returned), std::move(body), statement);
-    });
-}
-
-// What `lower` returns, with the places it formed bound around it: a bound or
-// a capability such a place owes is owed on the routes reaching it and nowhere
-// else.
-template <typename Lower> std::optional<Expr> BodyLowering::forming(CXCursor at, Lower&& lower) {
-    std::vector<Local> enclosing;
-    enclosing.swap(formed_derefs);
-    std::optional<Expr> result = std::forward<Lower>(lower)();
-    if (result) {
-        result = bind_formed_derefs(std::move(*result), at);
-    }
-    formed_derefs = std::move(enclosing);
-    return result;
 }
 
 std::optional<Expr> BodyLowering::lower_for(CXCursor statement, const Continuation& next, const Locals& locals,

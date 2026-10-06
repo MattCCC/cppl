@@ -26,6 +26,7 @@ add_library(cppl_clang STATIC
     src/proof_instantiation_cursors.cpp
     src/proof_instantiation_hazards.cpp
     src/refinements.cpp
+    src/selections.cpp
     src/sequences.cpp
     src/signature.cpp
     src/statements.cpp
