@@ -5951,7 +5951,7 @@ struct BodyLowering {
         // same place, or one the common alias model does not keep apart from a
         // written one (SPEC.md CLASS-011, VERIFIED-031).
         const auto reached_by_a_write = [&](std::size_t storage) {
-            return unsafe_callee || through_pointer || std::ranges::any_of(written_storage, [&](std::size_t written) {
+            return through_pointer || std::ranges::any_of(written_storage, [&](std::size_t written) {
                        return written == storage || may_alias(state[written], state[storage]);
                    });
         };
