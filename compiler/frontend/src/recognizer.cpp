@@ -2749,14 +2749,30 @@ const Clause* VerifiedFunction::measure() const {
     return nullptr;
 }
 
-Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, RecognitionMode mode) {
+namespace {
+
+// What recognize() reads a unit in: its tokens, the syntax read so far, the
+// scopes the scan stands in, and the statements written with a C++L word,
+// which are decided once the whole unit has been read. Each pass is one
+// member, run in the order recognize() runs them.
+struct Recognizer {
+    Recognizer(const TokenStream& scanned, diagnostics::Engine& reported, RecognitionMode requested)
+        : stream(scanned),
+          engine(reported),
+          mode(requested),
+          tokens(stream.tokens()),
+          tolerant(mode != RecognitionMode::Compile) {}
+
+    const TokenStream& stream;
+    diagnostics::Engine& engine;
+    RecognitionMode mode;
     const std::vector<Token>& tokens = stream.tokens();
     Syntax syntax;
 
     std::vector<ScopeKind> scopes;
-    const auto at_namespace_scope = [&scopes] {
+    [[nodiscard]] bool at_namespace_scope() const {
         return std::ranges::all_of(scopes, [](ScopeKind kind) { return kind == ScopeKind::Namespace; });
-    };
+    }
     // GRAMMAR.md 36/38: Laws, proofs and verified member contracts also have
     // class scope. This implementation verifies a member function's contract
     // (`at_member_scope` below) but not a Law or a proof declared in a class -
@@ -2765,17 +2781,17 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
     // canonically lay out the construct a developer wrote, the same way it
     // lays out any other syntactically well-formed but semantically
     // unsupported input.
-    const auto at_layout_scope = [&scopes] {
+    [[nodiscard]] bool at_layout_scope() const {
         return std::ranges::all_of(
             scopes, [](ScopeKind kind) { return kind == ScopeKind::Namespace || kind == ScopeKind::Class; });
-    };
+    }
     // Directly in a class that is itself declared at namespace scope or in
     // another such class: where a member function declaration stands.
-    const auto at_member_scope = [&scopes, &at_layout_scope] {
+    [[nodiscard]] bool at_member_scope() const {
         return !scopes.empty() && scopes.back() == ScopeKind::Class && at_layout_scope();
-    };
+    }
     // Edit and Draft keep what Compile refuses; Draft keeps more still.
-    const bool tolerant = mode != RecognitionMode::Compile;
+    const bool tolerant;
 
     // The token range of each verified body, so a loop's clauses can be tied to
     // the function whose obligations they become.
@@ -2821,436 +2837,13 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
     // destructor of the innermost class is named. Empty for every other scope.
     std::vector<std::string_view> scope_names;
 
-    std::size_t index = 0;
-    while (index < tokens.size() && tokens[index].kind != TokenKind::EndOfFile) {
-        if (tokens[index].is_punctuator("{")) {
-            scopes.push_back(scope_kind_before(tokens, index));
-            scope_names.push_back(scopes.back() == ScopeKind::Class ? class_name_before(tokens, index)
-                                                                    : std::string_view{});
-            ++index;
-            continue;
-        }
-        if (tokens[index].is_punctuator("}")) {
-            if (!scopes.empty()) {
-                scopes.pop_back();
-                scope_names.pop_back();
-            }
-            ++index;
-            continue;
-        }
+    // A module the unit imports may declare any name, in text not read here
+    // (SPEC.md MODULE-001). In a unit that imports one, no word can be shown
+    // to name nothing else, so the import stands for the other use that keeps
+    // each statement below ordinary C++ (WORD-019).
+    std::optional<std::size_t> module_import;
 
-        // `verified` before a constructor or a destructor of the class it
-        // stands in, after any ordinary specifiers. Neither declarator has a
-        // return type, so the specifier is not otherwise read as introducing a
-        // declaration; it is refused here rather than left for Clang to report
-        // as an unknown type.
-        if (!tolerant && tokens[index].is_identifier("verified") && at_member_scope() &&
-            at_declaration_start(tokens, index) && !scope_names.back().empty()) {
-            const std::string_view class_name = scope_names.back();
-            std::size_t declarator = index + 1;
-            while (declarator < tokens.size() && (is_one_of(tokens[declarator], kSpecifiersAfterType) ||
-                                                  tokens[declarator].is_identifier("explicit"))) {
-                ++declarator;
-            }
-            const bool constructor = declarator + 1 < tokens.size() && tokens[declarator].is_identifier(class_name) &&
-                                     tokens[declarator + 1].is_punctuator("(");
-            const bool destructor = declarator + 2 < tokens.size() && tokens[declarator].is_punctuator("~") &&
-                                    tokens[declarator + 1].is_identifier(class_name) &&
-                                    tokens[declarator + 2].is_punctuator("(");
-            if (constructor || destructor) {
-                refuse_lifetime_member(stream, tokens[index], destructor, engine);
-                ++index;
-                continue;
-            }
-        }
-
-        if ((tokens[index].is_identifier("while") || tokens[index].is_identifier("for")) && index + 1 < tokens.size() &&
-            tokens[index + 1].is_punctuator("(")) {
-            LoopSpecification loop;
-            std::size_t next = index + 1;
-            const std::size_t close = matching_parenthesis(tokens, index + 1);
-            const LoopClauses found = close >= tokens.size()
-                                          ? LoopClauses::None
-                                          : try_loop_clauses(stream, index, close + 1, engine, loop, next);
-            if (found != LoopClauses::None) {
-                const auto body = std::ranges::find_if(verified_bodies, [index](const VerifiedBody& candidate) {
-                    return candidate.open < index && index < candidate.close;
-                });
-                if (body == verified_bodies.end()) {
-                    report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-                           "a loop invariant outside a verified function would not be checked",
-                           "mark the enclosing function 'verified' so its loop invariants become obligations");
-                } else if (found == LoopClauses::Recognized) {
-                    loop.function_index = body->function;
-                    syntax.loops.push_back(std::move(loop));
-                }
-                index = next;
-                continue;
-            }
-        }
-
-        // do loop-clauses compound-statement while (condition);  (GRAMMAR.md 26)
-        if (tokens[index].is_identifier("do") && index + 1 < tokens.size()) {
-            LoopSpecification loop;
-            std::size_t next = index + 1;
-            const LoopClauses found = try_loop_clauses(stream, index, index + 1, engine, loop, next);
-            if (found != LoopClauses::None) {
-                const auto body = std::ranges::find_if(verified_bodies, [index](const VerifiedBody& candidate) {
-                    return candidate.open < index && index < candidate.close;
-                });
-                if (body == verified_bodies.end()) {
-                    report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-                           "a loop invariant outside a verified function would not be checked",
-                           "mark the enclosing function 'verified' so its loop invariants become obligations");
-                } else if (found == LoopClauses::Recognized) {
-                    loop.function_index = body->function;
-                    syntax.loops.push_back(std::move(loop));
-                }
-                index = next;
-                continue;
-            }
-        }
-
-        if (tokens[index].is_identifier("contradiction") && !scopes.empty() && scopes.back() == ScopeKind::Block &&
-            at_statement_start(tokens, index)) {
-            if (const std::optional<std::size_t> terminator = contradiction_statement_end(tokens, index)) {
-                written_contradictions.push_back(Written{index, *terminator});
-                index = *terminator + 1;
-                continue;
-            }
-        }
-
-        if ((tokens[index].is_identifier("cases") || tokens[index].is_identifier("decompose")) && !scopes.empty() &&
-            scopes.back() == ScopeKind::Block && at_statement_start(tokens, index)) {
-            if (const std::optional<std::size_t> close = split_statement_end(tokens, index)) {
-                written_splits.push_back(Written{index, *close});
-                index = *close + 1;
-                continue;
-            }
-        }
-
-        // unsafe compound-statement  (GRAMMAR.md 22). The block's statements
-        // are ordinary C++ and are read on as usual, so the scan goes on into it.
-        if (tokens[index].is_identifier("unsafe") && index + 1 < tokens.size() &&
-            tokens[index + 1].is_punctuator("{") && !scopes.empty() && scopes.back() == ScopeKind::Block &&
-            at_statement_start(tokens, index)) {
-            if (const std::size_t close = matching_brace(tokens, index + 1); close < tokens.size()) {
-                written_unsafe_blocks.push_back(Written{index, close});
-            }
-            ++index;
-            continue;
-        }
-
-        // ghost simple-declaration  (GRAMMAR.md 21, SPEC.md 25).
-        if (tokens[index].is_identifier("ghost")) {
-            const bool in_block =
-                !scopes.empty() && scopes.back() == ScopeKind::Block && at_statement_start(tokens, index);
-            if (in_block || at_declaration_start(tokens, index)) {
-                if (const std::optional<std::size_t> end = ghost_declaration_end(tokens, index)) {
-                    written_ghosts.push_back(WrittenGhost{index, *end, in_block});
-                    index = *end + 1;
-                    continue;
-                }
-            }
-        }
-
-        if (!at_declaration_start(tokens, index)) {
-            ++index;
-            continue;
-        }
-
-        // type name [(indices)] = base where (predicate);  (GRAMMAR.md 14, 16)
-        if (tokens[index].is_identifier("type")) {
-            RefinementType refinement;
-            std::size_t next = index + 1;
-            if (try_refinement_type(stream, index, engine, refinement, next)) {
-                if (!refinement.name.empty()) {
-                    if (at_namespace_scope()) {
-                        syntax.refinement_types.push_back(std::move(refinement));
-                    } else {
-                        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-                               "refinement type '" + refinement.name + "' is declared outside namespace scope",
-                               "this implementation recognizes refinement types at namespace scope only");
-                    }
-                }
-                index = next;
-                continue;
-            }
-        }
-
-        // trusted law ... ;  (GRAMMAR.md 24, SPEC.md 27)
-        //
-        // The proposition is assumed rather than proved. It is recorded as an
-        // explicit trusted assumption, counted in the trust report, and never
-        // reported as proven.
-        if (tokens[index].is_identifier("trusted") && index + 1 < tokens.size() &&
-            tokens[index + 1].is_identifier("law")) {
-            LawDeclaration law;
-            ProofDeclaration body;
-            std::size_t next = index + 2;
-            if (try_law(stream, index + 1, engine, law, next, body, mode)) {
-                if (!body.name.empty()) {
-                    report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
-                           "a trusted Law ends with ';': an assumption cannot also have a proof body");
-                    law.name.clear();
-                }
-                if (!law.name.empty()) {
-                    if (at_namespace_scope()) {
-                        law.trusted = true;
-                        law.trusted_keyword = tokens[index].span;
-                        law.keyword_location = stream.location_of(tokens[index]);
-                        // `try_law` measured the declaration from `law`, so the
-                        // span must be widened to cover `trusted` as well: the
-                        // projector blanks exactly this span, and a keyword left
-                        // behind would reach Clang as ordinary C++.
-                        law.range.span = source::ByteSpan{tokens[index].span.offset,
-                                                          law.range.span.end() - tokens[index].span.offset};
-                        syntax.laws.push_back(std::move(law));
-                    } else {
-                        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-                               "a trusted law must be declared at namespace scope",
-                               "a trusted assumption is a unit-level declaration, so that the trust report can "
-                               "name it");
-                    }
-                }
-                index = next;
-                continue;
-            }
-            // A draft's `trusted law name(...)` with no clause yet. The tokens
-            // are still ordinary C++, so recognition goes on through them.
-            if (law.completeness == Completeness::AwaitingClause && at_namespace_scope()) {
-                law.trusted = true;
-                law.trusted_keyword = tokens[index].span;
-                law.keyword_location = stream.location_of(tokens[index]);
-                law.range.span =
-                    source::ByteSpan{tokens[index].span.offset, law.range.span.end() - tokens[index].span.offset};
-                syntax.laws.push_back(std::move(law));
-            }
-        }
-
-        if (tokens[index].is_identifier("law")) {
-            LawDeclaration law;
-            ProofDeclaration body;
-            std::size_t next = index + 1;
-            if (try_law(stream, index, engine, law, next, body, mode)) {
-                if (!law.name.empty()) {
-                    if (!at_namespace_scope()) {
-                        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-                               "law '" + law.name + "' is declared outside namespace scope",
-                               "this implementation recognizes laws at namespace scope only");
-                    }
-                    if (at_namespace_scope() || (tolerant && at_layout_scope())) {
-                        if (!body.name.empty()) {
-                            body.inline_law = syntax.laws.size();
-                            syntax.proofs.push_back(std::move(body));
-                        }
-                        syntax.laws.push_back(std::move(law));
-                    }
-                }
-                index = next;
-                continue;
-            }
-            if (law.completeness == Completeness::AwaitingClause && at_layout_scope()) {
-                syntax.laws.push_back(std::move(law));
-            }
-        }
-
-        // proof name(...) proves (...) { ... }  (GRAMMAR.md 4)
-        if (tokens[index].is_identifier("proof")) {
-            ProofDeclaration proof;
-            std::size_t next = index + 1;
-            if (try_proof(stream, index, engine, proof, next, mode)) {
-                if (!proof.name.empty()) {
-                    if (!at_namespace_scope()) {
-                        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-                               "proof '" + proof.name + "' is declared outside namespace scope",
-                               "this implementation recognizes proofs at namespace scope only");
-                    }
-                    if (at_namespace_scope() || (tolerant && at_layout_scope())) {
-                        syntax.proofs.push_back(std::move(proof));
-                    }
-                }
-                index = next;
-                continue;
-            }
-            if (proof.completeness == Completeness::AwaitingClause && at_layout_scope()) {
-                syntax.proofs.push_back(std::move(proof));
-            }
-        }
-
-        if (tokens[index].is_identifier("template") && at_namespace_scope() && at_declaration_start(tokens, index)) {
-            ExplicitInstantiation instantiation;
-            std::size_t next = index + 1;
-            if (try_explicit_instantiation(stream, tokens, index, instantiation, next)) {
-                syntax.explicit_instantiations.push_back(std::move(instantiation));
-                index = next;
-                continue;
-            }
-        }
-
-        // unsafe T f(parameters);  (GRAMMAR.md 23, SPEC.md UNSAFE-001). Whether
-        // this is C++L is decided once the unit has been read. `unsafe` never
-        // waives what `verified` or `pure` asks for (UNSAFE-002), so it is not
-        // combined with either.
-        if (tokens[index].is_identifier("unsafe") && specifier_introduces_declaration(tokens, index)) {
-            if (is_specifier(tokens, index + 1, "verified") || is_specifier(tokens, index + 1, "pure")) {
-                report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
-                       "'unsafe' cannot be combined with '" + std::string(tokens[index + 1].text) + "'",
-                       "an unsafe function is not verified: it marks a boundary whose safety is not established, so "
-                       "it cannot also claim what '" +
-                           std::string(tokens[index + 1].text) + "' asks to be checked (SPEC.md UNSAFE-002)");
-                index += 2;
-                continue;
-            }
-            written_unsafe_declarations.push_back(WrittenUnsafeDeclaration{index, at_namespace_scope()});
-            ++index;
-            continue;
-        }
-
-        if (tokens[index].is_identifier("verified") && specifier_introduces_declaration(tokens, index)) {
-            VerifiedFunction verified;
-            std::size_t next = index + 1;
-            // A member function of a class that stands at namespace scope, or
-            // in another such class, is verified with its implicit object
-            // (SPEC.md CLASS-008). A class local to a function body is not:
-            // its members are not declarations the trust report can name.
-            const bool member = at_member_scope();
-            if (try_verified(stream, index, engine, verified, next, member, !tolerant,
-                             member ? scope_names.back() : std::string_view{})) {
-                if (!at_namespace_scope() && !member) {
-                    report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-                           "'verified' is applied outside namespace scope",
-                           "this implementation verifies functions at namespace scope and member functions of "
-                           "classes declared there");
-                }
-                if (at_namespace_scope() || member || (tolerant && at_layout_scope())) {
-                    // `verified pure` is both: the contract is discharged here,
-                    // and the function is still a candidate definition for the
-                    // formal core.
-                    if (is_specifier(tokens, index + 1, "pure")) {
-                        PureMarker marker;
-                        marker.keyword = tokens[index + 1].span;
-                        marker.keyword_location = stream.location_of(tokens[index + 1]);
-                        marker.function_name = verified.function_name;
-                        marker.function_location = verified.function_location;
-                        marker.function_offset = verified.function_offset;
-                        syntax.pure_markers.push_back(std::move(marker));
-                    }
-                    syntax.verified_functions.push_back(std::move(verified));
-                    // A declaration without a body owns none. `next` is then past
-                    // its `;`, and the braces after it are another function's.
-                    if (next < tokens.size() && tokens[next].is_punctuator("{")) {
-                        verified_bodies.push_back(
-                            VerifiedBody{next, matching_brace(tokens, next), syntax.verified_functions.size() - 1});
-                    }
-                }
-            }
-            index = next;
-            continue;
-        }
-
-        if (tokens[index].is_identifier("pure") && specifier_introduces_declaration(tokens, index)) {
-            const std::optional<std::size_t> name = find_declarator_name(tokens, index);
-            if (is_specifier(tokens, index + 1, "unsafe")) {
-                report(engine, stream, tokens[index + 1], diagnostics::Category::CpplSyntax,
-                       "'unsafe' cannot be combined with 'pure'",
-                       "an unsafe function is not verified: it marks a boundary whose safety is not established, so "
-                       "it cannot also claim what 'pure' asks to be checked (SPEC.md UNSAFE-002)");
-                index += 2;
-                continue;
-            }
-            if (!name.has_value()) {
-                report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
-                       "the 'pure' specifier applies to a function declaration",
-                       "no function declarator follows this specifier");
-            } else {
-                std::size_t clause_index = 0;
-                if (has_specification_clause(tokens, *name, clause_index)) {
-                    report(engine, stream, tokens[clause_index], diagnostics::Category::UnsupportedSemantics,
-                           "a contract on a function that is not 'verified' would not be "
-                           "checked",
-                           "mark the function 'verified' so its contract becomes an "
-                           "obligation, or state the property as a law over it");
-                    // This clause is never an obligation (Compile mode never
-                    // accepts it, unchanged by the diagnostic above - see
-                    // `Syntax::unchecked_clauses`), but the formatter/style
-                    // checker still has to lay out whatever clause syntax was
-                    // written, in every `RecognitionMode`, the same way it
-                    // lays out any other syntactically well-formed,
-                    // semantically unsupported construct.
-                    record_unchecked_clauses(stream, index, *name, engine, syntax);
-                } else if (!at_namespace_scope() &&
-                           !(at_member_scope() &&
-                             written_between(tokens, specifiers_start(tokens, index), *name, "static"))) {
-                    // A static member function has no implicit object: it is a
-                    // function, and pure as one is (SPEC.md CLASS-012). A member
-                    // function with an implicit object is not a definition of its
-                    // arguments alone.
-                    report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-                           "'pure' is applied outside namespace scope",
-                           "this implementation recognizes pure functions at namespace scope, and static member "
-                           "functions of classes declared there");
-                } else {
-                    PureMarker marker;
-                    marker.keyword = tokens[index].span;
-                    marker.keyword_location = stream.location_of(tokens[index]);
-                    marker.function_name = declarator_name_text(tokens, *name);
-                    marker.function_location = stream.location_of(tokens[*name]);
-                    marker.function_offset = tokens[*name].span.offset;
-                    syntax.pure_markers.push_back(std::move(marker));
-                }
-            }
-            ++index;
-            continue;
-        }
-
-        // Any other function declaration carrying clauses. The specifier in
-        // front of it is not one this implementation reads -- `inline`,
-        // `static`, `constexpr`, or a macro that expands to `verified`, whose
-        // expansion the formatter never sees because it lexes the source as
-        // written rather than the preprocessed text the compiler recognizes.
-        //
-        // Nothing here is checked: this claims no contract and emits no
-        // obligation, and the compiler's own reading of the declaration is
-        // untouched. It exists so that clause syntax a developer actually
-        // wrote is laid out rather than silently skipped, which is the same
-        // reason the `pure` path above records one. Without it the formatter
-        // is not idempotent in the way its users rely on: whether a clause
-        // gets canonical layout would depend on which specifier happens to
-        // precede it.
-        //
-        // No diagnostic accompanies this. The `pure` path's "would not be
-        // checked" report is about `pure`, a C++L specifier whose author
-        // plainly meant the contract to mean something. Here the leading
-        // token may be an ordinary C++ specifier or an unexpanded macro, and
-        // the Compile-mode recognizer reaches the same declaration through
-        // the preprocessed stream where the macro is already `verified` -- so
-        // warning would fire on correct, checked code.
-        //
-        // Two guards keep this from claiming a declaration that is already
-        // spoken for. `specifiers_start` is the declaration's own first token,
-        // and `at_declaration_start` is true both there and at each specifier
-        // after it, so recording anywhere else would file two overlapping
-        // regions for one declaration. `has_cppl_keyword` then yields to the
-        // branches above, which read the declaration properly.
-        std::size_t clause_index = 0;
-        if (const std::optional<std::size_t> name = find_declarator_name(tokens, index);
-            name.has_value() && specifiers_start(tokens, index) == index && !has_cppl_keyword(tokens, index, *name) &&
-            has_specification_clause(tokens, *name, clause_index)) {
-            record_unchecked_clauses(stream, index, *name, engine, syntax);
-        }
-
-        ++index;
-    }
-
-    // C++ first (SPEC.md 3.1, WORD-002). `contradiction name;` declares a
-    // variable wherever `contradiction` names a type, and only Clang knows what
-    // a name denotes. So a statement of that spelling is a claim only in a unit
-    // that uses the word for nothing else, where it cannot be ordinary C++. The
-    // word's uses inside laws and proofs are C++L's own and do not count; any
-    // other use, a declaration in a header included, does. So are its uses
-    // inside a split's arms, which belong to that split.
-    const auto in_proof = [&syntax](const Token& token) {
+    [[nodiscard]] bool in_proof(const Token& token) const {
         const auto covers = [&token](const source::ByteSpan& span) {
             return token.span.offset >= span.offset && token.span.offset < span.end();
         };
@@ -3258,23 +2851,18 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                                    [&covers](const ProofDeclaration& proof) { return covers(proof.range.span); }) ||
                std::ranges::any_of(syntax.laws,
                                    [&covers](const LawDeclaration& law) { return covers(law.range.span); });
-    };
-    const auto in_verified_body = [&verified_bodies](std::size_t at) {
+    }
+    [[nodiscard]] bool in_verified_body(std::size_t at) const {
         return std::ranges::any_of(verified_bodies,
                                    [at](const VerifiedBody& body) { return body.open < at && at < body.close; });
-    };
-    const auto in_split = [&written_splits](std::size_t at) {
+    }
+    [[nodiscard]] bool in_split(std::size_t at) const {
         return std::ranges::any_of(
             written_splits, [at](const Written& written) { return written.keyword <= at && at <= written.terminator; });
-    };
-    // A module the unit imports may declare any name, in text not read here
-    // (SPEC.md MODULE-001). In a unit that imports one, no word can be shown
-    // to name nothing else, so the import stands for the other use that keeps
-    // each statement below ordinary C++ (WORD-019).
-    const std::optional<std::size_t> module_import = first_module_import(tokens);
+    }
     // Warns that the statement led by the word at `at` is ordinary C++, since
     // `other` uses the word or imports a module that may declare it.
-    const auto warn_ordinary = [&](std::size_t at, std::size_t other, std::string_view rest) {
+    void warn_ordinary(std::size_t at, std::size_t other, std::string_view rest) {
         const bool imported = !tokens[other].is_identifier(tokens[at].text);
         diagnostics::Diagnostic diagnostic;
         diagnostic.severity = diagnostics::Severity::Warning;
@@ -3287,426 +2875,905 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
         diagnostic.notes.push_back(diagnostics::Note{imported ? "the module is imported here" : "the name is used here",
                                                      stream.location_of(tokens[other])});
         engine.report(std::move(diagnostic));
-    };
+    }
     // The first use of `word` outside laws and proofs that `claimed` does not
     // hold, or else the module import that may declare it.
-    const auto other_use = [&](std::string_view word, const auto& claimed) -> std::optional<std::size_t> {
+    template <class Claimed>
+    [[nodiscard]] std::optional<std::size_t> other_use(std::string_view word, const Claimed& claimed) const {
         for (std::size_t at = 0; at < tokens.size(); ++at) {
             if (tokens[at].is_identifier(word) && !in_proof(tokens[at]) && !claimed(at)) {
                 return at;
             }
         }
         return module_import;
-    };
-    if (!written_contradictions.empty()) {
-        const std::optional<std::size_t> other = other_use("contradiction", [&](std::size_t at) {
-            return in_split(at) || std::ranges::any_of(written_contradictions,
-                                                       [at](const Written& written) { return written.keyword == at; });
-        });
-
-        for (const Written& written : written_contradictions) {
-            const auto body = std::ranges::find_if(verified_bodies, [&written](const VerifiedBody& candidate) {
-                return candidate.open < written.keyword && written.keyword < candidate.close;
-            });
-            if (other.has_value()) {
-                if (body != verified_bodies.end()) {
-                    warn_ordinary(written.keyword, *other,
-                                  "this statement is ordinary C++, not a claim that the path cannot occur");
-                }
-                continue;
-            }
-            if (body == verified_bodies.end()) {
-                report(engine, stream, tokens[written.keyword], diagnostics::Category::UnsupportedSemantics,
-                       "a claim that a path cannot occur is checked only in a verified function",
-                       "mark the enclosing function 'verified' so its contradiction becomes an obligation");
-                continue;
-            }
-            std::vector<ProofStatement> statements;
-            if (!read_proof_statements(stream, written.keyword - 1, written.terminator + 1, engine, statements, 0)) {
-                continue;
-            }
-            const Token& keyword = tokens[written.keyword];
-            const Token& terminator = tokens[written.terminator];
-            PathContradiction claim;
-            claim.function_index = body->function;
-            claim.statement = std::move(statements.front());
-            claim.span = source::ByteSpan{keyword.span.offset, terminator.span.end() - keyword.span.offset};
-            claim.erased = source::ByteSpan{keyword.span.offset, terminator.span.offset - keyword.span.offset};
-            claim.end_line = terminator.line;
-            claim.end_column = terminator.column + 1;
-            syntax.path_contradictions.push_back(std::move(claim));
-        }
     }
-
-    // A split on a runtime path follows the same rule, word by word: `cases x
-    // {...}` is a declaration with a braced initializer wherever `cases` names a
-    // type (SPEC.md 3.1, CASE-017).
-    if (!written_splits.empty()) {
-        const std::optional<std::size_t> other_cases = other_use("cases", in_split);
-        const std::optional<std::size_t> other_decompose = other_use("decompose", in_split);
-
-        for (const Written& written : written_splits) {
-            const Token& keyword = tokens[written.keyword];
-            const std::optional<std::size_t>& other = keyword.is_identifier("cases") ? other_cases : other_decompose;
-            const auto body = std::ranges::find_if(verified_bodies, [&written](const VerifiedBody& candidate) {
-                return candidate.open < written.keyword && written.keyword < candidate.close;
-            });
-            if (other.has_value()) {
-                if (body != verified_bodies.end()) {
-                    warn_ordinary(written.keyword, *other, "this statement is ordinary C++, not a case split");
-                }
-                continue;
-            }
-            if (body == verified_bodies.end()) {
-                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
-                       "a case split on a runtime path is checked only in a verified function",
-                       "mark the enclosing function 'verified' so its case split takes part in its verification");
-                continue;
-            }
-            std::vector<ProofStatement> statements;
-            if (!read_proof_statements(stream, written.keyword - 1, written.terminator + 1, engine, statements, 0) ||
-                statements.size() != 1 || !admit_split_arms(engine, statements.front())) {
-                continue;
-            }
-            const Token& close = tokens[written.terminator];
-            PathCaseSplit split;
-            split.function_index = body->function;
-            split.statement = std::move(statements.front());
-            split.span = source::ByteSpan{keyword.span.offset, close.span.end() - keyword.span.offset};
-            split.end_line = close.line;
-            split.end_column = close.column + 1;
-
-            std::vector<std::pair<const ProofStatement*, const ProofArm*>> claims;
-            split_claims(split.statement, claims);
-            for (const auto& [statement, omitted] : claims) {
-                PathContradiction claim;
-                claim.function_index = body->function;
-                claim.statement = *statement;
-                claim.span = statement->keyword;
-                claim.erased = source::ByteSpan{statement->keyword.offset, 0};
-                claim.split = syntax.path_splits.size();
-                if (omitted != nullptr) {
-                    claim.omitted = omitted->spelling;
-                }
-                split.claims.push_back(syntax.path_contradictions.size());
-                syntax.path_contradictions.push_back(std::move(claim));
-            }
-            syntax.path_splits.push_back(std::move(split));
-        }
-    }
-
-    // `unsafe` follows the same rule: a block or a declaration is C++L only in a
-    // unit that uses the word for nothing else (SPEC.md 3.1). A use inside a
-    // law or a proof is C++L's own.
-    if (!written_unsafe_blocks.empty() || !written_unsafe_declarations.empty()) {
-        const auto claimed = [&](std::size_t at) {
-            return std::ranges::any_of(written_unsafe_blocks,
-                                       [at](const Written& written) { return written.keyword == at; }) ||
-                   std::ranges::any_of(written_unsafe_declarations,
-                                       [at](const WrittenUnsafeDeclaration& written) { return written.keyword == at; });
-        };
-        const std::optional<std::size_t> other = other_use("unsafe", claimed);
-        if (other.has_value()) {
-            const auto warn = [&](std::size_t at) {
-                warn_ordinary(at, *other, "this is ordinary C++, not an unsafe boundary");
-            };
-            // Only where an unsafe boundary could have been meant (WORD-018):
-            // in a verified body, or where the C++ reading cannot be valid, as
-            // with braces holding a statement, which no initializer holds, and
-            // with a declaration, whose word a return type follows. `unsafe{};`
-            // elsewhere is a temporary and nothing else.
-            for (const Written& written : written_unsafe_blocks) {
-                if (in_verified_body(written.keyword) ||
-                    holds_a_statement(tokens, written.keyword + 1, written.terminator)) {
-                    warn(written.keyword);
-                }
-            }
-            for (const WrittenUnsafeDeclaration& written : written_unsafe_declarations) {
-                warn(written.keyword);
-            }
-        } else {
-            for (const Written& written : written_unsafe_blocks) {
-                const Token& open = tokens[written.keyword + 1];
-                const Token& close = tokens[written.terminator];
-                UnsafeBlock block;
-                block.keyword = tokens[written.keyword].span;
-                block.location = stream.location_of(tokens[written.keyword]);
-                block.body = source::ByteSpan{open.span.offset, close.span.end() - open.span.offset};
-                block.nested = std::ranges::any_of(written_unsafe_blocks, [&written](const Written& outer) {
-                    return outer.keyword != written.keyword && outer.keyword < written.keyword &&
-                           written.keyword < outer.terminator;
-                });
-                block.body_open = open.span.end();
-                block.body_open_line = open.line;
-                block.body_open_column = open.column + 1;
-                if (const auto body = std::ranges::find_if(verified_bodies,
-                                                           [&written](const VerifiedBody& candidate) {
-                                                               return candidate.open < written.keyword &&
-                                                                      written.keyword < candidate.close;
-                                                           });
-                    body != verified_bodies.end()) {
-                    block.function_index = body->function;
-                }
-                syntax.unsafe_blocks.push_back(block);
-            }
-            for (const WrittenUnsafeDeclaration& written : written_unsafe_declarations) {
-                const Token& keyword = tokens[written.keyword];
-                const std::optional<std::size_t> name = find_declarator_name(tokens, written.keyword);
-                if (!name.has_value()) {
-                    report(engine, stream, keyword, diagnostics::Category::CpplSyntax,
-                           "the 'unsafe' specifier applies to a function declaration",
-                           "no function declarator follows this specifier; there is no unsafe expression form "
-                           "(SPEC.md UNSAFE-002)");
-                    continue;
-                }
-                if (!written.namespace_scope) {
-                    report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
-                           "'unsafe' is applied outside namespace scope",
-                           "this implementation recognizes unsafe functions at namespace scope only");
-                    continue;
-                }
-                // Nothing checks an unsafe function, so a contract on one would
-                // be a fact its callers rest on that no proof and no trusted
-                // law states (UNSAFE-003, UNSAFE-004).
-                if (std::size_t clause_index = 0; has_specification_clause(tokens, *name, clause_index)) {
-                    report(engine, stream, tokens[clause_index], diagnostics::Category::CpplSyntax,
-                           "an unsafe function states no contract",
-                           "nothing checks an unsafe function, so its callers could not rely on this clause; verify "
-                           "the function, or state the property as a trusted law (SPEC.md UNSAFE-003, UNSAFE-004)");
-                    record_unchecked_clauses(stream, written.keyword, *name, engine, syntax);
-                    continue;
-                }
-                UnsafeFunction function;
-                function.keyword = keyword.span;
-                function.keyword_location = stream.location_of(keyword);
-                function.function_name = declarator_name_text(tokens, *name);
-                function.function_location = stream.location_of(tokens[*name]);
-                function.function_offset = tokens[*name].span.offset;
-                syntax.unsafe_functions.push_back(std::move(function));
-            }
-        }
-    }
-
-    // `ghost` follows the same rule (SPEC.md 3.1). A declaration is ghost state
-    // only as a local of a verified body, directly in a block, where it can
-    // leave the program without leaving a statement's body empty (SPEC.md 25).
-    if (!written_ghosts.empty()) {
-        const auto claimed = [&](std::size_t at) {
-            return std::ranges::any_of(written_ghosts,
-                                       [at](const WrittenGhost& written) { return written.keyword == at; });
-        };
-        const std::optional<std::size_t> other = other_use("ghost", claimed);
-        for (const WrittenGhost& written : written_ghosts) {
-            const Token& keyword = tokens[written.keyword];
-            if (other.has_value()) {
-                // Ghost state exists only in a verified body, so only there could
-                // it have been meant (WORD-018).
-                if (!in_verified_body(written.keyword)) {
-                    continue;
-                }
-                warn_ordinary(written.keyword, *other, "this is ordinary C++, not ghost state");
-                continue;
-            }
-            const auto body = std::ranges::find_if(verified_bodies, [&written](const VerifiedBody& candidate) {
-                return candidate.open < written.keyword && written.keyword < candidate.close;
-            });
-            if (!written.in_block) {
-                report(engine, stream, keyword, diagnostics::Category::CpplSyntax,
-                       "ghost state is declared only as a local of a verified body",
-                       "there are no ghost globals, members or parameters (SPEC.md 25)");
-                continue;
-            }
-            if (body == verified_bodies.end()) {
-                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
-                       "ghost state outside a verified body would not be checked",
-                       "mark the enclosing function 'verified'; ghost state exists only for its proof (SPEC.md 25)");
-                continue;
-            }
-            const Token& previous = tokens[written.keyword - 1];
-            if (!previous.is_punctuator("{") && !previous.is_punctuator("}") && !previous.is_punctuator(";")) {
-                report(engine, stream, keyword, diagnostics::Category::CpplSyntax,
-                       "a ghost declaration stands directly in a block",
-                       "as the body of a statement or after a label it would leave that statement without one "
-                       "when it is erased; write it inside braces");
-                continue;
-            }
-            if (!ghost_declares(tokens, written.keyword, written.terminator)) {
-                report(engine, stream, keyword, diagnostics::Category::CpplSyntax,
-                       "a ghost declaration names a type and a variable",
-                       "without a type, what follows 'ghost' is not a declaration (GRAMMAR.md 21)");
-                continue;
-            }
-            GhostDeclaration ghost;
-            ghost.function_index = body->function;
-            ghost.keyword = keyword.span;
-            ghost.location = stream.location_of(keyword);
-            ghost.erased =
-                source::ByteSpan{keyword.span.offset, tokens[written.terminator].span.end() - keyword.span.offset};
-            syntax.ghost_declarations.push_back(ghost);
-        }
-    }
-
     // What an unsafe block holds is runtime code whose safety is not
     // established, so no statement inside one is a path the verifier walks.
     // Proof syntax there would state an obligation nothing discharges, and is
     // refused rather than dropped (SPEC.md UNSAFE-003).
-    const auto inside_unsafe = [&syntax](std::size_t offset) {
+    [[nodiscard]] bool inside_unsafe(std::size_t offset) const {
         return std::ranges::any_of(syntax.unsafe_blocks, [offset](const UnsafeBlock& block) {
             return offset > block.body.offset && offset < block.body.end();
         });
-    };
-    for (const GhostDeclaration& ghost : syntax.ghost_declarations) {
-        if (inside_unsafe(ghost.keyword.offset)) {
-            report(engine, ghost.location, diagnostics::Category::UnsupportedSemantics,
-                   "ghost state inside an unsafe block would not be checked",
-                   "an unsafe block's statements are not a path the verifier walks, so declare it outside the block");
-        }
     }
-    for (const LoopSpecification& loop : syntax.loops) {
-        if (inside_unsafe(loop.keyword.offset)) {
-            report(engine, loop.keyword_location, diagnostics::Category::UnsupportedSemantics,
-                   "a loop specification inside an unsafe block would not be checked",
-                   "an unsafe block's statements are not verified, so move the loop out of it or drop its clauses");
-        }
-    }
-    for (const PathContradiction& claim : syntax.path_contradictions) {
-        if (!claim.split.has_value() && inside_unsafe(claim.span.offset)) {
-            report(engine, claim.statement.location, diagnostics::Category::UnsupportedSemantics,
-                   "a claim that a path cannot occur inside an unsafe block would not be checked",
-                   "an unsafe block's statements are not a path the verifier walks");
-        }
-    }
-    for (const PathCaseSplit& split : syntax.path_splits) {
-        if (inside_unsafe(split.span.offset)) {
-            report(engine, split.statement.location, diagnostics::Category::UnsupportedSemantics,
-                   "a case split inside an unsafe block would not be checked",
-                   "an unsafe block's statements are not a path the verifier walks");
+
+    // Every declaration and statement the scan reads, in one pass over the tokens.
+    void read_declarations() {
+        std::size_t index = 0;
+        while (index < tokens.size() && tokens[index].kind != TokenKind::EndOfFile) {
+            if (tokens[index].is_punctuator("{")) {
+                scopes.push_back(scope_kind_before(tokens, index));
+                scope_names.push_back(scopes.back() == ScopeKind::Class ? class_name_before(tokens, index)
+                                                                        : std::string_view{});
+                ++index;
+                continue;
+            }
+            if (tokens[index].is_punctuator("}")) {
+                if (!scopes.empty()) {
+                    scopes.pop_back();
+                    scope_names.pop_back();
+                }
+                ++index;
+                continue;
+            }
+
+            // `verified` before a constructor or a destructor of the class it
+            // stands in, after any ordinary specifiers. Neither declarator has a
+            // return type, so the specifier is not otherwise read as introducing a
+            // declaration; it is refused here rather than left for Clang to report
+            // as an unknown type.
+            if (!tolerant && tokens[index].is_identifier("verified") && at_member_scope() &&
+                at_declaration_start(tokens, index) && !scope_names.back().empty()) {
+                const std::string_view class_name = scope_names.back();
+                std::size_t declarator = index + 1;
+                while (declarator < tokens.size() && (is_one_of(tokens[declarator], kSpecifiersAfterType) ||
+                                                      tokens[declarator].is_identifier("explicit"))) {
+                    ++declarator;
+                }
+                const bool constructor = declarator + 1 < tokens.size() &&
+                                         tokens[declarator].is_identifier(class_name) &&
+                                         tokens[declarator + 1].is_punctuator("(");
+                const bool destructor = declarator + 2 < tokens.size() && tokens[declarator].is_punctuator("~") &&
+                                        tokens[declarator + 1].is_identifier(class_name) &&
+                                        tokens[declarator + 2].is_punctuator("(");
+                if (constructor || destructor) {
+                    refuse_lifetime_member(stream, tokens[index], destructor, engine);
+                    ++index;
+                    continue;
+                }
+            }
+
+            if ((tokens[index].is_identifier("while") || tokens[index].is_identifier("for")) &&
+                index + 1 < tokens.size() && tokens[index + 1].is_punctuator("(")) {
+                LoopSpecification loop;
+                std::size_t next = index + 1;
+                const std::size_t close = matching_parenthesis(tokens, index + 1);
+                const LoopClauses found = close >= tokens.size()
+                                              ? LoopClauses::None
+                                              : try_loop_clauses(stream, index, close + 1, engine, loop, next);
+                if (found != LoopClauses::None) {
+                    const auto body = std::ranges::find_if(verified_bodies, [index](const VerifiedBody& candidate) {
+                        return candidate.open < index && index < candidate.close;
+                    });
+                    if (body == verified_bodies.end()) {
+                        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+                               "a loop invariant outside a verified function would not be checked",
+                               "mark the enclosing function 'verified' so its loop invariants become obligations");
+                    } else if (found == LoopClauses::Recognized) {
+                        loop.function_index = body->function;
+                        syntax.loops.push_back(std::move(loop));
+                    }
+                    index = next;
+                    continue;
+                }
+            }
+
+            // do loop-clauses compound-statement while (condition);  (GRAMMAR.md 26)
+            if (tokens[index].is_identifier("do") && index + 1 < tokens.size()) {
+                LoopSpecification loop;
+                std::size_t next = index + 1;
+                const LoopClauses found = try_loop_clauses(stream, index, index + 1, engine, loop, next);
+                if (found != LoopClauses::None) {
+                    const auto body = std::ranges::find_if(verified_bodies, [index](const VerifiedBody& candidate) {
+                        return candidate.open < index && index < candidate.close;
+                    });
+                    if (body == verified_bodies.end()) {
+                        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+                               "a loop invariant outside a verified function would not be checked",
+                               "mark the enclosing function 'verified' so its loop invariants become obligations");
+                    } else if (found == LoopClauses::Recognized) {
+                        loop.function_index = body->function;
+                        syntax.loops.push_back(std::move(loop));
+                    }
+                    index = next;
+                    continue;
+                }
+            }
+
+            if (tokens[index].is_identifier("contradiction") && !scopes.empty() && scopes.back() == ScopeKind::Block &&
+                at_statement_start(tokens, index)) {
+                if (const std::optional<std::size_t> terminator = contradiction_statement_end(tokens, index)) {
+                    written_contradictions.push_back(Written{index, *terminator});
+                    index = *terminator + 1;
+                    continue;
+                }
+            }
+
+            if ((tokens[index].is_identifier("cases") || tokens[index].is_identifier("decompose")) && !scopes.empty() &&
+                scopes.back() == ScopeKind::Block && at_statement_start(tokens, index)) {
+                if (const std::optional<std::size_t> close = split_statement_end(tokens, index)) {
+                    written_splits.push_back(Written{index, *close});
+                    index = *close + 1;
+                    continue;
+                }
+            }
+
+            // unsafe compound-statement  (GRAMMAR.md 22). The block's statements
+            // are ordinary C++ and are read on as usual, so the scan goes on into it.
+            if (tokens[index].is_identifier("unsafe") && index + 1 < tokens.size() &&
+                tokens[index + 1].is_punctuator("{") && !scopes.empty() && scopes.back() == ScopeKind::Block &&
+                at_statement_start(tokens, index)) {
+                if (const std::size_t close = matching_brace(tokens, index + 1); close < tokens.size()) {
+                    written_unsafe_blocks.push_back(Written{index, close});
+                }
+                ++index;
+                continue;
+            }
+
+            // ghost simple-declaration  (GRAMMAR.md 21, SPEC.md 25).
+            if (tokens[index].is_identifier("ghost")) {
+                const bool in_block =
+                    !scopes.empty() && scopes.back() == ScopeKind::Block && at_statement_start(tokens, index);
+                if (in_block || at_declaration_start(tokens, index)) {
+                    if (const std::optional<std::size_t> end = ghost_declaration_end(tokens, index)) {
+                        written_ghosts.push_back(WrittenGhost{index, *end, in_block});
+                        index = *end + 1;
+                        continue;
+                    }
+                }
+            }
+
+            if (!at_declaration_start(tokens, index)) {
+                ++index;
+                continue;
+            }
+
+            // type name [(indices)] = base where (predicate);  (GRAMMAR.md 14, 16)
+            if (tokens[index].is_identifier("type")) {
+                RefinementType refinement;
+                std::size_t next = index + 1;
+                if (try_refinement_type(stream, index, engine, refinement, next)) {
+                    if (!refinement.name.empty()) {
+                        if (at_namespace_scope()) {
+                            syntax.refinement_types.push_back(std::move(refinement));
+                        } else {
+                            report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+                                   "refinement type '" + refinement.name + "' is declared outside namespace scope",
+                                   "this implementation recognizes refinement types at namespace scope only");
+                        }
+                    }
+                    index = next;
+                    continue;
+                }
+            }
+
+            // trusted law ... ;  (GRAMMAR.md 24, SPEC.md 27)
+            //
+            // The proposition is assumed rather than proved. It is recorded as an
+            // explicit trusted assumption, counted in the trust report, and never
+            // reported as proven.
+            if (tokens[index].is_identifier("trusted") && index + 1 < tokens.size() &&
+                tokens[index + 1].is_identifier("law")) {
+                LawDeclaration law;
+                ProofDeclaration body;
+                std::size_t next = index + 2;
+                if (try_law(stream, index + 1, engine, law, next, body, mode)) {
+                    if (!body.name.empty()) {
+                        report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
+                               "a trusted Law ends with ';': an assumption cannot also have a proof body");
+                        law.name.clear();
+                    }
+                    if (!law.name.empty()) {
+                        if (at_namespace_scope()) {
+                            law.trusted = true;
+                            law.trusted_keyword = tokens[index].span;
+                            law.keyword_location = stream.location_of(tokens[index]);
+                            // `try_law` measured the declaration from `law`, so the
+                            // span must be widened to cover `trusted` as well: the
+                            // projector blanks exactly this span, and a keyword left
+                            // behind would reach Clang as ordinary C++.
+                            law.range.span = source::ByteSpan{tokens[index].span.offset,
+                                                              law.range.span.end() - tokens[index].span.offset};
+                            syntax.laws.push_back(std::move(law));
+                        } else {
+                            report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+                                   "a trusted law must be declared at namespace scope",
+                                   "a trusted assumption is a unit-level declaration, so that the trust report can "
+                                   "name it");
+                        }
+                    }
+                    index = next;
+                    continue;
+                }
+                // A draft's `trusted law name(...)` with no clause yet. The tokens
+                // are still ordinary C++, so recognition goes on through them.
+                if (law.completeness == Completeness::AwaitingClause && at_namespace_scope()) {
+                    law.trusted = true;
+                    law.trusted_keyword = tokens[index].span;
+                    law.keyword_location = stream.location_of(tokens[index]);
+                    law.range.span =
+                        source::ByteSpan{tokens[index].span.offset, law.range.span.end() - tokens[index].span.offset};
+                    syntax.laws.push_back(std::move(law));
+                }
+            }
+
+            if (tokens[index].is_identifier("law")) {
+                LawDeclaration law;
+                ProofDeclaration body;
+                std::size_t next = index + 1;
+                if (try_law(stream, index, engine, law, next, body, mode)) {
+                    if (!law.name.empty()) {
+                        if (!at_namespace_scope()) {
+                            report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+                                   "law '" + law.name + "' is declared outside namespace scope",
+                                   "this implementation recognizes laws at namespace scope only");
+                        }
+                        if (at_namespace_scope() || (tolerant && at_layout_scope())) {
+                            if (!body.name.empty()) {
+                                body.inline_law = syntax.laws.size();
+                                syntax.proofs.push_back(std::move(body));
+                            }
+                            syntax.laws.push_back(std::move(law));
+                        }
+                    }
+                    index = next;
+                    continue;
+                }
+                if (law.completeness == Completeness::AwaitingClause && at_layout_scope()) {
+                    syntax.laws.push_back(std::move(law));
+                }
+            }
+
+            // proof name(...) proves (...) { ... }  (GRAMMAR.md 4)
+            if (tokens[index].is_identifier("proof")) {
+                ProofDeclaration proof;
+                std::size_t next = index + 1;
+                if (try_proof(stream, index, engine, proof, next, mode)) {
+                    if (!proof.name.empty()) {
+                        if (!at_namespace_scope()) {
+                            report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+                                   "proof '" + proof.name + "' is declared outside namespace scope",
+                                   "this implementation recognizes proofs at namespace scope only");
+                        }
+                        if (at_namespace_scope() || (tolerant && at_layout_scope())) {
+                            syntax.proofs.push_back(std::move(proof));
+                        }
+                    }
+                    index = next;
+                    continue;
+                }
+                if (proof.completeness == Completeness::AwaitingClause && at_layout_scope()) {
+                    syntax.proofs.push_back(std::move(proof));
+                }
+            }
+
+            if (tokens[index].is_identifier("template") && at_namespace_scope() &&
+                at_declaration_start(tokens, index)) {
+                ExplicitInstantiation instantiation;
+                std::size_t next = index + 1;
+                if (try_explicit_instantiation(stream, tokens, index, instantiation, next)) {
+                    syntax.explicit_instantiations.push_back(std::move(instantiation));
+                    index = next;
+                    continue;
+                }
+            }
+
+            // unsafe T f(parameters);  (GRAMMAR.md 23, SPEC.md UNSAFE-001). Whether
+            // this is C++L is decided once the unit has been read. `unsafe` never
+            // waives what `verified` or `pure` asks for (UNSAFE-002), so it is not
+            // combined with either.
+            if (tokens[index].is_identifier("unsafe") && specifier_introduces_declaration(tokens, index)) {
+                if (is_specifier(tokens, index + 1, "verified") || is_specifier(tokens, index + 1, "pure")) {
+                    report(
+                        engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
+                        "'unsafe' cannot be combined with '" + std::string(tokens[index + 1].text) + "'",
+                        "an unsafe function is not verified: it marks a boundary whose safety is not established, so "
+                        "it cannot also claim what '" +
+                            std::string(tokens[index + 1].text) + "' asks to be checked (SPEC.md UNSAFE-002)");
+                    index += 2;
+                    continue;
+                }
+                written_unsafe_declarations.push_back(WrittenUnsafeDeclaration{index, at_namespace_scope()});
+                ++index;
+                continue;
+            }
+
+            if (tokens[index].is_identifier("verified") && specifier_introduces_declaration(tokens, index)) {
+                VerifiedFunction verified;
+                std::size_t next = index + 1;
+                // A member function of a class that stands at namespace scope, or
+                // in another such class, is verified with its implicit object
+                // (SPEC.md CLASS-008). A class local to a function body is not:
+                // its members are not declarations the trust report can name.
+                const bool member = at_member_scope();
+                if (try_verified(stream, index, engine, verified, next, member, !tolerant,
+                                 member ? scope_names.back() : std::string_view{})) {
+                    if (!at_namespace_scope() && !member) {
+                        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+                               "'verified' is applied outside namespace scope",
+                               "this implementation verifies functions at namespace scope and member functions of "
+                               "classes declared there");
+                    }
+                    if (at_namespace_scope() || member || (tolerant && at_layout_scope())) {
+                        // `verified pure` is both: the contract is discharged here,
+                        // and the function is still a candidate definition for the
+                        // formal core.
+                        if (is_specifier(tokens, index + 1, "pure")) {
+                            PureMarker marker;
+                            marker.keyword = tokens[index + 1].span;
+                            marker.keyword_location = stream.location_of(tokens[index + 1]);
+                            marker.function_name = verified.function_name;
+                            marker.function_location = verified.function_location;
+                            marker.function_offset = verified.function_offset;
+                            syntax.pure_markers.push_back(std::move(marker));
+                        }
+                        syntax.verified_functions.push_back(std::move(verified));
+                        // A declaration without a body owns none. `next` is then past
+                        // its `;`, and the braces after it are another function's.
+                        if (next < tokens.size() && tokens[next].is_punctuator("{")) {
+                            verified_bodies.push_back(
+                                VerifiedBody{next, matching_brace(tokens, next), syntax.verified_functions.size() - 1});
+                        }
+                    }
+                }
+                index = next;
+                continue;
+            }
+
+            if (tokens[index].is_identifier("pure") && specifier_introduces_declaration(tokens, index)) {
+                const std::optional<std::size_t> name = find_declarator_name(tokens, index);
+                if (is_specifier(tokens, index + 1, "unsafe")) {
+                    report(
+                        engine, stream, tokens[index + 1], diagnostics::Category::CpplSyntax,
+                        "'unsafe' cannot be combined with 'pure'",
+                        "an unsafe function is not verified: it marks a boundary whose safety is not established, so "
+                        "it cannot also claim what 'pure' asks to be checked (SPEC.md UNSAFE-002)");
+                    index += 2;
+                    continue;
+                }
+                if (!name.has_value()) {
+                    report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
+                           "the 'pure' specifier applies to a function declaration",
+                           "no function declarator follows this specifier");
+                } else {
+                    std::size_t clause_index = 0;
+                    if (has_specification_clause(tokens, *name, clause_index)) {
+                        report(engine, stream, tokens[clause_index], diagnostics::Category::UnsupportedSemantics,
+                               "a contract on a function that is not 'verified' would not be "
+                               "checked",
+                               "mark the function 'verified' so its contract becomes an "
+                               "obligation, or state the property as a law over it");
+                        // This clause is never an obligation (Compile mode never
+                        // accepts it, unchanged by the diagnostic above - see
+                        // `Syntax::unchecked_clauses`), but the formatter/style
+                        // checker still has to lay out whatever clause syntax was
+                        // written, in every `RecognitionMode`, the same way it
+                        // lays out any other syntactically well-formed,
+                        // semantically unsupported construct.
+                        record_unchecked_clauses(stream, index, *name, engine, syntax);
+                    } else if (!at_namespace_scope() &&
+                               !(at_member_scope() &&
+                                 written_between(tokens, specifiers_start(tokens, index), *name, "static"))) {
+                        // A static member function has no implicit object: it is a
+                        // function, and pure as one is (SPEC.md CLASS-012). A member
+                        // function with an implicit object is not a definition of its
+                        // arguments alone.
+                        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+                               "'pure' is applied outside namespace scope",
+                               "this implementation recognizes pure functions at namespace scope, and static member "
+                               "functions of classes declared there");
+                    } else {
+                        PureMarker marker;
+                        marker.keyword = tokens[index].span;
+                        marker.keyword_location = stream.location_of(tokens[index]);
+                        marker.function_name = declarator_name_text(tokens, *name);
+                        marker.function_location = stream.location_of(tokens[*name]);
+                        marker.function_offset = tokens[*name].span.offset;
+                        syntax.pure_markers.push_back(std::move(marker));
+                    }
+                }
+                ++index;
+                continue;
+            }
+
+            // Any other function declaration carrying clauses. The specifier in
+            // front of it is not one this implementation reads -- `inline`,
+            // `static`, `constexpr`, or a macro that expands to `verified`, whose
+            // expansion the formatter never sees because it lexes the source as
+            // written rather than the preprocessed text the compiler recognizes.
+            //
+            // Nothing here is checked: this claims no contract and emits no
+            // obligation, and the compiler's own reading of the declaration is
+            // untouched. It exists so that clause syntax a developer actually
+            // wrote is laid out rather than silently skipped, which is the same
+            // reason the `pure` path above records one. Without it the formatter
+            // is not idempotent in the way its users rely on: whether a clause
+            // gets canonical layout would depend on which specifier happens to
+            // precede it.
+            //
+            // No diagnostic accompanies this. The `pure` path's "would not be
+            // checked" report is about `pure`, a C++L specifier whose author
+            // plainly meant the contract to mean something. Here the leading
+            // token may be an ordinary C++ specifier or an unexpanded macro, and
+            // the Compile-mode recognizer reaches the same declaration through
+            // the preprocessed stream where the macro is already `verified` -- so
+            // warning would fire on correct, checked code.
+            //
+            // Two guards keep this from claiming a declaration that is already
+            // spoken for. `specifiers_start` is the declaration's own first token,
+            // and `at_declaration_start` is true both there and at each specifier
+            // after it, so recording anywhere else would file two overlapping
+            // regions for one declaration. `has_cppl_keyword` then yields to the
+            // branches above, which read the declaration properly.
+            std::size_t clause_index = 0;
+            if (const std::optional<std::size_t> name = find_declarator_name(tokens, index);
+                name.has_value() && specifiers_start(tokens, index) == index &&
+                !has_cppl_keyword(tokens, index, *name) && has_specification_clause(tokens, *name, clause_index)) {
+                record_unchecked_clauses(stream, index, *name, engine, syntax);
+            }
+
+            ++index;
         }
     }
 
-    // A validation expression tests a value against a refinement's predicate at
-    // run time (SPEC.md 28.1). Every expression spelled `validate<...>(` is
-    // found here, over the whole unit, whatever statement or clause holds it:
-    // the template argument list closes at the `>` that balances the `<`,
-    // within the statement, and a `(` must follow it. C++ comes first: where
-    // the unit uses `validate` for anything but validations, every one of them
-    // is ordinary C++ (WORD-013). Otherwise each must stand in a verified body,
-    // outside every loop clause and unsafe block, and name exactly one
-    // refinement type the unit declares.
-    std::vector<Written> written_validations;
-    for (std::size_t at = 0; at + 1 < tokens.size(); ++at) {
-        if (!tokens[at].is_identifier("validate") || !tokens[at + 1].is_punctuator("<")) {
-            continue;
-        }
-        std::size_t depth = 0;
-        std::size_t close = at + 1;
-        for (; close < tokens.size(); ++close) {
-            if (tokens[close].is_punctuator("<")) {
-                ++depth;
-            } else if (tokens[close].is_punctuator(">")) {
-                if (--depth == 0) {
-                    break;
-                }
-            } else if (tokens[close].is_punctuator(">>")) {
-                depth = depth >= 2 ? depth - 2 : 0;
-                if (depth == 0) {
-                    break;
-                }
-            } else if (tokens[close].is_punctuator(";") || tokens[close].is_punctuator("{") ||
-                       tokens[close].is_punctuator("}") || tokens[close].kind == TokenKind::EndOfFile) {
-                close = tokens.size();
-                break;
-            }
-        }
-        if (close + 1 < tokens.size() && tokens[close + 1].is_punctuator("(")) {
-            written_validations.push_back(Written{at, close});
-        }
+    // Whether the unit imports a module, which may declare any word.
+    void find_module_import() {
+        module_import = first_module_import(tokens);
     }
-    const auto in_loop_clause = [&syntax](std::size_t offset) {
-        return std::ranges::any_of(syntax.loops, [offset](const LoopSpecification& loop) {
-            return offset >= loop.clause_region.offset && offset < loop.clause_region.end();
-        });
-    };
-    if (!written_validations.empty()) {
-        const std::optional<std::size_t> other = other_use("validate", [&](std::size_t at) {
-            return std::ranges::any_of(written_validations,
-                                       [at](const Written& written) { return written.keyword == at; });
-        });
-        for (const Written& written : written_validations) {
-            const Token& keyword = tokens[written.keyword];
-            const auto body = std::ranges::find_if(verified_bodies, [&written](const VerifiedBody& candidate) {
-                return candidate.open < written.keyword && written.keyword < candidate.close;
+
+    // C++ first (SPEC.md 3.1, WORD-002). `contradiction name;` declares a
+    // variable wherever `contradiction` names a type, and only Clang knows what
+    // a name denotes. So a statement of that spelling is a claim only in a unit
+    // that uses the word for nothing else, where it cannot be ordinary C++. The
+    // word's uses inside laws and proofs are C++L's own and do not count; any
+    // other use, a declaration in a header included, does. So are its uses
+    // inside a split's arms, which belong to that split.
+    void settle_contradictions() {
+        if (!written_contradictions.empty()) {
+            const std::optional<std::size_t> other = other_use("contradiction", [&](std::size_t at) {
+                return in_split(at) || std::ranges::any_of(written_contradictions, [at](const Written& written) {
+                           return written.keyword == at;
+                       });
             });
-            if (other.has_value()) {
-                if (body != verified_bodies.end()) {
-                    warn_ordinary(written.keyword, *other, "this expression is ordinary C++, not a validation");
+
+            for (const Written& written : written_contradictions) {
+                const auto body = std::ranges::find_if(verified_bodies, [&written](const VerifiedBody& candidate) {
+                    return candidate.open < written.keyword && written.keyword < candidate.close;
+                });
+                if (other.has_value()) {
+                    if (body != verified_bodies.end()) {
+                        warn_ordinary(written.keyword, *other,
+                                      "this statement is ordinary C++, not a claim that the path cannot occur");
+                    }
+                    continue;
                 }
-                continue;
-            }
-            if (body == verified_bodies.end()) {
-                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
-                       "a validation expression is checked only in the body of a verified function",
-                       "a validation is runtime code: test the value in a verified body, not in a declaration, "
-                       "a contract or a function that is not verified (SPEC.md RUNTIMECHECK-019)");
-                continue;
-            }
-            if (in_loop_clause(keyword.span.offset)) {
-                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
-                       "a loop clause states a proposition, and a validation expression is runtime code",
-                       "test the value in the loop's condition or body (SPEC.md RUNTIMECHECK-019)");
-                continue;
-            }
-            if (inside_unsafe(keyword.span.offset)) {
-                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
-                       "a validation expression inside an unsafe block would not be checked",
-                       "an unsafe block's statements are not a path the verifier walks");
-                continue;
-            }
-            if (written.terminator != written.keyword + 3 ||
-                tokens[written.keyword + 2].kind != TokenKind::Identifier) {
-                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
-                       "a validation names the refinement type it tests by the name its declaration gives it",
-                       "write validate<R>(value) with R the refinement type's own name (SPEC.md RUNTIMECHECK-018)");
-                continue;
-            }
-            const std::string name{tokens[written.keyword + 2].text};
-            std::vector<std::size_t> named;
-            for (std::size_t refinement = 0; refinement < syntax.refinement_types.size(); ++refinement) {
-                if (syntax.refinement_types[refinement].name == name) {
-                    named.push_back(refinement);
+                if (body == verified_bodies.end()) {
+                    report(engine, stream, tokens[written.keyword], diagnostics::Category::UnsupportedSemantics,
+                           "a claim that a path cannot occur is checked only in a verified function",
+                           "mark the enclosing function 'verified' so its contradiction becomes an obligation");
+                    continue;
                 }
+                std::vector<ProofStatement> statements;
+                if (!read_proof_statements(stream, written.keyword - 1, written.terminator + 1, engine, statements,
+                                           0)) {
+                    continue;
+                }
+                const Token& keyword = tokens[written.keyword];
+                const Token& terminator = tokens[written.terminator];
+                PathContradiction claim;
+                claim.function_index = body->function;
+                claim.statement = std::move(statements.front());
+                claim.span = source::ByteSpan{keyword.span.offset, terminator.span.end() - keyword.span.offset};
+                claim.erased = source::ByteSpan{keyword.span.offset, terminator.span.offset - keyword.span.offset};
+                claim.end_line = terminator.line;
+                claim.end_column = terminator.column + 1;
+                syntax.path_contradictions.push_back(std::move(claim));
             }
-            if (named.empty()) {
-                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
-                       "'" + name + "' does not name a refinement type this translation unit declares",
-                       "a validation tests a value against a refinement's predicate (SPEC.md RUNTIMECHECK-018)");
-                continue;
-            }
-            if (named.size() > 1) {
-                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
-                       "this translation unit declares more than one refinement type named '" + name + "'",
-                       "a validation must name exactly one refinement type");
-                continue;
-            }
-            RefinementType& refinement = syntax.refinement_types[named.front()];
-            if (refinement.indexed) {
-                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
-                       "validating a value against the indexed refinement type '" + name + "' is not supported",
-                       "validate against a refinement type without indices (SPEC.md RUNTIMECHECK-020)");
-                continue;
-            }
-            refinement.validator = "__cppl_v_" + name;
-            ValidationExpression validation;
-            validation.function_index = body->function;
-            validation.refinement_index = named.front();
-            validation.callee =
-                source::ByteSpan{keyword.span.offset, tokens[written.terminator].span.end() - keyword.span.offset};
-            validation.location = stream.location_of(keyword);
-            syntax.validations.push_back(validation);
         }
     }
 
-    return syntax;
+    void settle_splits() {
+        // A split on a runtime path follows the same rule, word by word: `cases x
+        // {...}` is a declaration with a braced initializer wherever `cases` names a
+        // type (SPEC.md 3.1, CASE-017).
+        if (!written_splits.empty()) {
+            const std::optional<std::size_t> other_cases =
+                other_use("cases", [this](std::size_t at) { return in_split(at); });
+            const std::optional<std::size_t> other_decompose =
+                other_use("decompose", [this](std::size_t at) { return in_split(at); });
+
+            for (const Written& written : written_splits) {
+                const Token& keyword = tokens[written.keyword];
+                const std::optional<std::size_t>& other =
+                    keyword.is_identifier("cases") ? other_cases : other_decompose;
+                const auto body = std::ranges::find_if(verified_bodies, [&written](const VerifiedBody& candidate) {
+                    return candidate.open < written.keyword && written.keyword < candidate.close;
+                });
+                if (other.has_value()) {
+                    if (body != verified_bodies.end()) {
+                        warn_ordinary(written.keyword, *other, "this statement is ordinary C++, not a case split");
+                    }
+                    continue;
+                }
+                if (body == verified_bodies.end()) {
+                    report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                           "a case split on a runtime path is checked only in a verified function",
+                           "mark the enclosing function 'verified' so its case split takes part in its verification");
+                    continue;
+                }
+                std::vector<ProofStatement> statements;
+                if (!read_proof_statements(stream, written.keyword - 1, written.terminator + 1, engine, statements,
+                                           0) ||
+                    statements.size() != 1 || !admit_split_arms(engine, statements.front())) {
+                    continue;
+                }
+                const Token& close = tokens[written.terminator];
+                PathCaseSplit split;
+                split.function_index = body->function;
+                split.statement = std::move(statements.front());
+                split.span = source::ByteSpan{keyword.span.offset, close.span.end() - keyword.span.offset};
+                split.end_line = close.line;
+                split.end_column = close.column + 1;
+
+                std::vector<std::pair<const ProofStatement*, const ProofArm*>> claims;
+                split_claims(split.statement, claims);
+                for (const auto& [statement, omitted] : claims) {
+                    PathContradiction claim;
+                    claim.function_index = body->function;
+                    claim.statement = *statement;
+                    claim.span = statement->keyword;
+                    claim.erased = source::ByteSpan{statement->keyword.offset, 0};
+                    claim.split = syntax.path_splits.size();
+                    if (omitted != nullptr) {
+                        claim.omitted = omitted->spelling;
+                    }
+                    split.claims.push_back(syntax.path_contradictions.size());
+                    syntax.path_contradictions.push_back(std::move(claim));
+                }
+                syntax.path_splits.push_back(std::move(split));
+            }
+        }
+    }
+
+    void settle_unsafe() {
+        // `unsafe` follows the same rule: a block or a declaration is C++L only in a
+        // unit that uses the word for nothing else (SPEC.md 3.1). A use inside a
+        // law or a proof is C++L's own.
+        if (!written_unsafe_blocks.empty() || !written_unsafe_declarations.empty()) {
+            const auto claimed = [&](std::size_t at) {
+                return std::ranges::any_of(written_unsafe_blocks,
+                                           [at](const Written& written) { return written.keyword == at; }) ||
+                       std::ranges::any_of(written_unsafe_declarations, [at](const WrittenUnsafeDeclaration& written) {
+                           return written.keyword == at;
+                       });
+            };
+            const std::optional<std::size_t> other = other_use("unsafe", claimed);
+            if (other.has_value()) {
+                const auto warn = [&](std::size_t at) {
+                    warn_ordinary(at, *other, "this is ordinary C++, not an unsafe boundary");
+                };
+                // Only where an unsafe boundary could have been meant (WORD-018):
+                // in a verified body, or where the C++ reading cannot be valid, as
+                // with braces holding a statement, which no initializer holds, and
+                // with a declaration, whose word a return type follows. `unsafe{};`
+                // elsewhere is a temporary and nothing else.
+                for (const Written& written : written_unsafe_blocks) {
+                    if (in_verified_body(written.keyword) ||
+                        holds_a_statement(tokens, written.keyword + 1, written.terminator)) {
+                        warn(written.keyword);
+                    }
+                }
+                for (const WrittenUnsafeDeclaration& written : written_unsafe_declarations) {
+                    warn(written.keyword);
+                }
+            } else {
+                for (const Written& written : written_unsafe_blocks) {
+                    const Token& open = tokens[written.keyword + 1];
+                    const Token& close = tokens[written.terminator];
+                    UnsafeBlock block;
+                    block.keyword = tokens[written.keyword].span;
+                    block.location = stream.location_of(tokens[written.keyword]);
+                    block.body = source::ByteSpan{open.span.offset, close.span.end() - open.span.offset};
+                    block.nested = std::ranges::any_of(written_unsafe_blocks, [&written](const Written& outer) {
+                        return outer.keyword != written.keyword && outer.keyword < written.keyword &&
+                               written.keyword < outer.terminator;
+                    });
+                    block.body_open = open.span.end();
+                    block.body_open_line = open.line;
+                    block.body_open_column = open.column + 1;
+                    if (const auto body = std::ranges::find_if(verified_bodies,
+                                                               [&written](const VerifiedBody& candidate) {
+                                                                   return candidate.open < written.keyword &&
+                                                                          written.keyword < candidate.close;
+                                                               });
+                        body != verified_bodies.end()) {
+                        block.function_index = body->function;
+                    }
+                    syntax.unsafe_blocks.push_back(block);
+                }
+                for (const WrittenUnsafeDeclaration& written : written_unsafe_declarations) {
+                    const Token& keyword = tokens[written.keyword];
+                    const std::optional<std::size_t> name = find_declarator_name(tokens, written.keyword);
+                    if (!name.has_value()) {
+                        report(engine, stream, keyword, diagnostics::Category::CpplSyntax,
+                               "the 'unsafe' specifier applies to a function declaration",
+                               "no function declarator follows this specifier; there is no unsafe expression form "
+                               "(SPEC.md UNSAFE-002)");
+                        continue;
+                    }
+                    if (!written.namespace_scope) {
+                        report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                               "'unsafe' is applied outside namespace scope",
+                               "this implementation recognizes unsafe functions at namespace scope only");
+                        continue;
+                    }
+                    // Nothing checks an unsafe function, so a contract on one would
+                    // be a fact its callers rest on that no proof and no trusted
+                    // law states (UNSAFE-003, UNSAFE-004).
+                    if (std::size_t clause_index = 0; has_specification_clause(tokens, *name, clause_index)) {
+                        report(
+                            engine, stream, tokens[clause_index], diagnostics::Category::CpplSyntax,
+                            "an unsafe function states no contract",
+                            "nothing checks an unsafe function, so its callers could not rely on this clause; verify "
+                            "the function, or state the property as a trusted law (SPEC.md UNSAFE-003, UNSAFE-004)");
+                        record_unchecked_clauses(stream, written.keyword, *name, engine, syntax);
+                        continue;
+                    }
+                    UnsafeFunction function;
+                    function.keyword = keyword.span;
+                    function.keyword_location = stream.location_of(keyword);
+                    function.function_name = declarator_name_text(tokens, *name);
+                    function.function_location = stream.location_of(tokens[*name]);
+                    function.function_offset = tokens[*name].span.offset;
+                    syntax.unsafe_functions.push_back(std::move(function));
+                }
+            }
+        }
+    }
+
+    void settle_ghosts() {
+        // `ghost` follows the same rule (SPEC.md 3.1). A declaration is ghost state
+        // only as a local of a verified body, directly in a block, where it can
+        // leave the program without leaving a statement's body empty (SPEC.md 25).
+        if (!written_ghosts.empty()) {
+            const auto claimed = [&](std::size_t at) {
+                return std::ranges::any_of(written_ghosts,
+                                           [at](const WrittenGhost& written) { return written.keyword == at; });
+            };
+            const std::optional<std::size_t> other = other_use("ghost", claimed);
+            for (const WrittenGhost& written : written_ghosts) {
+                const Token& keyword = tokens[written.keyword];
+                if (other.has_value()) {
+                    // Ghost state exists only in a verified body, so only there could
+                    // it have been meant (WORD-018).
+                    if (!in_verified_body(written.keyword)) {
+                        continue;
+                    }
+                    warn_ordinary(written.keyword, *other, "this is ordinary C++, not ghost state");
+                    continue;
+                }
+                const auto body = std::ranges::find_if(verified_bodies, [&written](const VerifiedBody& candidate) {
+                    return candidate.open < written.keyword && written.keyword < candidate.close;
+                });
+                if (!written.in_block) {
+                    report(engine, stream, keyword, diagnostics::Category::CpplSyntax,
+                           "ghost state is declared only as a local of a verified body",
+                           "there are no ghost globals, members or parameters (SPEC.md 25)");
+                    continue;
+                }
+                if (body == verified_bodies.end()) {
+                    report(
+                        engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                        "ghost state outside a verified body would not be checked",
+                        "mark the enclosing function 'verified'; ghost state exists only for its proof (SPEC.md 25)");
+                    continue;
+                }
+                const Token& previous = tokens[written.keyword - 1];
+                if (!previous.is_punctuator("{") && !previous.is_punctuator("}") && !previous.is_punctuator(";")) {
+                    report(engine, stream, keyword, diagnostics::Category::CpplSyntax,
+                           "a ghost declaration stands directly in a block",
+                           "as the body of a statement or after a label it would leave that statement without one "
+                           "when it is erased; write it inside braces");
+                    continue;
+                }
+                if (!ghost_declares(tokens, written.keyword, written.terminator)) {
+                    report(engine, stream, keyword, diagnostics::Category::CpplSyntax,
+                           "a ghost declaration names a type and a variable",
+                           "without a type, what follows 'ghost' is not a declaration (GRAMMAR.md 21)");
+                    continue;
+                }
+                GhostDeclaration ghost;
+                ghost.function_index = body->function;
+                ghost.keyword = keyword.span;
+                ghost.location = stream.location_of(keyword);
+                ghost.erased =
+                    source::ByteSpan{keyword.span.offset, tokens[written.terminator].span.end() - keyword.span.offset};
+                syntax.ghost_declarations.push_back(ghost);
+            }
+        }
+    }
+
+    // Proof syntax in an unsafe block, refused.
+    void refuse_proof_syntax_in_unsafe() {
+        for (const GhostDeclaration& ghost : syntax.ghost_declarations) {
+            if (inside_unsafe(ghost.keyword.offset)) {
+                report(
+                    engine, ghost.location, diagnostics::Category::UnsupportedSemantics,
+                    "ghost state inside an unsafe block would not be checked",
+                    "an unsafe block's statements are not a path the verifier walks, so declare it outside the block");
+            }
+        }
+        for (const LoopSpecification& loop : syntax.loops) {
+            if (inside_unsafe(loop.keyword.offset)) {
+                report(engine, loop.keyword_location, diagnostics::Category::UnsupportedSemantics,
+                       "a loop specification inside an unsafe block would not be checked",
+                       "an unsafe block's statements are not verified, so move the loop out of it or drop its clauses");
+            }
+        }
+        for (const PathContradiction& claim : syntax.path_contradictions) {
+            if (!claim.split.has_value() && inside_unsafe(claim.span.offset)) {
+                report(engine, claim.statement.location, diagnostics::Category::UnsupportedSemantics,
+                       "a claim that a path cannot occur inside an unsafe block would not be checked",
+                       "an unsafe block's statements are not a path the verifier walks");
+            }
+        }
+        for (const PathCaseSplit& split : syntax.path_splits) {
+            if (inside_unsafe(split.span.offset)) {
+                report(engine, split.statement.location, diagnostics::Category::UnsupportedSemantics,
+                       "a case split inside an unsafe block would not be checked",
+                       "an unsafe block's statements are not a path the verifier walks");
+            }
+        }
+    }
+
+    void read_validations() {
+        // A validation expression tests a value against a refinement's predicate at
+        // run time (SPEC.md 28.1). Every expression spelled `validate<...>(` is
+        // found here, over the whole unit, whatever statement or clause holds it:
+        // the template argument list closes at the `>` that balances the `<`,
+        // within the statement, and a `(` must follow it. C++ comes first: where
+        // the unit uses `validate` for anything but validations, every one of them
+        // is ordinary C++ (WORD-013). Otherwise each must stand in a verified body,
+        // outside every loop clause and unsafe block, and name exactly one
+        // refinement type the unit declares.
+        std::vector<Written> written_validations;
+        for (std::size_t at = 0; at + 1 < tokens.size(); ++at) {
+            if (!tokens[at].is_identifier("validate") || !tokens[at + 1].is_punctuator("<")) {
+                continue;
+            }
+            std::size_t depth = 0;
+            std::size_t close = at + 1;
+            for (; close < tokens.size(); ++close) {
+                if (tokens[close].is_punctuator("<")) {
+                    ++depth;
+                } else if (tokens[close].is_punctuator(">")) {
+                    if (--depth == 0) {
+                        break;
+                    }
+                } else if (tokens[close].is_punctuator(">>")) {
+                    depth = depth >= 2 ? depth - 2 : 0;
+                    if (depth == 0) {
+                        break;
+                    }
+                } else if (tokens[close].is_punctuator(";") || tokens[close].is_punctuator("{") ||
+                           tokens[close].is_punctuator("}") || tokens[close].kind == TokenKind::EndOfFile) {
+                    close = tokens.size();
+                    break;
+                }
+            }
+            if (close + 1 < tokens.size() && tokens[close + 1].is_punctuator("(")) {
+                written_validations.push_back(Written{at, close});
+            }
+        }
+        const auto in_loop_clause = [this](std::size_t offset) {
+            return std::ranges::any_of(syntax.loops, [offset](const LoopSpecification& loop) {
+                return offset >= loop.clause_region.offset && offset < loop.clause_region.end();
+            });
+        };
+        if (!written_validations.empty()) {
+            const std::optional<std::size_t> other = other_use("validate", [&](std::size_t at) {
+                return std::ranges::any_of(written_validations,
+                                           [at](const Written& written) { return written.keyword == at; });
+            });
+            for (const Written& written : written_validations) {
+                const Token& keyword = tokens[written.keyword];
+                const auto body = std::ranges::find_if(verified_bodies, [&written](const VerifiedBody& candidate) {
+                    return candidate.open < written.keyword && written.keyword < candidate.close;
+                });
+                if (other.has_value()) {
+                    if (body != verified_bodies.end()) {
+                        warn_ordinary(written.keyword, *other, "this expression is ordinary C++, not a validation");
+                    }
+                    continue;
+                }
+                if (body == verified_bodies.end()) {
+                    report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                           "a validation expression is checked only in the body of a verified function",
+                           "a validation is runtime code: test the value in a verified body, not in a declaration, "
+                           "a contract or a function that is not verified (SPEC.md RUNTIMECHECK-019)");
+                    continue;
+                }
+                if (in_loop_clause(keyword.span.offset)) {
+                    report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                           "a loop clause states a proposition, and a validation expression is runtime code",
+                           "test the value in the loop's condition or body (SPEC.md RUNTIMECHECK-019)");
+                    continue;
+                }
+                if (inside_unsafe(keyword.span.offset)) {
+                    report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                           "a validation expression inside an unsafe block would not be checked",
+                           "an unsafe block's statements are not a path the verifier walks");
+                    continue;
+                }
+                if (written.terminator != written.keyword + 3 ||
+                    tokens[written.keyword + 2].kind != TokenKind::Identifier) {
+                    report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                           "a validation names the refinement type it tests by the name its declaration gives it",
+                           "write validate<R>(value) with R the refinement type's own name (SPEC.md RUNTIMECHECK-018)");
+                    continue;
+                }
+                const std::string name{tokens[written.keyword + 2].text};
+                std::vector<std::size_t> named;
+                for (std::size_t refinement = 0; refinement < syntax.refinement_types.size(); ++refinement) {
+                    if (syntax.refinement_types[refinement].name == name) {
+                        named.push_back(refinement);
+                    }
+                }
+                if (named.empty()) {
+                    report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                           "'" + name + "' does not name a refinement type this translation unit declares",
+                           "a validation tests a value against a refinement's predicate (SPEC.md RUNTIMECHECK-018)");
+                    continue;
+                }
+                if (named.size() > 1) {
+                    report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                           "this translation unit declares more than one refinement type named '" + name + "'",
+                           "a validation must name exactly one refinement type");
+                    continue;
+                }
+                RefinementType& refinement = syntax.refinement_types[named.front()];
+                if (refinement.indexed) {
+                    report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                           "validating a value against the indexed refinement type '" + name + "' is not supported",
+                           "validate against a refinement type without indices (SPEC.md RUNTIMECHECK-020)");
+                    continue;
+                }
+                refinement.validator = "__cppl_v_" + name;
+                ValidationExpression validation;
+                validation.function_index = body->function;
+                validation.refinement_index = named.front();
+                validation.callee =
+                    source::ByteSpan{keyword.span.offset, tokens[written.terminator].span.end() - keyword.span.offset};
+                validation.location = stream.location_of(keyword);
+                syntax.validations.push_back(validation);
+            }
+        }
+    }
+};
+
+} // namespace
+
+Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, RecognitionMode mode) {
+    Recognizer recognizer(stream, engine, mode);
+    recognizer.read_declarations();
+    recognizer.find_module_import();
+    recognizer.settle_contradictions();
+    recognizer.settle_splits();
+    recognizer.settle_unsafe();
+    recognizer.settle_ghosts();
+    recognizer.refuse_proof_syntax_in_unsafe();
+    recognizer.read_validations();
+    return std::move(recognizer.syntax);
 }
 
 } // namespace cppl::frontend
