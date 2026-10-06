@@ -132,7 +132,7 @@ tests:
     - tests/fixtures/negative/unsafe_member_function.cpp
   unit:
     - tests/unit/trust_closure_test.cpp
-    - tests/unit/recognizer_test.cpp
+    - tests/unit/recognizer_test_unsafe.cpp
     - tests/unit/lsp_semantic_tokens_test.cpp
     - tests/unit/lsp_completion_test.cpp
     - tests/unit/formatter_test_clauses.cpp

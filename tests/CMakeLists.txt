@@ -163,7 +163,8 @@ target_link_libraries(unit_words_test PRIVATE cppl_frontend)
 target_compile_definitions(unit_words_test PRIVATE
     CPPL_TEST_SPEC="${PROJECT_SOURCE_DIR}/docs/SPEC.md")
 
-cppl_add_unit_test(unit_recognizer_test unit/recognizer_test.cpp)
+cppl_add_unit_test(unit_recognizer_test unit/recognizer_test.cpp unit/recognizer_test_proofs.cpp
+                   unit/recognizer_test_contracts.cpp unit/recognizer_test_claims.cpp unit/recognizer_test_unsafe.cpp)
 target_link_libraries(unit_recognizer_test PRIVATE cppl_frontend cppl_diagnostics)
 
 cppl_add_unit_test(unit_draft_recognition_test unit/draft_recognition_test.cpp)

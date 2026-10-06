@@ -159,7 +159,7 @@ tests:
     - tests/unit/contradiction_test.cpp
     - tests/unit/lsp_decomposition_view_test.cpp
     - tests/unit/lsp_semantic_tokens_test.cpp
-    - tests/unit/recognizer_test.cpp
+    - tests/unit/recognizer_test_claims.cpp
     - tests/unit/projection_test.cpp
   end_to_end:
     - tests/e2e/omitted_case.sh

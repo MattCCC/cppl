@@ -139,7 +139,7 @@ tests:
     - tests/negative/verified_calls.sh
     - tests/negative/verified_functions.sh
   unit:
-    - tests/unit/recognizer_test.cpp
+    - tests/unit/recognizer_test_contracts.cpp
     - tests/unit/trust_closure_test.cpp
     - tests/unit/lsp_server_test.cpp
   end_to_end:

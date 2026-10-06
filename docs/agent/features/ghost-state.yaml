@@ -104,7 +104,7 @@ tests:
     - tests/fixtures/negative/ghost_false_postcondition.cpp
     - tests/fixtures/negative/ghost_refinement_owed.cpp
   unit:
-    - tests/unit/recognizer_test.cpp
+    - tests/unit/recognizer_test_unsafe.cpp
     - tests/unit/lsp_semantic_tokens_test.cpp
     - tests/unit/formatter_test_clauses.cpp
     - tests/unit/formatter_test_proofs.cpp

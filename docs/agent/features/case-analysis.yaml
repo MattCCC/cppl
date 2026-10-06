@@ -181,7 +181,8 @@ tests:
   unit:
     - tests/unit/decomposition_test.cpp
     - tests/unit/scoped_enum_provider_test.cpp
-    - tests/unit/recognizer_test.cpp
+    - tests/unit/recognizer_test_proofs.cpp
+    - tests/unit/recognizer_test_claims.cpp
     - tests/unit/projection_test.cpp
     - tests/unit/contracts_test.cpp
     - tests/unit/formatter_test_proofs.cpp
