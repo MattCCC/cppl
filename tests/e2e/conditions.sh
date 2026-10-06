@@ -6,7 +6,8 @@
 # `fixtures/conditions.cpp` states a contract for each shape: an element read
 # in an `if` condition and in a loop condition guarded by `&&`; a returned
 # `&&`, `?:` and `||` reading an element on one arm; `&&` and `||` as values in
-# a declaration and an assignment whose second operand divides; a loop invariant
+# a declaration and an assignment whose second operand divides, and in a pure
+# function's definition and a contract's term; a loop invariant
 # that is a disjunction of conjunctions, and one that is a conjunction holding
 # a disjunction, each operand specified on its own; a ghost snapshot related
 # to the loop case by case; callers taking apart the disjunction inside a
@@ -29,7 +30,7 @@ run=$(mktemp -d "$WORK/conditions.XXXXXX")
 expected='4 -1 2 3
 1 0 7 -1 1 0
 1 0 1 0 1 0
-1 3
+1 3 1 0 1 0
 1 0 2 4
 6 5 4 3 2
 1 0 8 7'
@@ -50,7 +51,7 @@ for standard in c++20 c++23; do
         cat "$base.err" >&2
         fail "verifying the conditions warned ($standard)"
     fi
-    for line in 'Function contracts proven: +20' '  partial correctness only: +0' 'Loop invariants proven: +16' \
+    for line in 'Laws proven: +3' 'Function contracts proven: +22' '  partial correctness only: +0' 'Loop invariants proven: +16' \
         'Loop measures proven: +8' 'Unresolved obligations: +0' 'Laws trusted: +0'; do
         grep -Eq "^$line\$" "$base.report" || { cat "$base.report" >&2; fail "the report does not state '$line'"; }
     done

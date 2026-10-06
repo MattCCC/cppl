@@ -194,6 +194,41 @@ int main() { return 0; }
 CPP
 
 
+# As a value in a definition, `&&` is false where its second operand is.
+refused definition_and_claimed_true "law 'both_wrong' is not proven" <<'CPP'
+pure bool both(bool a, bool b) {
+    return a && b;
+}
+law both_wrong(bool a)
+    proves (both(a, false));
+int main() { return 0; }
+CPP
+
+# A contract's `||` term is not `&&`: one positive operand gives 1.
+refused contract_or_term_claimed_and "$false_claim" <<'CPP'
+verified unsigned any_positive(unsigned x, unsigned y)
+    ensures (result == (x > 0u && y > 0u ? 1u : 0u))
+{
+    if (x > 0u || y > 0u) {
+        return 1u;
+    }
+    return 0u;
+}
+int main() { return 0; }
+CPP
+
+# A definition owes every operation it evaluates without a condition: the
+# division the first operand guards is still refused there, never admitted
+# unguarded.
+refused definition_division_owed_whole "defines only under a condition" <<'CPP'
+pure bool ratio_above_one(unsigned a, unsigned b) {
+    return b != 0u && a / b > 1u;
+}
+law uses(unsigned a)
+    proves (!ratio_above_one(a, 0u));
+int main() { return 0; }
+CPP
+
 # --- `&&` and `||` in loop invariants ----------------------------------------
 
 # Where the key is missing the loop ends with `i == v.size()` and nothing found.

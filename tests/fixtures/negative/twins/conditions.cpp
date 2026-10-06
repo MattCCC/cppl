@@ -5,7 +5,8 @@
 // element read in an `if` or loop condition; `&&` and `||` computed as values;
 // a returned `?:`, `&&` or `||` whose arms read elements; loop invariants
 // stating `&&` and `||`, nested in each other, each operand specified on its
-// own; a ghost snapshot related to the loop case by case; callers taking apart
+// own; `&&` and `||` as values in a definition and a contract's term; a ghost
+// snapshot related to the loop case by case; callers taking apart
 // the disjunction inside a callee's postcondition; and a flag that decides a
 // branch. e2e/conditions.sh verifies and runs this; negative/conditions.sh
 // refuses its false twins.
@@ -82,6 +83,42 @@ verified bool ordered(int a, int b, int c)
     const bool low = a <= b;
     bool both = low && b <= c;
     return both;
+}
+
+// In a definition and in a contract's term, `&&` and `||` are values too:
+// `a ? b : false` and `a ? true : b`.
+pure bool both(bool a, bool b) {
+    return a && b;
+}
+
+pure bool either_of(bool a, bool b) {
+    return a || b;
+}
+
+law both_with_false(bool a)
+    proves (!both(a, false));
+
+law both_of_true(bool a)
+    expects (a)
+    proves (both(a, true));
+
+law either_from_right(bool a, bool b)
+    expects (b)
+    proves (either_of(a, b));
+
+verified bool in_order(int a, int b, int c)
+    ensures (result == (a <= b && b <= c))
+{
+    return a <= b && b <= c;
+}
+
+verified unsigned any_positive(unsigned x, unsigned y)
+    ensures (result == (x > 0u || y > 0u ? 1u : 0u))
+{
+    if (x > 0u || y > 0u) {
+        return 1u;
+    }
+    return 0u;
 }
 
 // A flag the loop sets once it finds the key: the invariant states which of
@@ -215,7 +252,8 @@ int main() {
     std::printf("%d %d %d %d %d %d\n", divides(9u, 3u) ? 1 : 0, divides(9u, 0u) ? 1 : 0,
                 zero_or_divides(9u, 0u) ? 1 : 0, zero_or_divides(9u, 2u) ? 1 : 0, ordered(1, 2, 3) ? 1 : 0,
                 ordered(2, 1, 3) ? 1 : 0);
-    std::printf("%zu %zu\n", index_of(v, 0), index_of(v, 5));
+    std::printf("%zu %zu %d %d %u %u\n", index_of(v, 0), index_of(v, 5), in_order(1, 2, 3) ? 1 : 0,
+                in_order(1, 3, 2) ? 1 : 0, any_positive(0u, 3u), any_positive(0u, 0u));
     std::printf("%u %u %u %u\n", countdown(5u, 2u), countdown(5u, 9u), last_below(6u, 3u), last_below(4u, 0u));
     std::printf("%u %u %u %u %d\n", gcd(12u, 18u), gcd(5u, 0u), clamp(9u, 2u, 4u), clamp(3u, 2u, 4u), median(3, 1, 2));
     std::printf("%u %u %u %u\n", either(0u, 4u), either(0u, 0u), bump(7u, 2u), bump(7u, 0u));

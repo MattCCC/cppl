@@ -177,7 +177,8 @@ verified unsigned f(unsigned x) expects (x == 0u && x == 1u) ensures (result == 
 verified unsigned wrong(unsigned x) ensures (result == x) { return f(x); }
 CPP
 
-# Value uses of a connective are refused explicitly.
+# As a value, a connective is what C++ evaluates: `x && y` is false where
+# either operand is, so the law does not hold.
 reject conjunction_as_value <<'CPP'
 pure bool wrong(bool x, bool y) { return x && y; }
 law use(bool x, bool y) proves (wrong(x, y));
@@ -203,7 +204,7 @@ CPP
 
 grep -q 'kernel-rejection' "$run/false_right_conjunct.log"
 grep -q 'kernel-rejection' "$run/conjunction_capture.log"
-grep -q 'not modeled as a value' "$run/conjunction_as_value.log"
+grep -q "kernel-rejection.*law 'use' is not proven" "$run/conjunction_as_value.log"
 
 # SPEC: FORALL-001, REFINE-003
 # A binder of a refinement type ranges over the refinement's values, never over

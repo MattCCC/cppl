@@ -374,6 +374,7 @@ signed-conversion-owed	compiler/obligations/src/definedness.cpp	if (!to.is_integ
 definedness-then-arm	compiler/obligations/src/definedness.cpp	guards.emplace_back(&choice->operands[0], true);	guards.emplace_back(&choice->operands[0], false);	^e2e_signed_arithmetic$|^negative_signed_arithmetic$
 definedness-else-arm	compiler/obligations/src/definedness.cpp	guards.back().second = false;	guards.back().second = true;	^e2e_signed_arithmetic$|^negative_signed_arithmetic$
 specification-definedness	compiler/obligations/src/definedness.cpp	return kernel::Proposition::conjunction(std::move(**defined), std::move(stated));	return stated;	^negative_signed_arithmetic$
+term-logical-value-arms	compiler/obligations/src/generate_terms.cpp	{*lhs, both ? *rhs : fixed, both ? fixed : *rhs});	{*lhs, both ? fixed : *rhs, both ? *rhs : fixed});	^(e2e_conditions|negative_conditions)$
 invariant-connective-kind	compiler/obligations/src/definedness.cpp	return binary->op == vir::BinaryOp::And	return binary->op != vir::BinaryOp::And	^(e2e_conditions|negative_conditions|e2e_disjunction)$
 premise-disjunction-in-conjunction	compiler/automation/src/arithmetic.cpp	} else if (const auto* conjunction = std::get_if<k::And>(&proposition.node)) {	} else if (const auto* conjunction = static_cast<const k::And*>(nullptr)) {	^e2e_conditions$
 first-order-split-offered	compiler/automation/src/arithmetic.cpp	return decided_by_order(sides) || decided_by_enumeration(sides) || decided_by_first_order(sides);	return decided_by_order(sides) || decided_by_enumeration(sides);	^e2e_conditions$

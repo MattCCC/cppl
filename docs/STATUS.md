@@ -156,8 +156,10 @@ assignment or a call's argument, is the `?:` C++ evaluates, `a ? b : false` and
 `a ? true : b`, so an operation in the second operand owes its conditions only
 where it is evaluated (VERIFIED-021, EXPR-015); a returned `?:`, `&&` or `||`
 is a return of its own on each route its condition selects. In a pure
-function's definition they remain unsupported, because a proposition is not a
-value there (SPEC.md 7.6-7.8).
+function's definition and in a contract's term, such as `result == (a && b)`
+or `(a || b) ? 1 : 0`, they are the same conditional values, each operand
+owing its conditions without the other's guard, so a definition dividing under
+a first operand that guards the divisor is refused rather than admitted.
 Everything else is reported as unsupported and produces no obligation. See
 `docs/ARCHITECTURE.md` 95 for the implemented structure and `TRUST.md` 4 for what
 must be trusted.

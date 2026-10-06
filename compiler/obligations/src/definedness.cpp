@@ -98,13 +98,13 @@ void own_sites(const vir::Expr& expression, const Guards& guards, std::vector<De
 
 void collect(const vir::Expr& expression, Guards& guards, std::vector<DefinednessSite>& sites) {
     // `?:` evaluates one arm, selected by its condition, so an operation in an
-    // arm is guarded by the condition's outcome. `&&` and `||` never stand
-    // here as values: a condition a path is taken on is already split into
-    // the routes they select (BOUNDARYEX-001), a value a body computes with
-    // them is the `?:` C++ evaluates, a specification states them as
-    // connectives whose operands are each specified, and anywhere else they
-    // are refused. Were one to reach here, its operands would owe their
-    // conditions unguarded, which asks more, never less.
+    // arm is guarded by the condition's outcome. `&&` and `||` rarely stand
+    // here: a condition a path is taken on is already split into the routes
+    // they select (BOUNDARYEX-001), a value a body computes with them is the
+    // `?:` C++ evaluates, and a specification states them as connectives
+    // whose operands are each specified. Where one is a value of a pure
+    // function's definition or of a specification's term, its operands owe
+    // their conditions unguarded, which asks more, never less.
     if (const auto* choice = std::get_if<vir::Conditional>(&expression.node)) {
         if (choice->operands.size() == 3) {
             collect(choice->operands[0], guards, sites);

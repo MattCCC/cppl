@@ -339,16 +339,16 @@ std::expected<kernel::Term, Failure> TermLowering::lower(const vir::Expr& expr) 
     }
 
     if (const auto* binary = std::get_if<vir::Binary>(&expr.node)) {
-        // `&&` and `||` state a proposition: a condition is split into the
-        // routes they select, a value a body computes is the `?:` C++
-        // evaluates, and a specification states connectives. Elsewhere - a
-        // pure function's result, an operand of a term - they are refused.
+        // As a value, `a && b` is `a ? b : false` and `a || b` is `a ? true : b`.
         if (binary->op == vir::BinaryOp::And || binary->op == vir::BinaryOp::Or) {
-            return fail("'" + vir::describe(binary->op) +
-                            "' states a proposition and is not modeled as a value: this position requires a "
-                            "value, such as a pure function's result or an operand of a term" +
-                            (binary->op == vir::BinaryOp::And ? ", so state each side separately" : ""),
-                        location);
+            auto lhs = binary->operands.size() == 2 ? lower(binary->operands[0]) : fail("malformed", location);
+            auto rhs = lhs ? lower(binary->operands[1]) : lhs;
+            if (!rhs || !type || !expr.type.is_boolean())
+                return rhs ? fail("malformed connective", location) : rhs;
+            const bool both = binary->op == vir::BinaryOp::And;
+            const auto fixed = kernel::Term::literal(type->integer_type(), both ? 0 : 1);
+            return kernel::Term::primitive(kernel::PrimOp::Select, type->integer_type(),
+                                           {*lhs, both ? *rhs : fixed, both ? fixed : *rhs});
         }
         if (const auto op = comparison(binary->op)) {
             if (binary->operands.size() != 2 || !expr.type.is_boolean()) {
