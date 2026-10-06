@@ -1296,26 +1296,16 @@ std::string default_owner(CXCursor callee, unsigned index) {
 // not one this implementation evaluates at the call (SPEC.md R.16).
 //
 // It is the default the declaration the call names states, as Clang resolved
-// it: an earlier declaration's default is inherited by the later one, and a
-// template's is instantiated at the specialization called. Clang gave the
-// argument the parameter's type, so an initializer of another type is not the
-// expression it stands for, and is refused rather than evaluated in its place.
-std::expected<CXCursor, std::string> default_argument_of(CXCursor call, CXCursor callee, unsigned index,
-                                                         CXCursor argument) {
-    const int parameters = clang_Cursor_getNumArguments(callee);
-    if (parameters < 0 || clang_Cursor_getNumArguments(call) != parameters ||
-        index >= static_cast<unsigned>(parameters)) {
-        return std::unexpected("the argument at position " + std::to_string(index + 1) + " of this call to '" +
-                               qualified_name_of(callee) +
-                               "' is a default argument that is not matched with a parameter of it");
-    }
-    const CXCursor parameter = clang_Cursor_getArgument(callee, index);
-    const CXCursor initializer = clang_Cursor_getVarDeclInitializer(parameter);
-    if (clang_Cursor_isNull(initializer) != 0 ||
-        clang_equalTypes(clang_getCanonicalType(clang_getCursorType(initializer)),
-                         clang_getCanonicalType(clang_getCursorType(argument))) == 0) {
-        return std::unexpected("the default argument of " + default_owner(callee, index) +
-                               " was not resolved to the expression this call evaluates");
+// it for the call: a default an earlier declaration states is the later one's
+// too, and a template's is instantiated at the specialization called before
+// the call uses it. A call's arguments stand at its callee's parameter
+// positions, as every argument the bridge lowers does.
+std::expected<CXCursor, std::string> default_argument_of(CXCursor callee, unsigned index) {
+    const CXCursor initializer = clang_Cursor_getNumArguments(callee) > static_cast<int>(index)
+                                     ? clang_Cursor_getVarDeclInitializer(clang_Cursor_getArgument(callee, index))
+                                     : clang_getNullCursor();
+    if (clang_Cursor_isNull(initializer) != 0) {
+        return std::unexpected("the default argument of " + default_owner(callee, index) + " was not resolved");
     }
     return initializer;
 }
@@ -3081,7 +3071,7 @@ void attribute_to_default(Expr& expression, const std::string& owner, unsigned d
 // of what C++ reads.
 Expr lower_default_argument(CXCursor call, CXCursor callee, unsigned index, CXCursor argument,
                             const Signature& signature, unsigned depth) {
-    const std::expected<CXCursor, std::string> initializer = default_argument_of(call, callee, index, argument);
+    const std::expected<CXCursor, std::string> initializer = default_argument_of(callee, index);
     if (!initializer) {
         Expr refused = unsupported_expression(call, initializer.error() + " (SPEC.md R.16)");
         refused.type = convert_type(clang_getCursorType(argument));
@@ -4500,7 +4490,7 @@ std::optional<std::string> ghost_effect(CXCursor cursor, unsigned depth) {
                 continue;
             }
             const std::expected<CXCursor, std::string> initializer =
-                default_argument_of(cursor, callee, static_cast<unsigned>(index), argument);
+                default_argument_of(callee, static_cast<unsigned>(index));
             if (!initializer) {
                 return "a default argument that is not resolved: " + initializer.error();
             }
@@ -4628,7 +4618,7 @@ class GhostScan {
                     continue;
                 }
                 if (const std::expected<CXCursor, std::string> initializer =
-                        default_argument_of(cursor, callee, static_cast<unsigned>(index), argument)) {
+                        default_argument_of(callee, static_cast<unsigned>(index))) {
                     collect_calls(*initializer, ghost, depth + 1);
                 }
             }

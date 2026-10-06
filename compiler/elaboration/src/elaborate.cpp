@@ -2026,8 +2026,13 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
                       count + (states_result && function.result.kind != clangbridge::TypeKind::Void ? 1 : 0);
         // A member function's probe takes its implicit object's leaves first,
         // as the function does, read-only where the function may write them.
+        // Types are compared by what they denote, never by how a declaration
+        // restating the contract spells them.
         for (std::size_t index = 0; agrees && index < count; ++index) {
-            agrees = probe->parameters[index].type == function.parameters[index].type;
+            const clangbridge::Type& stated = probe->parameters[index].type;
+            const clangbridge::Type& declared = function.parameters[index].type;
+            agrees = stated.kind == declared.kind && stated.width == declared.width &&
+                     stated.is_signed == declared.is_signed && stated.representation == declared.representation;
         }
         if (!agrees) {
             report(engine, diagnostics::Category::Elaboration, written,

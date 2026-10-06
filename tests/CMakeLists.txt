@@ -167,6 +167,11 @@ target_link_libraries(unit_draft_recognition_test PRIVATE cppl_frontend cppl_dia
 cppl_add_unit_test(unit_draft_authority_test unit/draft_authority_test.cpp)
 target_link_libraries(unit_draft_authority_test PRIVATE cppl_frontend cppl_elaboration cppl_diagnostics)
 
+# A verified function's probes restate its parameters without their default
+# arguments, and a clause is read only from a probe that does (SPEC.md R.16).
+cppl_add_unit_test(unit_default_arguments_test unit/default_arguments_test.cpp)
+target_link_libraries(unit_default_arguments_test PRIVATE cppl_frontend cppl_elaboration cppl_diagnostics)
+
 cppl_add_unit_test(unit_projection_test unit/projection_test.cpp)
 target_link_libraries(unit_projection_test PRIVATE cppl_frontend cppl_erasure cppl_diagnostics)
 target_compile_definitions(unit_projection_test PRIVATE

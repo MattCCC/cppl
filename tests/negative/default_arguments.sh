@@ -188,6 +188,18 @@ verified unsigned relies(unsigned x) ensures (result == x) {
 }
 int main() { return relies(3u) == 3u ? 0 : 1; }
 CPP
+# A ghost initializer never runs, so the effects of a default it relies on would
+# silently not happen.
+refuse a_ghost_relying_on_a_default_with_an_effect \
+    "the initializer of ghost 'g' has an increment or decrement in the default argument of parameter 'k' of 'keep'" <<'CPP'
+unsigned counter = 0u;
+pure unsigned keep(unsigned x, unsigned k = counter++) { return x + k; }
+verified unsigned relies(unsigned x) ensures (result == x) {
+    ghost unsigned g = keep(x);
+    return x;
+}
+int main() { return 0; }
+CPP
 refuse a_ghost_relying_on_a_default_that_is_not_pure "the initializer of ghost 'g' calls 'seven', which is not pure" <<'CPP'
 verified unsigned seven() ensures (result == 7u) { return 7u; }
 pure unsigned keep(unsigned x, unsigned k = seven()) { return x + k; }
