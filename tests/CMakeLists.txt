@@ -454,6 +454,8 @@ cppl_add_script_test(e2e_verified_templates e2e/verified_templates.sh)
 cppl_add_script_test(negative_template_identity negative/template_identity.sh)
 cppl_add_script_test(e2e_trusted_assumptions e2e/trusted_assumptions.sh)
 cppl_add_script_test(negative_refinement_types negative/refinement_types.sh)
+# A refusal of C++ that Clang accepted is never reported as a C++ error.
+cppl_add_script_test(negative_diagnostic_categories negative/diagnostic_categories.sh)
 cppl_add_script_test(e2e_enum_cases e2e/enum_cases.sh)
 cppl_add_script_test(negative_proof_cases negative/proof_cases.sh)
 cppl_add_script_test(e2e_structural_cases e2e/structural_cases.sh)

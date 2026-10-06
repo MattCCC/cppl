@@ -1140,7 +1140,9 @@ class Checker {
         if (!hazard.has_value() || !reported_.insert(hazard->key).second) {
             return;
         }
-        findings_.push_back(Diagnostic{Severity::Error,
+        // Clang accepted the unit: it is refused because this implementation
+        // cannot show its erasure keeps what it means (SPEC.md ERASE-019).
+        findings_.push_back(Diagnostic{Severity::Error, Category::UnsupportedSemantics,
                                        "proof-only text may instantiate " + hazard->description +
                                            ", where the program run does not, so the program verified would not "
                                            "be the program run (SPEC.md ERASE-019)",

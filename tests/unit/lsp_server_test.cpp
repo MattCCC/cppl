@@ -178,6 +178,39 @@ CPPL_TEST(a_headers_layout_is_not_reported_in_a_document_that_includes_it) {
                                          "int main() { return identity_of(1); }\n")));
 }
 
+namespace {
+
+// Whether a published diagnostic has this code and severity, and its message
+// says this.
+bool published_with(const std::vector<Diagnostic>& published, std::string_view code, DiagnosticSeverity severity,
+                    std::string_view text) {
+    return std::ranges::any_of(published, [&](const Diagnostic& diagnostic) {
+        return diagnostic.code == code && diagnostic.severity == severity &&
+               diagnostic.message.find(text) != std::string::npos;
+    });
+}
+
+} // namespace
+
+CPPL_TEST(a_refusal_of_cpp_clang_accepted_is_not_shown_as_a_cpp_error) {
+    // The editor shows the category the command line prints
+    // (negative/diagnostic_categories.sh): this C++ is well-formed, and is
+    // refused only because it lies outside the fragment this implementation
+    // models.
+    Server server = fixture_server();
+    const std::vector<Diagnostic> published = published_on_open(server, "file:///boundary.cpp",
+                                                                "type Cap = unsigned where (self <= 100u);\n"
+                                                                "struct Box { Cap c; };\n"
+                                                                "Box make() { Box b{1u}; return b; }\n"
+                                                                "int main() { Box b = make(); return 0; }\n");
+    CPPL_CHECK(published_with(published, "cppl.unsupported", DiagnosticSeverity::Error,
+                              "ordinary function 'make' return cannot establish refinement 'Cap'"));
+    CPPL_CHECK(published_with(published, "cppl.unsupported", DiagnosticSeverity::Error,
+                              "storage 'b' uses refinement 'Cap' outside a modeled verified body"));
+    CPPL_CHECK(std::ranges::none_of(
+        published, [](const Diagnostic& diagnostic) { return diagnostic.code == "cppl.cpp.semantic"; }));
+}
+
 CPPL_TEST(server_document_change_republishes) {
     Server server;
 

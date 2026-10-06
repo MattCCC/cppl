@@ -74,6 +74,23 @@ diagnostics::Severity convert(clangbridge::Severity severity) {
     return diagnostics::Severity::Error;
 }
 
+// What the bridge says a diagnostic reports. Only Clang's own diagnostics are
+// C++ errors; a refusal of C++ that Clang accepted keeps the category the
+// bridge gave it (ARCHITECTURE.md 74, 75).
+diagnostics::Category convert(clangbridge::Category category) {
+    switch (category) {
+        case clangbridge::Category::CppSemantic:
+            return diagnostics::Category::CppSemantic;
+        case clangbridge::Category::UnsupportedSemantics:
+            return diagnostics::Category::UnsupportedSemantics;
+        case clangbridge::Category::Elaboration:
+            return diagnostics::Category::Elaboration;
+        case clangbridge::Category::Internal:
+            return diagnostics::Category::Internal;
+    }
+    return diagnostics::Category::Internal;
+}
+
 // A file the preprocessor read, as it is on disk, so tokens can be given the
 // columns their author wrote them at rather than the preprocessor's.
 std::optional<std::string> written_text(const std::string& path) {
@@ -151,7 +168,7 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
                 }
                 diagnostics::Diagnostic converted;
                 converted.severity = convert(diagnostic.severity);
-                converted.category = diagnostics::Category::CppSemantic;
+                converted.category = convert(diagnostic.category);
                 converted.message = diagnostic.message;
                 converted.location = diagnostic.location;
                 // A location the bridge could not map back through #line
@@ -323,7 +340,7 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
         }
         diagnostics::Diagnostic converted;
         converted.severity = convert(diagnostic.severity);
-        converted.category = diagnostics::Category::CppSemantic;
+        converted.category = convert(diagnostic.category);
         converted.message = diagnostic.message;
         converted.location = diagnostic.location;
         engine.report(std::move(converted));

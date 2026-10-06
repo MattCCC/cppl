@@ -58,7 +58,7 @@ refuse() {
 }
 
 because="where the program run does not, so the program verified would not be the program run (SPEC.md ERASE-019)"
-set_zero="error [cpp-semantic]: proof-only text may instantiate 'Set<0>', a specialization of 'Set', a template \
+set_zero="error [unsupported-semantics]: proof-only text may instantiate 'Set<0>', a specialization of 'Set', a template \
 declared outside the standard library"
 
 # The Law's parameter, the audit's case: projected as a definition taking Set<0>
@@ -89,32 +89,32 @@ case_run refuse proof_instantiation_carried \
 # A template of data alone, named where its arguments are deduced, which
 # deduces every guide written for it.
 case_run refuse proof_instantiation_deduction_guide \
-    "proof_instantiation_deduction_guide.cpp:30:13: error [cpp-semantic]: proof-only text may instantiate 'Crate', \
+    "proof_instantiation_deduction_guide.cpp:30:13: error [unsupported-semantics]: proof-only text may instantiate 'Crate', \
 a template declared outside the standard library, $because"
 # A verified template's clause, instantiated with each specialization of it.
 case_run refuse proof_instantiation_template_clause "proof_instantiation_template_clause.cpp:10:16: $set_zero, $because"
 # A function template overload resolution only considers, and deduces.
 case_run refuse proof_instantiation_overload_candidate \
-    "proof_instantiation_overload_candidate.cpp:29:13: error [cpp-semantic]: proof-only text may instantiate 'twice', \
+    "proof_instantiation_overload_candidate.cpp:29:13: error [unsupported-semantics]: proof-only text may instantiate 'twice', \
 a template declared outside the standard library that overload resolution for 'twice' considers, $because"
 # A built-in operator on an enumeration, chosen over an operator template that
 # overload resolution deduces too.
 case_run refuse proof_instantiation_operator_candidate \
-    "proof_instantiation_operator_candidate.cpp:28:14: error [cpp-semantic]: proof-only text may instantiate \
+    "proof_instantiation_operator_candidate.cpp:28:14: error [unsupported-semantics]: proof-only text may instantiate \
 'operator==', a template declared outside the standard library that overload resolution for 'operator==' \
 considers, $because"
 # A member template of a class that is no template.
 case_run refuse proof_instantiation_member_template \
-    "proof_instantiation_member_template.cpp:18:42: error [cpp-semantic]: proof-only text may instantiate \
+    "proof_instantiation_member_template.cpp:18:42: error [unsupported-semantics]: proof-only text may instantiate \
 'Holder::plus', a member template of 'Holder', $because"
 # A variable template's specialization, in the Law's parameter type.
 case_run refuse proof_instantiation_variable_template \
-    "proof_instantiation_variable_template.cpp:13:59: error [cpp-semantic]: proof-only text may instantiate 'small', \
+    "proof_instantiation_variable_template.cpp:13:59: error [unsupported-semantics]: proof-only text may instantiate 'small', \
 a variable template or its specialization, declared outside the standard library, $because"
 # An alias template whose substitution evaluates an expression, though the
 # type it forms is a fundamental one.
 case_run refuse proof_instantiation_alias_template \
-    "proof_instantiation_alias_template.cpp:14:40: error [cpp-semantic]: proof-only text may instantiate 'Word', \
+    "proof_instantiation_alias_template.cpp:14:40: error [unsupported-semantics]: proof-only text may instantiate 'Word', \
 a template declared outside the standard library, $because"
 
 # The accepted half: the same stateful templates, and proof-only text of every

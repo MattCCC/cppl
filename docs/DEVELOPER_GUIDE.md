@@ -4162,6 +4162,15 @@ Distinguish these common causes:
 | Conflicting redeclaration             | Make all declarations describe one logical contract   |
 | `verification-interface`              | Import the defining unit's current interface (15.4)   |
 
+Each diagnostic names its category in brackets, `error [proof-failure]: ...`,
+and an editor shows the same category as the diagnostic's code.
+`[cpp-semantic]` is only ever one of Clang's own errors: Clang rejected the
+C++. C++ that Clang
+accepted and that C++L refuses because it lies outside the fragment this
+implementation models, such as an ordinary function returning a refined value
+or a refinement written as a template argument, is `[unsupported-semantics]`,
+and the fix is to the C++L, not to the C++.
+
 Use `cppl` with ordinary Clang compile options.
 
 For example:

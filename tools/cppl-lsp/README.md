@@ -67,6 +67,11 @@ violations (severity `Warning`, category `Style`) from the same formatter
 engine used to fix them, so an editor sees a clause-placement problem before
 the user ever asks to format.
 
+Each diagnostic's code is the compiler's category for it, the one the CLI
+prints in brackets: `cppl.cpp.semantic` only for Clang's own errors, and
+`cppl.unsupported` for C++ Clang accepted that the compiler refuses as outside
+the fragment it models, such as an ordinary function returning a refined value.
+
 Code actions come from that engine too. Each syntax migration it knows — a Law
 `ensures` that is now `proves`, a `case` that is now `cases` — is offered as a
 `quickfix` where its edit would land, not everywhere in the file. Canonical

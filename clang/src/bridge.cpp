@@ -401,8 +401,17 @@ enum class ReferenceModel : std::uint8_t {
     Referent,
 };
 
-std::expected<std::vector<Refinement>, std::string> refinements_of(CXCursor declared, CXType written,
-                                                                   const std::vector<Selection::Refinement>& known);
+// Why the refinements a written type names could not be read, and what kind of
+// failure that is. Where the failure is reported as a diagnostic of its own,
+// its category says which; elsewhere the message is a reason a construct is
+// not modeled.
+struct RefinementFailure {
+    Category category = Category::Internal;
+    std::string message;
+};
+
+std::expected<std::vector<Refinement>, RefinementFailure> refinements_of(
+    CXCursor declared, CXType written, const std::vector<Selection::Refinement>& known);
 CXType written_element_type(CXType written);
 
 // The same 64-bit pattern an integer literal of the underlying type carries.
@@ -514,7 +523,7 @@ Type convert_type(CXType type, unsigned depth = 0, ReferenceModel references = R
                 if (known != nullptr) {
                     auto member_refinements = refinements_of(origin, child, *known);
                     if (!member_refinements) {
-                        model.rejection = "component '" + name + "' has " + member_refinements.error();
+                        model.rejection = "component '" + name + "' has " + member_refinements.error().message;
                         return;
                     }
                     resolved.refinements = std::move(*member_refinements);
@@ -546,16 +555,19 @@ Type convert_type(CXType type, unsigned depth = 0, ReferenceModel references = R
                 // refused instead (SPEC.md STDMODEL-020).
                 if (!array && known != nullptr) {
                     const CXType written = written_element_type(type);
-                    auto stated = written.kind == CXType_Invalid
-                                      ? std::expected<std::vector<Refinement>, std::string>{std::unexpected(
-                                            "an element type that could not be read from how the type is written")}
-                                      : refinements_of(clang_getNullCursor(), written, *known);
+                    auto stated =
+                        written.kind == CXType_Invalid
+                            ? std::expected<std::vector<Refinement>, RefinementFailure>{std::unexpected(
+                                  RefinementFailure{Category::UnsupportedSemantics,
+                                                    "an element type that could not be read from how the type is "
+                                                    "written"})}
+                            : refinements_of(clang_getNullCursor(), written, *known);
                     if (!stated || !stated->empty()) {
                         model.rejection = stated ? "its element type is written as the refinement '" +
                                                        stated->front().name +
                                                        "', which std::array does not state; a built-in array of "
                                                        "that refinement has refined elements (SPEC.md STDMODEL-020)"
-                                                 : "it has " + stated.error();
+                                                 : "it has " + stated.error().message;
                         break;
                     }
                 }
@@ -766,8 +778,11 @@ std::vector<std::int64_t> refinement_arguments(CXCursor declared) {
     return arguments;
 }
 
-std::expected<std::vector<Refinement>, std::string> refinements_of(CXCursor declared, CXType written,
-                                                                   const std::vector<Selection::Refinement>& known) {
+std::expected<std::vector<Refinement>, RefinementFailure> refinements_of(
+    CXCursor declared, CXType written, const std::vector<Selection::Refinement>& known) {
+    const auto fail = [](Category category, std::string message) {
+        return std::unexpected(RefinementFailure{category, std::move(message)});
+    };
     std::vector<Refinement> found;
     if (known.empty())
         return found;
@@ -780,7 +795,7 @@ std::expected<std::vector<Refinement>, std::string> refinements_of(CXCursor decl
             const auto alias = std::ranges::find_if(
                 children, [](CXCursor child) { return clang_getCursorKind(child) == CXCursor_TypeAliasDecl; });
             if (alias == children.end())
-                return std::unexpected("refinement alias template has no resolved alias declaration");
+                return fail(Category::Elaboration, "refinement alias template has no resolved alias declaration");
             declaration = *alias;
         }
         const CXCursorKind kind = clang_getCursorKind(declaration);
@@ -795,27 +810,29 @@ std::expected<std::vector<Refinement>, std::string> refinements_of(CXCursor decl
                                  kind == CXCursor_TemplateTypeParameter;
             if (written.kind == CXType_Unexposed && unnamed &&
                 take(clang_getTypeSpelling(written)) != take(clang_getTypeSpelling(clang_getCanonicalType(written)))) {
-                return std::unexpected("a type written as '" + take(clang_getTypeSpelling(written)) +
-                                       "', which may name a refinement through a spelling this implementation does "
-                                       "not follow; write the refinement or its base type directly");
+                return fail(Category::UnsupportedSemantics,
+                            "a type written as '" + take(clang_getTypeSpelling(written)) +
+                                "', which may name a refinement through a spelling this implementation does not "
+                                "follow; write the refinement or its base type directly");
             }
             return found;
         }
         if (std::ranges::any_of(visited, [&](CXCursor previous) { return clang_equalCursors(previous, declaration); }))
-            return std::unexpected("cyclic refinement alias metadata");
+            return fail(Category::Internal, "cyclic refinement alias metadata"); // Clang accepts no alias cycle
         visited.push_back(declaration);
         // The projector records the generated alias's physical identity. Source
         // spelling and presumed #line locations cannot identify a refinement.
         const auto entry = std::ranges::find(known, physical_offset(declaration), &Selection::Refinement::alias_offset);
         if (entry != known.end()) {
             if (entry->index_count != arguments.size())
-                return std::unexpected("refinement '" + entry->name + "' has unresolved index arguments");
+                return fail(Category::Elaboration, "refinement '" + entry->name + "' has unresolved index arguments");
             found.push_back(Refinement{entry->name, arguments, entry->probe});
         }
         const CXType underlying = clang_getTypedefDeclUnderlyingType(declaration);
         if (underlying.kind == CXType_Invalid) {
             if (kind == CXCursor_TypeAliasTemplateDecl)
-                return std::unexpected("dependent refinement alias substitution is not resolved by the Clang bridge");
+                return fail(Category::Elaboration,
+                            "dependent refinement alias substitution is not resolved by the Clang bridge");
             return found;
         }
         written = underlying;
@@ -823,7 +840,7 @@ std::expected<std::vector<Refinement>, std::string> refinements_of(CXCursor decl
         // resolved application, not the initializer or a previous alias's indices.
         arguments = refinement_arguments(declaration);
     }
-    return std::unexpected("refinement alias chain exceeds the analysis limit");
+    return fail(Category::UnsupportedSemantics, "refinement alias chain exceeds the analysis limit");
 }
 
 bool same_term(const Expr& lhs, const Expr& rhs);
@@ -874,7 +891,7 @@ std::expected<Type, std::string> sequence_element(CXCursor declared, CXType writ
     if (known != nullptr) {
         auto refinements = refinements_of(declared, element, *known);
         if (!refinements) {
-            return std::unexpected("its element type has " + refinements.error());
+            return std::unexpected("its element type has " + refinements.error().message);
         }
         converted.refinements = std::move(*refinements);
     }
@@ -1479,7 +1496,7 @@ std::optional<std::string> collect_receiver_leaves(CXType written, CXCursor fiel
     if (known != nullptr) {
         auto declared = refinements_of(field, written, *known);
         if (!declared) {
-            return "member '" + spelling + "' has " + declared.error();
+            return "member '" + spelling + "' has " + declared.error().message;
         }
         converted.refinements = std::move(*declared);
     }
@@ -4884,8 +4901,8 @@ struct BodyLowering {
         if (refinements != nullptr) {
             auto resolved = refinements_of(declared_by, pointee, *refinements);
             if (!resolved) {
-                rejection =
-                    "the pointee of '" + take(clang_getCursorSpelling(declaration)) + "' has " + resolved.error();
+                rejection = "the pointee of '" + take(clang_getCursorSpelling(declaration)) + "' has " +
+                            resolved.error().message;
                 return std::nullopt;
             }
             type.refinements = std::move(*resolved);
@@ -7429,7 +7446,7 @@ struct BodyLowering {
         if (refinements != nullptr) {
             auto resolved = refinements_of(declaration, written, *refinements);
             if (!resolved)
-                return reject(resolved.error());
+                return reject(resolved.error().message);
             type.refinements = std::move(*resolved);
         }
         if (clang_getCursorKind(initializer) == CXCursor_InitListExpr) {
@@ -7816,7 +7833,7 @@ struct BodyLowering {
         if (refinements != nullptr) {
             auto resolved = refinements_of(declaration, value_type, *refinements);
             if (!resolved)
-                return reject(resolved.error());
+                return reject(resolved.error().message);
             type.refinements = std::move(*resolved);
         }
         CXCursor initializer = clang_Cursor_getVarDeclInitializer(declaration);
@@ -8931,7 +8948,7 @@ std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::Pro
         auto refined =
             refinements_of(formals[0], clang_getPointeeType(clang_getCursorType(formals[0])), signature.refinements);
         if (!refined)
-            return std::unexpected("formal equality operand type has " + refined.error());
+            return std::unexpected("formal equality operand type has " + refined.error().message);
         equality.operand_type.refinements = std::move(*refined);
         // The first operator() argument is the closure object.
         for (unsigned index = 1; index < 3; ++index)
@@ -8974,7 +8991,7 @@ std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::Pro
             auto refined = refinements_of(binder, clang_getCursorType(binder), signature.refinements);
             if (!refined)
                 return std::unexpected("forall binder '" + take(clang_getCursorSpelling(binder)) + "' has " +
-                                       refined.error());
+                                       refined.error().message);
             binder_type.refinements = std::move(*refined);
             quantified.binders.push_back(std::move(binder_type));
         }
@@ -9496,6 +9513,7 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
         CXDiagnostic diagnostic = clang_getDiagnostic(unit, index_of_diagnostic);
         Diagnostic converted;
         converted.severity = convert_severity(clang_getDiagnosticSeverity(diagnostic));
+        converted.category = Category::CppSemantic;
         converted.message = take(clang_getDiagnosticSpelling(diagnostic));
         converted.location = presumed_location(clang_getDiagnosticLocation(diagnostic));
         clang_disposeDiagnostic(diagnostic);
@@ -9529,9 +9547,11 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
     if (verified_templates) {
         const auto indexed = indexed_specializations(index, unit, request.selection);
         if (!indexed.has_value()) {
+            // libclang's indexer failed on a unit Clang accepted: the bridge
+            // could not run, which says nothing about the program.
             result.has_errors = true;
             result.diagnostics.push_back(
-                {Severity::Error,
+                {Severity::Error, Category::Internal,
                  "the instantiations of this unit's verified function templates could not be enumerated, so which "
                  "of them are verified cannot be shown (SPEC.md TEMPLATE-001)",
                  presumed_location(clang_getCursorLocation(clang_getTranslationUnitCursor(unit)))});
@@ -9580,7 +9600,9 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
         }
         reported.push_back(refusal);
         result.has_errors = true;
-        result.diagnostics.push_back({Severity::Error, refusal.first, refusal.second});
+        // Well-formed C++ whose instantiation this implementation does not
+        // model with the predicate (SPEC.md STDMODEL-020).
+        result.diagnostics.push_back({Severity::Error, Category::UnsupportedSemantics, refusal.first, refusal.second});
     }
     // Nothing proof-only text names may be instantiated in the program verified
     // where the program run does not instantiate it (SPEC.md ERASE-019). A unit
@@ -9642,10 +9664,12 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
                        std::ranges::find(request.selection.verified_offsets, declared_offset(candidate)) !=
                            request.selection.verified_offsets.end();
             });
+        // Ordinary C++ that Clang accepted, refused because no trusted
+        // refinement boundary is modeled: not a C++ error.
         if (!verified) {
             result.has_errors = true;
             result.diagnostics.push_back(
-                {Severity::Error,
+                {Severity::Error, Category::UnsupportedSemantics,
                  "ordinary function '" + qualified_name_of(cursor) + "' return cannot establish refinement '" +
                      *refined + "'; verify its definition (explicit trusted refinement boundaries are not implemented)",
                  presumed_location(clang_getCursorLocation(cursor))});
@@ -9654,10 +9678,12 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
     for (const auto declaration : collector.unverified_storage) {
         if (request.selection.refinements.empty())
             break;
+        // Ordinary C++ that Clang accepted, refused because an unverified
+        // construction boundary is not modeled: not a C++ error.
         if (const auto refined = refinement_use(declaration, request.selection)) {
             result.has_errors = true;
             result.diagnostics.push_back(
-                {Severity::Error,
+                {Severity::Error, Category::UnsupportedSemantics,
                  "storage '" + take(clang_getCursorSpelling(declaration)) + "' uses refinement '" + *refined +
                      "' outside a modeled verified body, where ordinary C++ could establish it without proof; a "
                      "verified body checks its own construction and writes, but an unverified construction boundary "
@@ -9776,8 +9802,8 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
                 type.refinements = std::move(*resolved);
             } else {
                 result.has_errors = true;
-                result.diagnostics.push_back(
-                    {Severity::Error, resolved.error(), presumed_location(clang_getCursorLocation(declaration))});
+                result.diagnostics.push_back({Severity::Error, resolved.error().category, resolved.error().message,
+                                              presumed_location(clang_getCursorLocation(declaration))});
             }
         };
         attach_refinements(function.result, cursor, clang_getCursorResultType(cursor));

@@ -550,8 +550,19 @@ enum class Severity : std::uint8_t {
     Fatal,
 };
 
+// What a diagnostic reports, which the driver names as its category. Only
+// Clang's own diagnostics are the user's C++ errors: a refusal the bridge makes
+// of C++ that Clang accepted is not one, and must not be reported as one.
+enum class Category : std::uint8_t {
+    CppSemantic,          // one of Clang's own diagnostics: Clang rejected the C++
+    UnsupportedSemantics, // well-formed, but outside the fragment this implementation models
+    Elaboration,          // a construct the bridge could not give formal meaning
+    Internal,             // the bridge itself failed; never a verification result
+};
+
 struct Diagnostic {
     Severity severity = Severity::Error;
+    Category category = Category::Internal;
     std::string message;
     source::SourceLocation location;
 };

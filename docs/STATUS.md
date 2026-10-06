@@ -2157,6 +2157,17 @@ migrations as quick fixes where their edits land, and canonical formatting as
 `source.fixAll.cppl`, computed only when asked for rather than as the cursor
 moves.
 
+Every diagnostic carries a category, which the CLI prints in brackets and the
+editor shows as the diagnostic's code. Only Clang's own diagnostics are
+`cpp-semantic`. The Clang bridge gives each refusal of its own a category too:
+C++ that Clang accepted and that lies outside the modeled fragment, such as an
+ordinary function returning a refined value, refined storage built outside a
+verified body, a refinement written as a template argument or proof-only text
+that may instantiate a template (`ERASE-019`), is `unsupported-semantics`; a
+refinement whose application it could not resolve is `elaboration`; and a
+failure of libclang's own queries is `internal`
+(`negative/diagnostic_categories.sh`).
+
 `completionProvider` and `hoverProvider` are advertised and serve C++L's own
 syntax: inside a `cases`/`decompose` arm block, completion offers each state
 the subject's provider lists that the statement has no arm for yet — the
