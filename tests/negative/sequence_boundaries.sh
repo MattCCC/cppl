@@ -426,6 +426,23 @@ verified unsigned b_array_param_guarded(std::array<unsigned, 4> a, std::size_t i
 }
 
 CPP
+# A contract states values, and a vector's one value is its length: its
+# elements are storage no contract reads (RFC 0020 §2).
+refused b_contract_reads_element "a contract does not read an element of a vector, a string or a span" <<'CPP'
+verified std::size_t b_contract_reads_element(const std::vector<int>& v, int key)
+    ensures (result <= v.size() && (result < v.size() -> v[result] == key))
+{
+    std::size_t i = 0;
+    while (i < v.size() && v[i] != key)
+        invariant (i <= v.size())
+        decreases (v.size() - i)
+    {
+        ++i;
+    }
+    return i;
+}
+
+CPP
 refused b_array_ref_param "return path 'b_array_ref_param path 1' does not satisfy its contract" <<'CPP'
 verified unsigned b_array_ref_param(const std::array<unsigned, 4>& a)
     ensures (result == a[1])

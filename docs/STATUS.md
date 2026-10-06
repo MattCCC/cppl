@@ -2572,7 +2572,11 @@ and refined element types anywhere but a `vector` local (parameters, results,
 spans and `std::array`) are refused. A `std::array` a reference designates, or
 one a member of the implicit object holds, is its `N` element places, each
 caller storage, read and written at a term within its extent; a clause reads
-its element as the parameter's at the state the clause describes. An element or a dereference read in an `if` or loop condition, or in
+its element as the parameter's at the state the clause describes. A contract
+reads no element of a `vector`, `string` or `span`, so `ensures (v[result] ==
+key)` is refused by name: the model keeps of one only its length, and stating
+its contents would take library summaries of what each operation does to them,
+which are not part of this subset (RFC 0020 §2). An element or a dereference read in an `if` or loop condition, or in
 an arm of a `?:`, `&&` or `||` that is returned, declares one local or is
 assigned, or that stands inside such a statement's value, a call statement or
 a returned value as an operand or a call's argument, is formed where it is

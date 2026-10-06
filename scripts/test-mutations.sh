@@ -95,6 +95,7 @@ invariant-implication-direction	compiler/obligations/src/definedness.cpp	return 
 invariant-formal-form	clang/src/loops.cpp	        if (form != nullptr) {	        if (form == nullptr && form != nullptr) {	^e2e_conditions$
 parenthesized-implication-operand	compiler/frontend/src/formal_projection.cpp	(operand != begin || index != end) && formal_at(stream, span_of(tokens, operand, index), depth + 1))	(operand != begin || index != end) && depth > 4096 && formal_at(stream, span_of(tokens, operand, index), depth + 1))	^(e2e_conditions|negative_conditions)$
 parenthesized-member-access	compiler/frontend/src/formal_projection.cpp	    if (parenthesized_member_access(tokens, begin, end))	    if (begin > end && parenthesized_member_access(tokens, begin, end))	^negative_conditions$
+contract-reads-no-sequence-element	clang/src/sequences.cpp	    if (signature.clause) {	    if (signature.clause && false) {	^negative_sequence_boundaries$
 composition-nested-selection	compiler/automation/src/composition.cpp	selection = selection_on(value, function.paths[leaf].conditions[depth].actual);	selection = depth > 4096 ? selection_on(value, function.paths[leaf].conditions[depth].actual) : std::nullopt;	^e2e_conditions$
 logical-value-and-constant	clang/src/statements.cpp	selected.constant.node = IntLiteral{0};	selected.constant.node = IntLiteral{1};	^(e2e_conditions|negative_conditions)$
 switch-condition-read-once	clang/src/switches.cpp	read.node = PlaceRef{version, anonymous_place("switch condition")};	read = *value;	^(e2e_switch_statements|negative_switch_statements)$

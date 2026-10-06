@@ -208,6 +208,15 @@ Expr element_observation(Expr subject, CXCursor index_cursor, const Signature& s
 std::expected<ElementRegion, std::string> element_region(CXCursor object, const Locals& locals,
                                                          const Signature& signature) {
     const std::vector<CXCursor>& parameters = signature.parameters;
+    // The one value the model keeps of a vector, a string or a span is its
+    // length, and its elements are storage, never part of that value, so a
+    // contract, which states values, has no element to read (RFC 0020 §2).
+    if (signature.clause) {
+        return std::unexpected(std::string(
+            "a contract does not read an element of a vector, a string or a span: the model keeps of one only its "
+            "length, and its elements are storage no contract states (RFC 0020 §2, SPEC.md STDMODEL-010); a "
+            "std::array or a built-in array, whose elements are its value, is read in a contract"));
+    }
     object = strip_parens(object);
     if (clang_getCursorKind(object) != CXCursor_DeclRefExpr) {
         return std::unexpected(
