@@ -6758,8 +6758,7 @@ struct BodyLowering {
         // `a, b;` as a statement, and as a `for` increment, runs `a` and then
         // `b`, each as a statement of its own (C++ [expr.comma]); `a, b, c` is
         // `(a, b), c`. A comma inside another expression is not this.
-        if (kind == CXCursor_BinaryOperator &&
-            clang_getCursorBinaryOperatorKind(statement) == CXBinaryOperator_Comma) {
+        if (kind == CXCursor_BinaryOperator && clang_getCursorBinaryOperatorKind(statement) == CXBinaryOperator_Comma) {
             const std::vector<CXCursor> operands = children_of(statement);
             if (operands.size() != 2) {
                 return reject("the operands of this comma operator could not be resolved");
@@ -7716,8 +7715,7 @@ struct BodyLowering {
         for (const std::size_t changed : invalidated) {
             body = unknown(state, changed, std::move(body), header.statement);
         }
-        return bind(version, anonymous_place("switch condition"), std::move(*value), std::move(body),
-                    header.statement);
+        return bind(version, anonymous_place("switch condition"), std::move(*value), std::move(body), header.statement);
     }
 
     // What follows a switch, reached by a `break` belonging to it or by the
