@@ -17,7 +17,6 @@ compiler/obligations/src/contracts.cpp 3031
 compiler/obligations/src/generate.cpp 3089
 tests/kernel/adversarial_kernel_test.cpp 1160
 tests/kernel/check_test.cpp 1218
-tests/support/kernel/src/kernel_generator.cpp 1773
 tests/unit/arithmetic_test.cpp 1609
 tests/unit/formatter_test.cpp 1530
 tests/unit/projection_test.cpp 1184

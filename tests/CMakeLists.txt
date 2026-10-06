@@ -24,6 +24,10 @@ cppl_check_headers(cppl_testing support/include)
 # automation, only to have candidate evidence to put to the kernel.
 add_library(cppl_kernel_testing STATIC
     support/kernel/src/kernel_generator.cpp
+    support/kernel/src/kernel_generator_arithmetic.cpp
+    support/kernel/src/kernel_generator_eliminations.cpp
+    support/kernel/src/kernel_generator_rules.cpp
+    support/kernel/src/kernel_generator_terms.cpp
     support/kernel/src/kernel_model.cpp
     support/kernel/src/kernel_oracle.cpp)
 target_include_directories(cppl_kernel_testing PUBLIC
