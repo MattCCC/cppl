@@ -9,4 +9,6 @@ verified unsigned probe(unsigned x)
     return x;
 }
 
-int main() { return probe(2u) == 2u ? 0 : 1; }
+int main() {
+    return probe(2u) == 2u ? 0 : 1;
+}

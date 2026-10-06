@@ -8,4 +8,6 @@ verified unsigned long probe()
     return sizeof(unsigned);
 }
 
-int main() { return probe() == 4ul ? 0 : 1; }
+int main() {
+    return probe() == 4ul ? 0 : 1;
+}
