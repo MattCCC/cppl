@@ -99,7 +99,7 @@ so a construct the specification adds is refused until it is classified.
 | CONSTRUCT-014 | integral promotion | verified | -- |
 | CONSTRUCT-015 | usual arithmetic conversion | verified | -- |
 | CONSTRUCT-016 | qualification conversion | verified | -- |
-| CONSTRUCT-017 | temporary materialization | refused | reference 'bound' must bind a tracked local object; this reference binding is no |
+| CONSTRUCT-017 | temporary materialization | verified | -- |
 | CONSTRUCT-018 | unary plus | verified | -- |
 | CONSTRUCT-019 | unary minus | verified | -- |
 | CONSTRUCT-020 | logical not | verified | -- |
@@ -162,7 +162,7 @@ so a construct the specification adds is refused until it is classified.
 | CONSTRUCT-077 | placement construction | refused | local 'storage' of type 'unsigned char[N]' is not initialized by an aggregate in |
 | CONSTRUCT-078 | lambda expression | refused | local 'same' has type '(lambda at  |
 | CONSTRUCT-079 | fold expression | refused | error [elaboration]: the postcondition of verified function 'probe' was not resolved |
-| CONSTRUCT-080 | requires expression | refused | 'RequiresExpr' is not modeled |
+| CONSTRUCT-080 | requires expression | verified | -- |
 | CONSTRUCT-081 | pack expansion | refused | error [elaboration]: the postcondition of verified function 'probe' was not resolved |
 | CONSTRUCT-082 | co_await | refused | error [verification-interface]: verified function 'probe' is declared but not defined in this translation unit |
 | CONSTRUCT-083 | co_yield | refused | error [verification-interface]: verified function 'probe' is declared but not defined in this translation unit |
@@ -182,7 +182,7 @@ so a construct the specification adds is refused until it is classified.
 | CONSTRUCT-097 | continue statement | verified | -- |
 | CONSTRUCT-098 | return statement | verified | -- |
 | CONSTRUCT-099 | goto statement | refused | only if/else, while and for loops, blocks, local declarations, assignments, and  |
-| CONSTRUCT-100 | label statement | refused | only if/else, while and for loops, blocks, local declarations, assignments, and  |
+| CONSTRUCT-100 | label statement | verified | -- |
 | CONSTRUCT-101 | try block | refused | only if/else, while and for loops, blocks, local declarations, assignments, and  |
 | CONSTRUCT-102 | catch handler | refused | only if/else, while and for loops, blocks, local declarations, assignments, and  |
 | CONSTRUCT-103 | throw expression | refused | only if/else, while and for loops, blocks, local declarations, assignments, and  |

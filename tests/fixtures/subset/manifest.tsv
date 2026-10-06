@@ -16,7 +16,7 @@ CONSTRUCT-013	function-to-pointer conversion	refused	x013_function_to_pointer_co
 CONSTRUCT-014	integral promotion	verified	x014_integral_promotion.cpp	error \[kernel-rejection\]: return path 'probe path [0-9]+' does not satisfy its contract
 CONSTRUCT-015	usual arithmetic conversion	verified	x015_usual_arithmetic_conversion.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-016	qualification conversion	verified	x016_qualification_conversion.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
-CONSTRUCT-017	temporary materialization	refused	x017_temporary_materialization.cpp	reference 'bound' must bind a tracked local object; this reference binding is no
+CONSTRUCT-017	temporary materialization	verified	x017_temporary_materialization.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-018	unary plus	verified	x018_unary_plus.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-019	unary minus	verified	x019_unary_minus.cpp	error \[kernel-rejection\]: an operation in verified function 'probe' is not shown to have defined behavior: sig
 CONSTRUCT-020	logical not	verified	x020_logical_not.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
@@ -79,7 +79,7 @@ CONSTRUCT-076	delete expression	refused	x076_delete_expression.cpp	only if/else,
 CONSTRUCT-077	placement construction	refused	x077_placement_construction.cpp	local 'storage' of type 'unsigned char\[[0-9]+\]' is not initialized by an aggregate in
 CONSTRUCT-078	lambda expression	refused	x078_lambda_expression.cpp	local 'same' has type '\(lambda at
 CONSTRUCT-079	fold expression	refused	x079_fold_expression.cpp	error \[elaboration\]: the postcondition of verified function 'probe' was not resolved
-CONSTRUCT-080	requires expression	refused	x080_requires_expression.cpp	'RequiresExpr' is not modeled
+CONSTRUCT-080	requires expression	verified	x080_requires_expression.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
 CONSTRUCT-081	pack expansion	refused	x081_pack_expansion.cpp	error \[elaboration\]: the postcondition of verified function 'probe' was not resolved
 CONSTRUCT-082	co_await	refused	x082_co_await.cpp	error \[verification-interface\]: verified function 'probe' is declared but not defined in this translation unit
 CONSTRUCT-083	co_yield	refused	x083_co_yield.cpp	error \[verification-interface\]: verified function 'probe' is declared but not defined in this translation unit
@@ -99,7 +99,7 @@ CONSTRUCT-096	break statement	verified	x096_break_statement.cpp	error \[kernel-r
 CONSTRUCT-097	continue statement	verified	x097_continue_statement.cpp	error \[kernel-rejection\]: loop measure 'probe loop at line [0-9]+ measure' is not shown to decrease on every iterat
 CONSTRUCT-098	return statement	verified	x098_return_statement.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-099	goto statement	refused	x099_goto_statement.cpp	only if/else, while and for loops, blocks, local declarations, assignments, and
-CONSTRUCT-100	label statement	refused	x100_label_statement.cpp	only if/else, while and for loops, blocks, local declarations, assignments, and
+CONSTRUCT-100	label statement	verified	x100_label_statement.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-101	try block	refused	x101_try_block.cpp	only if/else, while and for loops, blocks, local declarations, assignments, and
 CONSTRUCT-102	catch handler	refused	x102_catch_handler.cpp	only if/else, while and for loops, blocks, local declarations, assignments, and
 CONSTRUCT-103	throw expression	refused	x103_throw_expression.cpp	only if/else, while and for loops, blocks, local declarations, assignments, and

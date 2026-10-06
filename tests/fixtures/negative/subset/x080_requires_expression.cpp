@@ -1,13 +1,13 @@
 // SPEC: CONSTRUCT-080
-// RFC 0022, the V1 verified subset: a verified body that uses this construct,
-// requires expression, is refused.
+// RFC 0022: the refused twin of subset/x080_requires_expression.cpp (requires expression), the same program
+// with one thing changed, so the construct is shown modeled rather than passed over.
 
 verified unsigned probe(unsigned x)
     ensures (result == x)
 {
     constexpr bool addable = requires(unsigned a) { a + 1u; };
     if (addable) {
-        return x;
+        return x + 1u;
     }
     return x;
 }

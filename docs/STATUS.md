@@ -1751,10 +1751,10 @@ same as C++ unsigned arithmetic.
 The constructs a verified body may use are listed, one row for each construct
 of `SPEC.md` Annex X, in `tests/fixtures/subset/manifest.tsv`, and
 `e2e_safety_subset` checks every row on every run (RFC 0022). Of the 151
-constructs, 89 are verified: each has a fixture that is proven with nothing
+constructs, 92 are verified: each has a fixture that is proven with nothing
 unresolved and runs, and a refused twin, the same program with one thing
 changed, that shows the construct is modeled rather than passed over. The other
-62 are refused wherever a verified body uses them, each with the diagnostic its
+59 are refused wherever a verified body uses them, each with the diagnostic its
 row pins, and never written to an object: among them floating point, pointers
 other than parameters read under `readable`, shifts and bitwise operators,
 a comma inside an expression, range-based `for`, `goto`, exceptions, dynamic allocation, lambdas,
@@ -2940,7 +2940,7 @@ and `negative_trusted_dependencies`, and the `unsafe-*` mutation entries.
 
 `IMPLEMENTED` for the explicit subset: RFC 0022 and
 [Verified C++ subset status](#verified-c-subset-status). All 151 constructs of
-Annex X are classified: 89 are verified, each with a refused twin, and 62 are
+Annex X are classified: 92 are verified, each with a refused twin, and 59 are
 refused, each with its diagnostic.
 
 Evidence:

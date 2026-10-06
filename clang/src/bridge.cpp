@@ -3498,15 +3498,15 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
         return build_integer_literal(cursor);
     }
 
-    // `sizeof`, `alignof` and `noexcept` are constants Clang computes for the
-    // target the unit is compiled for, and their operand is never evaluated, so
-    // it owes nothing. One Clang cannot compute, the size of a variable-length
-    // array, is refused.
-    if (kind == CXCursor_UnaryExpr) {
+    // `sizeof`, `alignof`, `noexcept` and a `requires` expression are constants
+    // Clang computes for the target the unit is compiled for, and their operand
+    // is never evaluated, so it owes nothing. One Clang cannot compute, the size
+    // of a variable-length array, is refused.
+    if (kind == CXCursor_UnaryExpr || kind == CXCursor_RequiresExpr) {
         Expr constant = build_integer_literal(cursor);
         if (std::holds_alternative<Unsupported>(constant.node)) {
-            return unsupported_expression(cursor, "this 'sizeof', 'alignof' or 'noexcept' expression is not a "
-                                                  "constant Clang computes");
+            return unsupported_expression(cursor, "this 'sizeof', 'alignof', 'noexcept' or 'requires' expression "
+                                                  "is not a constant Clang computes");
         }
         return constant;
     }
@@ -6857,6 +6857,14 @@ struct BodyLowering {
             const LoopHeader header{statement, parts[1], parts[0], std::nullopt, &next, true};
             return lower_loop(header, locals, depth);
         }
+        // A label names the statement it labels and does nothing itself; a
+        // `goto` to it is refused where the `goto` stands.
+        if (kind == CXCursor_LabelStmt) {
+            if (parts.size() != 1 || clang_isStatement(clang_getCursorKind(parts[0])) == 0) {
+                return reject("the statement this label names could not be resolved");
+            }
+            return lower_statement(parts[0], next, locals, depth);
+        }
         if (kind == CXCursor_CXXForRangeStmt) {
             return reject("range-based for loops are not modeled");
         }
@@ -8462,7 +8470,12 @@ struct BodyLowering {
         std::optional<std::size_t> referent;
         std::optional<Local::Generation> borrows;
         Locals declaring = locals;
-        if (reference && is_sequence_subscript(initializer)) {
+        // A reference bound to a temporary extends the temporary's lifetime to
+        // its own: it names a new object holding the initializer's value, which
+        // nothing else names, so it is that object as a local is (C++
+        // [class.temporary]).
+        const bool binds_temporary = reference && is_prvalue(initializer);
+        if (reference && !binds_temporary && is_sequence_subscript(initializer)) {
             // A reference to a container element is bound to the element place
             // at the current generation, and is usable only while that
             // generation stands (RFC 0020 §4, STDMODEL-015). An element of a
@@ -8487,7 +8500,7 @@ struct BodyLowering {
             borrows = declaring[*referent].formed_at;
             if (!same_modeled_value(type, declaring[*referent].type))
                 return reject("reference binding changes the modeled value type");
-        } else if (reference) {
+        } else if (reference && !binds_temporary) {
             // A reference denotes existing storage (SPEC.md 12.9), so it binds
             // whatever place its initializer names, through the one access
             // resolver: a local, a member, an element, or a member of one.

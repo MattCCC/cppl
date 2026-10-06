@@ -229,10 +229,12 @@ verified unsigned wrong() ensures (result == 2u) {
     return x;
 }
 CPP
-reject reference_to_a_temporary_is_refused <<'CPP'
+# A reference bound to a temporary names a new object of its type, so the
+# temporary owes the refinement where it is bound (C++ [class.temporary]).
+reject reference_to_a_temporary_owes_its_refinement <<'CPP'
 type Positive = int where (self > 0);
 verified int wrong() ensures (result > 0) {
-    const Positive& r = 1 + 1;
+    const Positive& r = 1 - 1;
     return r;
 }
 CPP
@@ -402,7 +404,7 @@ grep -q 'ordinary function.*return cannot establish refinement' "$run/ordinary_r
 grep -q 'ordinary function.*return cannot establish refinement' "$run/ordinary_refined_return_definition.log"
 grep -q 'ordinary function.*return cannot establish refinement' "$run/pure_does_not_prove_refined_return.log"
 grep -q 'ordinary function.*return cannot establish refinement' "$run/ordinary_refined_reference_return.log"
-grep -q 'must bind a tracked local object' "$run/reference_to_a_temporary_is_refused.log"
+grep -q 'not shown to satisfy refinement type' "$run/reference_to_a_temporary_owes_its_refinement.log"
 grep -q 'does not satisfy its contract' "$run/reference_to_parameter_tracks_mutation.log"
 # A write through an alias is a write to the storage: the refinement is owed
 # there, and no fact about an earlier version survives it.
