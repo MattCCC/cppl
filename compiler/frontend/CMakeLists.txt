@@ -9,6 +9,10 @@ add_library(cppl_frontend STATIC
     src/formal_projection.cpp
     src/lexer.cpp
     src/projection.cpp
+    src/projection_declarations.cpp
+    src/projection_paths.cpp
+    src/projection_refinements.cpp
+    src/projection_scopes.cpp
     src/recognizer.cpp
     src/structure.cpp
     src/words.cpp)

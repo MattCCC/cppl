@@ -10,6 +10,5 @@
 #
 # <path> <line count when listed>
 clang/src/bridge.cpp 3644
-compiler/frontend/src/projection.cpp 1958
 compiler/frontend/src/recognizer.cpp 3779
 tests/unit/projection_test.cpp 1184

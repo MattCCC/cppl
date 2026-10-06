@@ -81,7 +81,8 @@ implementation:
   frontend:
     - compiler/frontend/include/cppl/frontend/syntax.hpp
     - compiler/frontend/src/recognizer.cpp
-    - compiler/frontend/src/projection.cpp
+    - compiler/frontend/src/projection_declarations.cpp
+    - compiler/frontend/src/projector.hpp
   clang:
     - clang/include/cppl/clang/ast.hpp
     - clang/src/access.cpp

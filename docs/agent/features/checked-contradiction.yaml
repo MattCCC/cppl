@@ -75,7 +75,7 @@ implementation:
   frontend:
     - compiler/frontend/src/recognizer.cpp
     - compiler/frontend/include/cppl/frontend/syntax.hpp
-    - compiler/frontend/src/projection.cpp
+    - compiler/frontend/src/projection_paths.cpp
     - compiler/frontend/include/cppl/frontend/projection.hpp
   erasure:
     - compiler/erasure/src/erase.cpp

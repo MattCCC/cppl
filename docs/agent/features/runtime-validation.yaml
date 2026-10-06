@@ -86,7 +86,7 @@ implementation:
     - compiler/frontend/include/cppl/frontend/syntax.hpp
     - compiler/frontend/src/recognizer.cpp
     - compiler/frontend/include/cppl/frontend/projection.hpp
-    - compiler/frontend/src/projection.cpp
+    - compiler/frontend/src/projection_refinements.cpp
   bridge:
     - clang/src/bridge.cpp
     - compiler/elaboration/src/elaborate_statements.cpp
