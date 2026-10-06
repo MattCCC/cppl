@@ -102,6 +102,7 @@ implementation:
     - clang/include/cppl/clang/ast.hpp
     - clang/src/bridge.cpp
     - clang/src/conversions.cpp
+    - clang/src/expressions.cpp
     - clang/src/types.cpp
   elaboration:
     - compiler/elaboration/src/elaborate_expressions.cpp

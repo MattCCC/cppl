@@ -5,13 +5,11 @@
 #include "call_objects.hpp"
 #include "conversions.hpp"
 #include "cppl/clang/ast.hpp"
-#include "cppl/clang/bridge.hpp"
 #include "cppl/source/location.hpp"
 #include "cppl/source/representation.hpp"
 #include "cppl/source/storage.hpp"
 #include "default_arguments.hpp"
 #include "places.hpp"
-#include "refinements.hpp"
 #include "sequences.hpp"
 #include "signature.hpp"
 #include "types.hpp"
@@ -24,9 +22,7 @@
 #include <expected>
 #include <limits>
 #include <optional>
-#include <ranges>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
