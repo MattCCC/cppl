@@ -16,6 +16,10 @@ add_library(cppl_lsp STATIC
     src/server.cpp
     src/symbols.cpp
     src/transport.cpp
+    src/transport_dispatch.cpp
+    src/transport_editing.cpp
+    src/transport_navigation.cpp
+    src/transport_presentation.cpp
     src/uri.cpp
     src/workspace_index.cpp
     src/verification.cpp

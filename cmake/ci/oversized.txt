@@ -16,7 +16,6 @@ compiler/frontend/src/projection.cpp 1892
 compiler/frontend/src/recognizer.cpp 3712
 compiler/obligations/src/contracts.cpp 3121
 compiler/obligations/src/generate.cpp 3112
-src/lsp/src/transport.cpp 1930
 tests/kernel/adversarial_kernel_test.cpp 1160
 tests/kernel/check_test.cpp 1218
 tests/support/kernel/src/kernel_generator.cpp 1773
