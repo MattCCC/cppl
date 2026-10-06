@@ -353,6 +353,11 @@ report":
 | `lsp_json` | every JSON-RPC body | only `json::Error` refuses a body; what `dump` writes parses back to itself |
 | `lsp_uri` | the `file://` URI of each document | a path holds no NUL; a path's URI converts back to the path |
 | `frontend` | any source text: lex, recognize, project, erase | tokens tile the input; projection is deterministic and only blanks characters; erasure only deletes and keeps lines |
+| `interface` | every verification interface a unit imports, as written and with its checksum recomputed | a refusal says why; only canonical text is accepted, so what was read is what the writer produces for it, and it reads back the same |
+| `kernel_proof` | a derivation the bytes choose rule by rule, sometimes with a deliberate defect | the verdict is deterministic; an acceptance carries the goal; no accepted goal is false in any interpretation of the independent model |
+| `kernel_terms` | a term the bytes choose | normalization keeps a term's type and value and is idempotent; substitution and shifting mean what the independent model evaluates them to; a budget refusal is not a finding |
+| `kernel_arithmetic` | machine-integer facts and a goal, with evidence from the untrusted refutation search or automation, sometimes corrupted | those of `kernel_proof`: the kernel accepts no certificate for a false goal |
+| `kernel_certificate` | an integer system and a certificate decoded directly | the verdict is deterministic; a refusal says why; an accepted certificate leaves no point of a searched box satisfying the system |
 
 Each target runs two ways:
 
@@ -364,7 +369,10 @@ Each target runs two ways:
   `fuzz_<name>_search` under ASan and UBSan: `CPPL_FUZZ_RUNS` inputs (200000)
   from seed `CPPL_FUZZ_SEED` (1), 10 s per input, 2 GiB of memory. A fixed
   seed and count make a failure repeat when the run does; a change to the code
-  changes the path the search takes.
+  changes the path the search takes. The work is fixed, not the time: a kernel
+  search's inputs grow costlier as its corpus grows: `kernel_proof` took 797 s
+  and `kernel_terms` 513 s on a 32-thread x86_64 workstation. A search may
+  take `CPPL_FUZZ_TIMEOUT` seconds (3600), and the preset runs four at a time.
 
 When a search fails, libFuzzer writes the input under
 `build/ci/fuzz/tests/fuzz/<name>/artifacts/`. Run it with

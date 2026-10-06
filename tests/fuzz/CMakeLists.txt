@@ -17,6 +17,10 @@
 
 set(CPPL_FUZZ_RUNS 200000 CACHE STRING "Inputs each fuzz_<name>_search test tries")
 set(CPPL_FUZZ_SEED 1 CACHE STRING "libFuzzer seed of each fuzz_<name>_search test")
+# A search does a fixed amount of work, and a kernel search's inputs grow costlier
+# as its corpus grows, so it is given the time that work takes rather than the
+# time any other test may. -timeout=10 still fails it on any single slow input.
+set(CPPL_FUZZ_TIMEOUT 3600 CACHE STRING "Seconds each fuzz_<name>_search test may take")
 
 add_custom_target(fuzzers)
 
@@ -89,7 +93,7 @@ function(cppl_add_fuzz_target name)
         LABELS "fuzz"
         ENVIRONMENT
             "ASAN_OPTIONS=allocator_release_to_os_interval_ms=1000:quarantine_size_mb=64:malloc_context_size=4"
-        TIMEOUT ${CPPL_TEST_TIMEOUT})
+        TIMEOUT ${CPPL_FUZZ_TIMEOUT})
 endfunction()
 
 cppl_add_fuzz_target(lsp_json LIBRARIES cppl_lsp MAX_LEN 65536)

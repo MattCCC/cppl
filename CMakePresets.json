@@ -437,6 +437,10 @@
         "include": {
           "label": "^fuzz$"
         }
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "jobs": 4
       }
     }
   ],
