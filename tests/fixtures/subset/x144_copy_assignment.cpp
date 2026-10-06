@@ -1,6 +1,6 @@
 // SPEC: CONSTRUCT-144
-// RFC 0022: the refused twin of subset/x144_copy_assignment.cpp (copy assignment), the same program
-// with one thing changed, so the construct is shown modeled rather than passed over.
+// RFC 0022, the V1 verified subset: a verified body may use this construct, copy assignment,
+// and it is modeled. Its refused twin is negative/subset/x144_copy_assignment.cpp.
 
 struct Pair {
     unsigned first;
@@ -12,7 +12,7 @@ verified unsigned probe(Pair pair)
 {
     Pair copy{0u, 0u};
     copy = pair;
-    return copy.second;
+    return copy.first;
 }
 
 int main() {

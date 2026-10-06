@@ -1,6 +1,6 @@
 // SPEC: CONSTRUCT-145
-// RFC 0022: the refused twin of subset/x145_move_assignment.cpp (move assignment), the same program
-// with one thing changed, so the construct is shown modeled rather than passed over.
+// RFC 0022, the V1 verified subset: a verified body may use this construct, move assignment,
+// and it is modeled. Its refused twin is negative/subset/x145_move_assignment.cpp.
 
 #include <utility>
 
@@ -14,7 +14,7 @@ verified unsigned probe(Pair pair)
 {
     Pair copy{0u, 0u};
     copy = std::move(pair);
-    return copy.second;
+    return copy.first;
 }
 
 int main() {

@@ -29,8 +29,12 @@ namespace cppl::obligations {
 // FORALL-001). Version 5 models a call to a function whose unsafe code may
 // write what it is handed as writing every reference, pointer and view it
 // hands over, so a contract proven through one under version 4 may rest on a
-// `const` argument kept that was not (TRUST.md TCB-UNSAFE-004).
-inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-5";
+// `const` argument kept that was not (TRUST.md TCB-UNSAFE-004). Version 6
+// passes, returns and copies whole struct values, supposing of a value assembled
+// from its members only that its members hold those values, so a contract it
+// records may rest on that correspondence, which no earlier version stated
+// (TRUST.md TCB-AGGREGATE-001).
+inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-6";
 
 // A contract another translation unit proved, offered to this one by the
 // verification interface that recorded it (SPEC.md TUBOUND-003).

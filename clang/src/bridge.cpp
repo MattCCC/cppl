@@ -2097,10 +2097,26 @@ std::optional<std::string> receiver_gap(const ResolvedAccess& access, const Sign
 // A clause states no body: in it, a leaf is the parameter it stands for, at the
 // state the clause describes -- entry for a precondition, the normal-return
 // post-state for a postcondition (SPEC.md CONTRACT-009).
+Expr assemble_object(const Locals& locals, const Signature& signature, CXCursor declaration,
+                     const std::vector<PlaceStep>& path, const Type& type, const std::string& spelling, CXCursor at,
+                     unsigned depth);
+bool structural(const Type& type);
+bool tracked_inside(const Locals& locals, CXCursor declaration, const std::vector<PlaceStep>& prefix);
+std::string spelled_access(CXCursor declaration, const std::vector<PlaceStep>& path);
+
 Expr read_receiver(const ResolvedAccess& access, CXCursor cursor, const Signature& signature, const Locals& locals) {
     if (!signature.clause) {
         if (const auto entry = tracked_place(cursor, locals, signature)) {
             return read_place(locals, *entry, cursor);
+        }
+        // A member of the implicit object that is itself a record or an array is
+        // read whole as its leaves assemble it (TRUST.md TCB-AGGREGATE-001).
+        if (const Type whole = convert_type(clang_getCursorType(cursor));
+            structural(whole) && access.symbolic_indices.empty() && signature.receiver.has_value() &&
+            clang_equalCursors(access.declaration, signature.receiver->record) != 0 &&
+            tracked_inside(locals, access.declaration, access.path)) {
+            return assemble_object(locals, signature, access.declaration, access.path, whole,
+                                   spelled_access(access.declaration, access.path), cursor, 0);
         }
         return unsupported_expression(cursor, receiver_gap(access, signature)
                                                   .value_or("this member of the implicit object is not tracked "
@@ -3124,6 +3140,349 @@ Expr lower_default_argument(CXCursor call, CXCursor callee, unsigned index, CXCu
 // which decides which callees hold such code.
 bool writes_unsafely(UnsafeEffects* effects, CXCursor callee);
 
+// Whether a value of `type` is one a body tracks as one place per scalar leaf: a
+// record or an array, built in or `std::array`, whose members are all modeled
+// (SPEC.md 12.10). Only such a value is assembled from its members, and only
+// such a value's copy is read as the value it copies (TRUST.md
+// TCB-AGGREGATE-001).
+bool structural(const Type& type) {
+    using K = source::RepresentationKind;
+    return type.kind == TypeKind::Value &&
+           (type.representation.kind == K::Record || type.representation.kind == K::Array ||
+            type.representation.kind == K::StdArray) &&
+           type.representation.rejection.empty() && !type.representation.components.empty() &&
+           type.projections.size() == type.representation.components.size();
+}
+
+// Whether this body tracks a place strictly inside the object `declaration`
+// designates at `prefix`: the object is then storage of one place per scalar
+// leaf rather than one place of its own.
+bool tracked_inside(const Locals& locals, CXCursor declaration, const std::vector<PlaceStep>& prefix) {
+    return std::ranges::any_of(locals, [&](const Local& entry) {
+        return !entry.is_deref() && !entry.referent.has_value() && !entry.binder.has_value() &&
+               clang_equalCursors(entry.declaration, declaration) != 0 && entry.path.size() > prefix.size() &&
+               std::equal(prefix.begin(), prefix.end(), entry.path.begin());
+    });
+}
+
+// The path of every scalar leaf of a value of `type` below `prefix`, in
+// component order: the places a body tracks such an object as (SPEC.md 12.10).
+// False when some member is one this implementation does not track.
+bool structural_leaf_paths(const Type& type, const std::vector<PlaceStep>& prefix,
+                           std::vector<std::vector<PlaceStep>>& paths) {
+    if (!structural(type) || prefix.size() >= kMaxPlaceDepth) {
+        return false;
+    }
+    const bool array = type.representation.kind != source::RepresentationKind::Record;
+    for (std::size_t member = 0; member < type.projections.size(); ++member) {
+        if (paths.size() >= kMaxTrackedLeaves) {
+            return false;
+        }
+        std::vector<PlaceStep> reached = prefix;
+        reached.push_back(
+            PlaceStep{array ? PlaceStep::Kind::Element : PlaceStep::Kind::Field, static_cast<std::uint32_t>(member)});
+        const Type& member_type = type.projections[member];
+        if (member_type.kind == TypeKind::Value) {
+            if (!structural_leaf_paths(member_type, reached, paths)) {
+                return false;
+            }
+            continue;
+        }
+        if (member_type.kind == TypeKind::Unsupported) {
+            return false;
+        }
+        paths.push_back(std::move(reached));
+    }
+    return true;
+}
+
+// The member of the value `whole` at `path`, step by step: an assembled value's
+// operand where `whole` is one, its projection otherwise. Nothing when a step
+// selects no component of the value's type.
+std::optional<Expr> member_at(Expr whole, const std::vector<PlaceStep>& path) {
+    for (const PlaceStep& step : path) {
+        if (step.kind == PlaceStep::Kind::SymbolicElement) {
+            return std::nullopt;
+        }
+        if (auto* assembled = std::get_if<Aggregate>(&whole.node)) {
+            if (step.index >= assembled->operands.size()) {
+                return std::nullopt;
+            }
+            Expr operand = std::move(assembled->operands[step.index]);
+            whole = std::move(operand);
+            continue;
+        }
+        if (step.index >= whole.type.projections.size() || !whole.type.representation.rejection.empty()) {
+            return std::nullopt;
+        }
+        Expr component;
+        component.type = whole.type.projections[step.index];
+        component.location = whole.location;
+        component.node = Projection{step.index, {std::move(whole)}};
+        whole = std::move(component);
+    }
+    return whole;
+}
+
+// The value the object `declaration` designates at `path` holds where `at`
+// stands, assembled from the places this body tracks it as: one operand per
+// component, in component order, each a leaf's current version or, for a member
+// that is itself a record or an array, its own assembly (TRUST.md
+// TCB-AGGREGATE-001). A leaf of a by-value parameter this body does not track is
+// one it never writes, so it holds the parameter's member as passed. Any other
+// leaf must be tracked here, and one that is not is named rather than left out:
+// a member left out would be one nothing states while the value still claims to
+// be the object's.
+Expr assemble_object(const Locals& locals, const Signature& signature, CXCursor declaration,
+                     const std::vector<PlaceStep>& path, const Type& type, const std::string& spelling, CXCursor at,
+                     unsigned depth = 0) {
+    if (!structural(type) || path.size() >= kMaxPlaceDepth || depth > kMaxPlaceDepth) {
+        return unsupported_expression(at, "'" + spelling + "' has type '" + type.spelling +
+                                              "', which this body does not track member by member");
+    }
+    const std::optional<std::uint32_t> parameter =
+        passing_of(clang_getCursorType(declaration)) == source::ParameterPassing::Value
+            ? signature.position_of(declaration)
+            : std::nullopt;
+    const bool array = type.representation.kind != source::RepresentationKind::Record;
+    Aggregate assembled;
+    for (std::size_t member = 0; member < type.representation.components.size(); ++member) {
+        std::vector<PlaceStep> reached = path;
+        reached.push_back(
+            PlaceStep{array ? PlaceStep::Kind::Element : PlaceStep::Kind::Field, static_cast<std::uint32_t>(member)});
+        const std::string& name = type.representation.components[member].name;
+        const std::string written = array ? spelling + "[" + name + "]" : spelling + "." + name;
+        const Type& member_type = type.projections[member];
+        if (member_type.kind == TypeKind::Value) {
+            Expr nested = assemble_object(locals, signature, declaration, reached, member_type, written, at, depth + 1);
+            if (std::holds_alternative<Unsupported>(nested.node)) {
+                return nested;
+            }
+            assembled.operands.push_back(std::move(nested));
+            continue;
+        }
+        const std::optional<std::size_t> binding = find_binding(locals, declaration, reached);
+        if (!binding.has_value() && parameter.has_value()) {
+            Expr passed;
+            passed.type = convert_type(clang_getCursorType(declaration));
+            passed.location = presumed_location(clang_getCursorLocation(at));
+            passed.node = ParameterRef{*parameter, take(clang_getCursorSpelling(declaration))};
+            std::optional<Expr> projected = member_at(std::move(passed), reached);
+            if (!projected.has_value() || !same_modeled_value(member_type, projected->type)) {
+                return unsupported_expression(at, "'" + written + "' is not a member of parameter '" +
+                                                      take(clang_getCursorSpelling(declaration)) +
+                                                      "' this implementation can state");
+            }
+            assembled.operands.push_back(std::move(*projected));
+            continue;
+        }
+        if (!binding.has_value() || locals[*binding].referent.has_value() || locals[*binding].binder.has_value() ||
+            !same_modeled_value(member_type, locals[*binding].type)) {
+            return unsupported_expression(at, "'" + written + "' is not tracked where '" + spelling +
+                                                  "' is read, so '" + spelling +
+                                                  "' is not one value this body can state");
+        }
+        if (std::optional<std::string> stale = stale_borrow(locals, *binding)) {
+            return unsupported_expression(at, std::move(*stale));
+        }
+        assembled.operands.push_back(read_place(locals, *binding, at));
+    }
+    Expr expr;
+    expr.type = type;
+    expr.location = presumed_location(clang_getCursorLocation(at));
+    expr.node = std::move(assembled);
+    return expr;
+}
+
+// The two ways one object takes another's value: by being constructed from it,
+// or by being assigned it.
+enum class Copying : std::uint8_t { Construction, Assignment };
+
+// Why copying or moving a value of `type` -- constructing from it or assigning
+// it -- may run code of the program, if it may: a copy or move constructor (or
+// assignment operator) of its class, or of the class of a member or an element
+// of it at any depth, that the program provides. A copy that runs only what C++
+// defines copies each member as it is (C++ [class.copy.ctor],
+// [class.copy.assign]), which is the value copied; one that runs anything else
+// does whatever that code does. A constructor or assignment template a copy
+// could select instead is a member template the proof-only text instantiates,
+// which refuses the unit before any body is lowered (SPEC.md ERASE-019, TRUST.md
+// TCB-AGGREGATE-002).
+std::optional<std::string> user_provided_copy(CXType type, Copying copying = Copying::Construction,
+                                              unsigned depth = 0) {
+    const CXType canonical = clang_getCanonicalType(type);
+    if (depth > kMaxPlaceDepth) {
+        return "'" + take(clang_getTypeSpelling(canonical)) + "' nests deeper than this implementation follows";
+    }
+    if (canonical.kind == CXType_ConstantArray) {
+        return user_provided_copy(clang_getArrayElementType(canonical), copying, depth + 1);
+    }
+    if (canonical.kind != CXType_Record) {
+        return std::nullopt;
+    }
+    const std::string name = take(clang_getTypeSpelling(canonical));
+    const CXCursor definition = clang_getCursorDefinition(clang_getTypeDeclaration(canonical));
+    if (clang_Cursor_isNull(definition) != 0) {
+        return "'" + name + "' is incomplete";
+    }
+    if (record_has_base(canonical)) {
+        return "'" + name + "' has a base class, whose copy is not modeled";
+    }
+    const bool assigning = copying == Copying::Assignment;
+    const CXCursorKind special = assigning ? CXCursor_CXXMethod : CXCursor_Constructor;
+    for (const CXCursor member : children_of(definition)) {
+        if (clang_getCursorKind(member) != special || clang_CXXMethod_isDeleted(member) != 0) {
+            continue;
+        }
+        const bool copy = assigning ? clang_CXXMethod_isCopyAssignmentOperator(member) != 0
+                                    : clang_CXXConstructor_isCopyConstructor(member) != 0;
+        const bool move = assigning ? clang_CXXMethod_isMoveAssignmentOperator(member) != 0
+                                    : clang_CXXConstructor_isMoveConstructor(member) != 0;
+        if ((copy || move) && clang_CXXMethod_isDefaulted(member) == 0) {
+            return "the " + std::string(copy ? "copy" : "move") +
+                   (assigning ? " assignment operator" : " constructor") + " of '" + name + "' is user-provided, so " +
+                   (copy ? "a copy" : "a move") +
+                   " of it runs code of the program whose effect on the value is not modeled";
+        }
+    }
+    for (const CXCursor field : record_fields(canonical)) {
+        if (std::optional<std::string> inner = user_provided_copy(clang_getCursorType(field), copying, depth + 1)) {
+            return inner;
+        }
+    }
+    return std::nullopt;
+}
+
+// How the storage `declaration` designates at `path` is written, for a
+// diagnostic: its name, then each member or element the path selects.
+std::string spelled_access(CXCursor declaration, const std::vector<PlaceStep>& path) {
+    // Storage rooted in the implicit object is spelled through `this`.
+    const CXCursorKind kind = clang_getCursorKind(declaration);
+    const bool receiver = kind == CXCursor_StructDecl || kind == CXCursor_ClassDecl;
+    std::string text = receiver ? (path.empty() ? "*this" : "this") : take(clang_getCursorSpelling(declaration));
+    Type current = convert_type(clang_getCursorType(declaration), 0, ReferenceModel::Referent);
+    for (const PlaceStep& step : path) {
+        const auto& components = current.representation.components;
+        if (step.kind == PlaceStep::Kind::SymbolicElement || step.index >= components.size() ||
+            step.index >= current.projections.size()) {
+            return text;
+        }
+        const bool through_this = receiver && text == "this";
+        text += current.representation.kind == source::RepresentationKind::Record
+                    ? (through_this ? "->" : ".") + components[step.index].name
+                    : "[" + components[step.index].name + "]";
+        Type next = current.projections[step.index];
+        current = std::move(next);
+    }
+    return text;
+}
+
+// The value of a member or an element that is itself a record or an array, of
+// an object this body tracks member by member, assembled from its own leaves;
+// nothing when the access names no such object (TRUST.md TCB-AGGREGATE-001).
+std::optional<Expr> assembled_member(CXCursor cursor, const Signature& signature, const Locals& locals) {
+    const Type type = convert_type(clang_getCursorType(cursor));
+    if (!structural(type)) {
+        return std::nullopt;
+    }
+    const std::optional<ResolvedAccess> access = resolve_access(cursor);
+    if (!access || access->dereferenced || access->receiver || !access->symbolic_indices.empty() ||
+        !tracked_inside(locals, access->declaration, access->path)) {
+        return std::nullopt;
+    }
+    return assemble_object(locals, signature, access->declaration, access->path, type,
+                           spelled_access(access->declaration, access->path), cursor);
+}
+
+// The braced list an initializer is, written alone or as the operand of a
+// functional cast to the very type it initializes: `T{a, b}` initializes a `T`
+// exactly as `{a, b}` does. A null cursor when it is neither.
+CXCursor braced_list(CXCursor initializer) {
+    if (clang_Cursor_isNull(initializer) != 0) {
+        return clang_getNullCursor();
+    }
+    const CXCursor stripped = strip_parens(initializer);
+    if (clang_getCursorKind(stripped) == CXCursor_InitListExpr) {
+        return stripped;
+    }
+    if (clang_getCursorKind(stripped) == CXCursor_CXXFunctionalCastExpr) {
+        for (const CXCursor child : children_of(stripped)) {
+            if (clang_getCursorKind(child) == CXCursor_InitListExpr &&
+                same_modeled_value(convert_type(clang_getCursorType(stripped)),
+                                   convert_type(clang_getCursorType(child)))) {
+                return child;
+            }
+        }
+    }
+    return clang_getNullCursor();
+}
+
+// Whether `cursor` constructs an object by calling one of its class's
+// constructors: a copy, a move, a temporary formed with parentheses, a
+// conversion. Clang reports every such construction as a call of the
+// constructor.
+bool constructs(CXCursor cursor) {
+    return clang_getCursorKind(cursor) == CXCursor_CallExpr &&
+           clang_getCursorKind(clang_getCursorReferenced(cursor)) == CXCursor_Constructor;
+}
+
+// The operand of `construction`, a constructor call, when the constructor copies
+// or moves a value without running code of the program: a copy or move
+// constructor C++ defines, of a type tracked member by member whose members'
+// are all defined by C++ as well. Such a copy is the value it copies, member for
+// member, so it is read as that value (C++ [class.copy.ctor], TRUST.md
+// TCB-AGGREGATE-001). Otherwise why it is not modeled.
+std::expected<CXCursor, std::string> copied_operand(CXCursor construction) {
+    const CXCursor constructor = clang_getCursorReferenced(construction);
+    const CXType constructed = clang_getCursorType(construction);
+    const std::string name = take(clang_getTypeSpelling(clang_getCanonicalType(constructed)));
+    const bool copy = clang_CXXConstructor_isCopyConstructor(constructor) != 0;
+    const bool move = clang_CXXConstructor_isMoveConstructor(constructor) != 0;
+    if ((!copy && !move) || clang_Cursor_getNumArguments(construction) != 1) {
+        return std::unexpected("constructing '" + name +
+                               "' runs a constructor that is not modeled: a value of a class is formed in a verified "
+                               "body only by an aggregate initializer, a copy or a move (SPEC.md CLASS-015)");
+    }
+    const std::string what = copy ? "copying" : "moving";
+    const Type type = convert_type(constructed);
+    if (!structural(type)) {
+        return std::unexpected(what + " '" + name +
+                               "' is not modeled: only a record or an array whose members are all modeled is copied "
+                               "or moved in a verified body");
+    }
+    // The constructor selected is one of the class's own copy or move
+    // constructors, which this checks with every member's.
+    if (std::optional<std::string> user = user_provided_copy(constructed)) {
+        return std::unexpected(*user);
+    }
+    const CXCursor operand = designated_object(clang_Cursor_getArgument(construction, 0));
+    const Type copied = convert_type(clang_getCursorType(operand));
+    if (!same_modeled_value(type, copied)) {
+        return std::unexpected(what + " '" + name + "' from a value of type '" + copied.spelling + "' is not modeled");
+    }
+    return operand;
+}
+
+// The value a copy or move expression copies, through every copy or move C++
+// defines memberwise that wraps it; `cursor` itself when it is no such copy.
+// Nothing but a constructor call is ever stepped through, so a conversion Clang
+// recorded is never discarded here.
+CXCursor copied_value(CXCursor cursor) {
+    CXCursor current = cursor;
+    for (unsigned depth = 0; depth < kMaxExpressionDepth; ++depth) {
+        const CXCursor stripped = strip_parens(current);
+        if (!constructs(stripped)) {
+            return current;
+        }
+        const std::expected<CXCursor, std::string> operand = copied_operand(stripped);
+        if (!operand) {
+            return current;
+        }
+        current = *operand;
+    }
+    return current;
+}
+
 Expr build_expression(CXCursor cursor, const Signature& signature, const Locals& locals, unsigned depth,
                       bool sequenced_call) {
     if (depth > kMaxExpressionDepth) {
@@ -3179,6 +3538,15 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
     // why no capability is re-checked at the read (RFC 0014 §17 step 6).
     if (kind == CXCursor_UnaryOperator && clang_getCursorUnaryOperatorKind(cursor) == CXUnaryOperator_Deref) {
         if (const auto access = resolve_access(cursor); access && access->receiver) {
+            // A body tracks every leaf of its implicit object, so `*this` is read
+            // whole as they assemble it (TRUST.md TCB-AGGREGATE-001). A clause
+            // reads each leaf as the parameter it is, and has no such value.
+            if (const Type whole = convert_type(clang_getCursorType(cursor));
+                !signature.clause && structural(whole) && signature.receiver.has_value() &&
+                clang_equalCursors(access->declaration, signature.receiver->record) != 0 &&
+                tracked_inside(locals, access->declaration, access->path)) {
+                return assemble_object(locals, signature, access->declaration, access->path, whole, "*this", cursor);
+            }
             return unsupported_expression(cursor, "the implicit object is not one modeled value; a member function "
                                                   "reads and writes it member by member (SPEC.md CLASS-008)");
         }
@@ -3218,6 +3586,9 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
             if (const auto member = tracked_place(cursor, locals, signature)) {
                 return read_place(locals, *member, cursor);
             }
+            if (std::optional<Expr> whole = assembled_member(cursor, signature, locals)) {
+                return std::move(*whole);
+            }
             Expr subject = build_expression(children[0], signature, locals, depth + 1);
             const auto& components = subject.type.representation.components;
             const auto name = take(clang_getCursorSpelling(field));
@@ -3248,6 +3619,9 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
             // alone (SPEC.md 12.10).
             if (const auto element = tracked_place(cursor, locals, signature)) {
                 return read_place(locals, *element, cursor);
+            }
+            if (std::optional<Expr> whole = assembled_member(cursor, signature, locals)) {
+                return std::move(*whole);
             }
             Expr subject = build_expression(strip(children[0]), signature, locals, depth + 1);
             if (subject.type.representation.kind == source::RepresentationKind::Array) {
@@ -3454,6 +3828,15 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
             }
             return read_place(locals, *local, cursor);
         }
+        // An object this body tracks as one place per scalar leaf -- an aggregate
+        // local, or a by-value aggregate parameter it writes -- is read whole as
+        // the value its leaves hold here, not as the one it was declared or
+        // passed with (TRUST.md TCB-AGGREGATE-001).
+        if (const Type whole = convert_type(clang_getCursorType(cursor));
+            structural(whole) && tracked_inside(locals, referenced, {})) {
+            return assemble_object(locals, signature, referenced, {}, whole, take(clang_getCursorSpelling(referenced)),
+                                   cursor);
+        }
         if (const std::optional<std::uint32_t> position = signature.position_of(referenced)) {
             Expr expr;
             expr.type = convert_type(clang_getCursorType(cursor));
@@ -3589,6 +3972,16 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
                                               "function it runs is a value, not a declaration (SPEC.md CLASS-015)");
             }
             return unsupported_expression(cursor, "call does not resolve to an ordinary function");
+        }
+        // A copy or a move C++ defines memberwise is the value it copies. Any
+        // other construction is refused by what it would run (TRUST.md
+        // TCB-AGGREGATE-001).
+        if (clang_getCursorKind(referenced) == CXCursor_Constructor) {
+            const std::expected<CXCursor, std::string> operand = copied_operand(cursor);
+            if (!operand) {
+                return unsupported_expression(cursor, operand.error());
+            }
+            return build_expression(*operand, signature, locals, depth + 1, sequenced_call);
         }
         const bool member = clang_getCursorKind(referenced) == CXCursor_CXXMethod;
         if (clang_getCursorKind(referenced) != CXCursor_FunctionDecl && !member) {
@@ -4117,6 +4510,17 @@ void mark_write(CXCursor cursor, const WriteScan& scan) {
         // A member function may write its object through `this`, and a call
         // that writes anything may write the object through an alias
         // (SPEC.md CLASS-011).
+        // `a = b` written between two objects of one class writes `a` whole,
+        // whichever assignment operator Clang selected (TRUST.md
+        // TCB-AGGREGATE-001).
+        if (clang_getCursorKind(callee) == CXCursor_CXXMethod && clang_Cursor_getNumArguments(cursor) == 2 &&
+            (clang_CXXMethod_isCopyAssignmentOperator(callee) != 0 ||
+             clang_CXXMethod_isMoveAssignmentOperator(callee) != 0)) {
+            if (const auto access = resolve_access(designated_object(clang_Cursor_getArgument(cursor, 0)));
+                access && !access->dereferenced) {
+                mark_access(*access, scan);
+            }
+        }
         if (clang_getCursorKind(callee) == CXCursor_CXXMethod && clang_CXXMethod_isStatic(callee) == 0) {
             const auto receiver = receiver_of(callee, nullptr);
             const auto object = call_object(cursor, callee);
@@ -5140,6 +5544,15 @@ struct BodyLowering {
     // not survive back to where the binding is emitted.
     std::vector<Local> formed_derefs;
 
+    // The value each leaf of a struct a call may have written takes afterwards,
+    // by the leaf's post-call version: its member of the struct's post-state
+    // value, which the callee's contract describes (TRUST.md TCB-AGGREGATE-001).
+    // Such a leaf is reported changed the way any other place a call may have
+    // written is, and `unknown` binds it to this value instead of leaving it
+    // unknown. Versions are unique within a body, so a version names exactly
+    // one such leaf.
+    std::unordered_map<std::uint32_t, Expr> rebound_leaves;
+
     // Whether the value bound for a newly formed place is known to inhabit the
     // place's declared type, so the walk may state that type's refinement of it
     // (SPEC.md REFINE-060).
@@ -5965,6 +6378,14 @@ struct BodyLowering {
     // Havoc uses the same version namespace as exact writes. No premise is
     // inherited for the new value; old facts still name only old versions.
     Expr unknown(const Locals& state, std::size_t entry, Expr body, CXCursor at, bool confined = false) {
+        // A leaf of a struct a call handed by reference and may have written
+        // holds its member of the struct's post-state value, so it is bound to
+        // that value rather than left unknown. Its declared type is charged where
+        // the binding stands, as any write's is (TRUST.md TCB-AGGREGATE-001).
+        if (const auto rebound = rebound_leaves.find(state[entry].version); rebound != rebound_leaves.end()) {
+            return bind(state[entry].version, place_of(state, entry), rebound->second, std::move(body), at,
+                        state[entry].type);
+        }
         Expr result;
         result.type = body.type;
         result.location = presumed_location(clang_getCursorLocation(at));
@@ -6158,6 +6579,63 @@ struct BodyLowering {
         return std::nullopt;
     }
 
+    // A struct argument this body tracks as one place per scalar leaf: the
+    // object the argument designates, which one reference parameter binds, and
+    // the places it is tracked as (TRUST.md TCB-AGGREGATE-001).
+    struct ArgumentGroup {
+        std::uint32_t argument = 0; // the callee's position, past its implicit object's leaves
+        CXCursor declaration = clang_getNullCursor();
+        std::vector<PlaceStep> prefix;   // where the object lies within its declaration's storage
+        std::vector<std::size_t> leaves; // its leaf places, each reached by constant steps
+        std::vector<std::size_t> others; // element places inside it formed at a term
+        Type type;                       // the struct's, as the parameter is declared at
+        bool writable = false;           // bound by a reference the callee may write through
+    };
+
+    // The group of places a struct expression designates, when this body tracks
+    // that object member by member and it is bound as a `bound` as it is: every
+    // place tracked inside it. Nothing when it designates no such object -- a
+    // temporary, an object tracked as one place, storage this body does not
+    // track -- which the reference positions then decide as before.
+    [[nodiscard]] std::optional<ArgumentGroup> argument_group(CXCursor argument, CXType bound,
+                                                              const Locals& state) const {
+        const CXCursor designated = designated_object(argument);
+        const Type type = convert_type(clang_getCursorType(designated));
+        if (!structural(type) || !same_modeled_value(type, convert_type(bound))) {
+            return std::nullopt;
+        }
+        // The implicit object is tracked one place per leaf, so it, or a member
+        // of it, is a group of places as a local is.
+        const std::optional<ResolvedAccess> access = resolve_access(designated);
+        if (!access || access->dereferenced || !access->symbolic_indices.empty() ||
+            (access->receiver && (!signature.receiver.has_value() ||
+                                  clang_equalCursors(access->declaration, signature.receiver->record) == 0))) {
+            return std::nullopt;
+        }
+        ArgumentGroup group;
+        group.declaration = access->declaration;
+        group.prefix = access->path;
+        group.type = type;
+        for (std::size_t index = 0; index < state.size(); ++index) {
+            const Local& entry = state[index];
+            if (entry.is_deref() || entry.referent.has_value() || entry.binder.has_value() ||
+                clang_equalCursors(entry.declaration, access->declaration) == 0 ||
+                entry.path.size() < access->path.size() ||
+                !std::equal(access->path.begin(), access->path.end(), entry.path.begin())) {
+                continue;
+            }
+            // The object itself is one tracked place, not a group of them.
+            if (entry.path.size() == access->path.size()) {
+                return std::nullopt;
+            }
+            (entry.has_symbolic_step() ? group.others : group.leaves).push_back(index);
+        }
+        if (group.leaves.empty()) {
+            return std::nullopt;
+        }
+        return group;
+    }
+
     // What a verified call owes for the container storage it hands its callee
     // as a span or a data pointer (RFC 0020 §7, SPEC.md STDMODEL-016,
     // STDMODEL-017).
@@ -6312,6 +6790,10 @@ struct BodyLowering {
                 break;
             cursor = children.front();
         }
+        // A copy or a move C++ defines memberwise is the value it copies, so
+        // what is evaluated is that value: the call whose effects follow, when
+        // it is one (TRUST.md TCB-AGGREGATE-001).
+        cursor = copied_value(cursor);
         const std::size_t before = state.size();
         if (!materialize_derefs(cursor, state)) {
             return std::nullopt;
@@ -6402,6 +6884,10 @@ struct BodyLowering {
             bool writable = false;
         };
         std::vector<Position> positions;
+        // The struct arguments this body tracks member by member, each a group
+        // of places one reference parameter designates (TRUST.md
+        // TCB-AGGREGATE-001).
+        std::vector<ArgumentGroup> groups;
         // The receiver and the object are resolved together, or neither is.
         if (callee_receiver.has_value() && object.has_value()) {
             for (std::size_t leaf = 0; leaf < callee_receiver->leaves.size(); ++leaf) {
@@ -6440,6 +6926,14 @@ struct BodyLowering {
                               " binds storage this call does not name, which is not modeled (SPEC.md R.16)");
             }
             const CXCursor argument = clang_Cursor_getArgument(cursor, static_cast<unsigned>(index));
+            if (std::optional<ArgumentGroup> group = argument_group(
+                    argument, clang_getPointeeType(clang_getCanonicalType(clang_getCursorType(params[index]))),
+                    state)) {
+                group->argument = offset + static_cast<std::uint32_t>(index);
+                group->writable = source::may_write(passing);
+                groups.push_back(std::move(*group));
+                continue;
+            }
             std::optional<std::size_t> target;
             if (source::may_write(passing)) {
                 target = written_local(argument, state);
@@ -6549,6 +7043,16 @@ struct BodyLowering {
                 written_storage.push_back(position.storage);
             }
         }
+        // A struct the callee may write -- through a mutable reference, or
+        // through any reference when its unsafe code may write what it is
+        // handed (TRUST.md TCB-UNSAFE-004) -- may have any of its places
+        // written, which reaches whatever may be one of them.
+        for (const ArgumentGroup& group : groups) {
+            if (group.writable || unsafe_callee) {
+                written_storage.insert(written_storage.end(), group.leaves.begin(), group.leaves.end());
+                written_storage.insert(written_storage.end(), group.others.begin(), group.others.end());
+            }
+        }
         // Whether storage the callee only reads may be storage it writes: the
         // same place, or one the common alias model does not keep apart from a
         // written one (SPEC.md CLASS-011, VERIFIED-031).
@@ -6588,6 +7092,89 @@ struct BodyLowering {
             }
             const std::uint32_t version = target_version(position.storage);
             call->effects.push_back(CallEffect{position.argument, version, state[position.storage].type});
+        }
+        // A struct handed by reference is one value the callee's contract states
+        // after the call. Where no write of the call can reach any of its places
+        // it is the value the call was made with, and its argument already is
+        // that. Otherwise the call leaves a fresh post-state value of the
+        // struct's type, of which only the callee's postcondition is supposed,
+        // and one object handed in several positions leaves one such value. A
+        // struct the callee may write has each leaf rebound to its member of that
+        // value: the leaf's declared type is charged there, as a write's is. A
+        // leaf another position of the call already gave its post-call version
+        // keeps that one, which describes the same storage. A struct the callee
+        // only reads keeps its leaves, each of which the alias model follows on
+        // its own (TRUST.md TCB-AGGREGATE-001, TCB-UNSAFE-004).
+        std::vector<std::pair<const ArgumentGroup*, std::uint32_t>> post_states;
+        for (const ArgumentGroup& group : groups) {
+            const bool written = group.writable || unsafe_callee;
+            if (!written && std::ranges::none_of(group.leaves, reached_by_a_write) &&
+                std::ranges::none_of(group.others, reached_by_a_write)) {
+                continue;
+            }
+            std::optional<std::uint32_t> version;
+            for (const auto& [earlier, earlier_version] : post_states) {
+                if (clang_equalCursors(earlier->declaration, group.declaration) != 0 &&
+                    earlier->prefix == group.prefix) {
+                    version = earlier_version;
+                }
+            }
+            if (!version.has_value()) {
+                version = next_version++;
+                post_states.emplace_back(&group, *version);
+            }
+            call->effects.push_back(CallEffect{group.argument, *version, group.type});
+            if (!written) {
+                continue;
+            }
+            const std::string spelled = spelled_access(group.declaration, group.prefix);
+            // Every leaf the call may write must be one this body follows: one it
+            // does not track would keep reading the value it held before.
+            std::vector<std::vector<PlaceStep>> expected;
+            if (!structural_leaf_paths(group.type, group.prefix, expected)) {
+                return reject("'" + spelled + "' is handed to '" + qualified_name_of(callee) +
+                              "', which may write it, and it has a member this implementation does not track");
+            }
+            for (const std::vector<PlaceStep>& path : expected) {
+                if (std::ranges::none_of(group.leaves, [&](std::size_t leaf) { return state[leaf].path == path; })) {
+                    return reject("'" + spelled_access(group.declaration, path) + "' is not tracked here, so '" +
+                                  spelled + "', handed to '" + qualified_name_of(callee) +
+                                  "', which may write it, would keep reading the value it held before the call");
+                }
+            }
+            for (const std::size_t leaf : group.leaves) {
+                if (std::ranges::find(targets, leaf) != targets.end() ||
+                    std::ranges::find(invalidated, leaf) != invalidated.end()) {
+                    continue;
+                }
+                Expr post;
+                post.type = group.type;
+                post.location = presumed_location(clang_getCursorLocation(cursor));
+                post.node = PlaceRef{*version, anonymous_place("the post-state of '" + spelled + "'")};
+                const std::vector<PlaceStep> inside(state[leaf].path.begin() +
+                                                        static_cast<std::ptrdiff_t>(group.prefix.size()),
+                                                    state[leaf].path.end());
+                std::optional<Expr> member = member_at(std::move(post), inside);
+                if (!member.has_value()) {
+                    return reject("'" + state[leaf].spelling + "' is not a member of '" + spelled +
+                                  "' this implementation can state after the call to '" + qualified_name_of(callee) +
+                                  "'");
+                }
+                state[leaf].version = next_version++;
+                rebound_leaves.emplace(state[leaf].version, std::move(*member));
+                valid_versions.insert(state[leaf].version);
+                invalidated.push_back(leaf);
+            }
+            // An element place formed at a term names no member of the post-state
+            // value, so it is unknown after the call.
+            for (const std::size_t other : group.others) {
+                if (std::ranges::find(targets, other) != targets.end() ||
+                    std::ranges::find(invalidated, other) != invalidated.end()) {
+                    continue;
+                }
+                state[other].version = next_version++;
+                invalidated.push_back(other);
+            }
         }
         // Every other place of the object may have been written as well: the
         // callee's leaves are the storage its contract speaks of, and whatever
@@ -6825,6 +7412,9 @@ struct BodyLowering {
         if (const std::optional<SequenceCall> call = sequence_call(statement)) {
             return lower_sequence_statement(*call, statement, next, locals, depth);
         }
+        if (assigns_whole(statement)) {
+            return lower_whole_assignment(statement, next, locals, depth);
+        }
         Locals state = locals;
         std::vector<std::size_t> invalidated;
         auto value = evaluate(statement, state, invalidated);
@@ -6837,6 +7427,148 @@ struct BodyLowering {
         for (auto index : invalidated)
             *body = unknown(state, index, std::move(*body), statement);
         return bind(version, anonymous_place("discarded call"), std::move(*value), std::move(*body), statement);
+    }
+
+    // `a = b` written between two objects of one record or array type, whose
+    // assignment operator Clang selected: one C++ defines memberwise, or one the
+    // program provides, which is refused where the statement is lowered.
+    static bool assigns_whole(CXCursor statement) {
+        const CXCursor method = clang_getCursorReferenced(statement);
+        return clang_getCursorKind(method) == CXCursor_CXXMethod && clang_Cursor_getNumArguments(statement) == 2 &&
+               (clang_CXXMethod_isCopyAssignmentOperator(method) != 0 ||
+                clang_CXXMethod_isMoveAssignmentOperator(method) != 0);
+    }
+
+    // `a = b` between two values of a record or array type whose assignment C++
+    // defines memberwise: each leaf of `a` is written its member of `b`, at its
+    // own declared type, exactly as assigning that member alone would write it,
+    // so a refined member owes its predicate and every place that may alias it
+    // goes stale (TRUST.md TCB-AGGREGATE-001, TCB-OBJ-003). C++ evaluates the
+    // right operand first (C++17 [expr.ass]), so every member value is read
+    // before any member is written, which is also what a self-assignment reads.
+    // An assignment operator the program provides runs code whose effect is not
+    // modeled, and is refused by name.
+    std::optional<Expr> lower_whole_assignment(CXCursor statement, const Continuation& next, const Locals& locals,
+                                               unsigned depth) {
+        const CXCursor target = clang_Cursor_getArgument(statement, 0);
+        const CXType assigned = clang_getCursorType(target);
+        const std::string name = take(clang_getTypeSpelling(clang_getCanonicalType(assigned)));
+        if (!structural(convert_type(assigned))) {
+            return reject("assigning a whole value of type '" + name +
+                          "' is not modeled: only a record or an array whose members are all modeled is assigned "
+                          "whole in a verified body");
+        }
+        // The operator selected is one of the class's own copy or move
+        // assignment operators, which this checks with every member's.
+        if (std::optional<std::string> user = user_provided_copy(assigned, Copying::Assignment)) {
+            return reject(*user);
+        }
+        Locals state = locals;
+        std::vector<std::size_t> invalidated;
+        // `std::move(b)` designates `b`, whose members a move C++ defines
+        // memberwise reads as a copy would.
+        std::optional<Expr> evaluated =
+            evaluate(designated_object(clang_Cursor_getArgument(statement, 1)), state, invalidated);
+        if (!evaluated) {
+            return std::nullopt;
+        }
+        if (const auto* unsupported = std::get_if<Unsupported>(&evaluated->node)) {
+            return reject(unsupported->reason);
+        }
+        if (std::holds_alternative<Conditional>(evaluated->node)) {
+            return reject("assigning a conditional expression choosing between two values of type '" + name +
+                          "' is not modeled");
+        }
+        const std::optional<ArgumentGroup> group = argument_group(target, assigned, state);
+        if (!group.has_value()) {
+            // A place this body tracks as one, such as an object a reference
+            // parameter designates, says for itself why it is not written.
+            if (!written_local(target, state)) {
+                return std::nullopt;
+            }
+            return reject("'" + name + "' is assigned where this body does not track it member by member");
+        }
+        if (!group->others.empty()) {
+            return reject("'" + spelled_access(group->declaration, group->prefix) +
+                          "' is assigned while an element of it is selected at a term; assign it before forming one");
+        }
+        // Every leaf is written, so every leaf must be one this body follows.
+        std::vector<std::vector<PlaceStep>> expected;
+        if (!structural_leaf_paths(group->type, group->prefix, expected) || expected.size() != group->leaves.size()) {
+            return reject("'" + spelled_access(group->declaration, group->prefix) +
+                          "' is assigned where this body does not track every one of its members");
+        }
+        std::optional<std::uint32_t> result;
+        Expr whole = *evaluated;
+        if (std::holds_alternative<Call>(evaluated->node)) {
+            result = next_version++;
+            whole.node = PlaceRef{*result, anonymous_place("the value assigned to '" +
+                                                           spelled_access(group->declaration, group->prefix) + "'")};
+        }
+        std::vector<Expr> values;
+        for (const std::size_t leaf : group->leaves) {
+            const std::vector<PlaceStep> inside(
+                state[leaf].path.begin() + static_cast<std::ptrdiff_t>(group->prefix.size()), state[leaf].path.end());
+            std::optional<Expr> member = member_at(whole, inside);
+            if (!member.has_value()) {
+                return reject("'" + state[leaf].spelling +
+                              "' is not a member of the assigned value this "
+                              "implementation can state");
+            }
+            values.push_back(std::move(*member));
+        }
+        std::optional<Expr> body = write_leaves(group->leaves, 0, values, statement, next, state, depth);
+        if (!body) {
+            return std::nullopt;
+        }
+        for (const std::size_t changed : invalidated) {
+            body = unknown(state, changed, std::move(*body), statement);
+        }
+        if (result.has_value()) {
+            body = bind(
+                *result,
+                anonymous_place("the value assigned to '" + spelled_access(group->declaration, group->prefix) + "'"),
+                std::move(*evaluated), std::move(*body), statement);
+        }
+        return body;
+    }
+
+    // Writes `values[at]` to `leaves[at]` and every leaf after it, one after
+    // another, each through the one write a member assignment makes (`write`),
+    // then lowers what follows.
+    std::optional<Expr> write_leaves(const std::vector<std::size_t>& leaves, std::size_t at,
+                                     const std::vector<Expr>& values, CXCursor statement, const Continuation& next,
+                                     const Locals& locals, unsigned depth) {
+        if (at == leaves.size()) {
+            return lower_statements(next, locals, depth + 1);
+        }
+        const std::uint32_t version = next_version++;
+        Locals assigned = locals;
+        const std::size_t storage = locals[leaves[at]].referent.value_or(leaves[at]);
+        assigned[storage].version = version;
+        const auto invalidated = invalidate_aliases(storage, assigned);
+        std::optional<Expr> body = write_leaves(leaves, at + 1, values, statement, next, assigned, depth);
+        if (!body) {
+            return std::nullopt;
+        }
+        Type required = locals[storage].type;
+        const auto require = [&](const Type& type) {
+            for (const auto& refinement : type.refinements) {
+                if (std::ranges::find(required.refinements, refinement) == required.refinements.end()) {
+                    required.refinements.push_back(refinement);
+                }
+            }
+        };
+        valid_versions.insert(version);
+        for (const auto index : invalidated) {
+            require(locals[index].type);
+            const bool valid = valid_versions.contains(locals[index].version);
+            if (valid) {
+                valid_versions.insert(assigned[index].version);
+            }
+            body = unknown(assigned, index, std::move(*body), statement, valid);
+        }
+        return bind(version, place_of(locals, leaves[at]), values[at], std::move(*body), statement, required);
     }
 
     std::nullopt_t reject(std::string reason) {
@@ -8550,11 +9282,12 @@ struct BodyLowering {
         // state, and a tracked member at an unconstrained value would read as
         // though it held one. That applies at every level, so a nested member
         // needs its own braces rather than an elided initializer.
-        if (clang_Cursor_isNull(initializer) != 0 || clang_getCursorKind(initializer) != CXCursor_InitListExpr) {
+        const CXCursor list = braced_list(initializer);
+        if (clang_Cursor_isNull(list) != 0) {
             return "'" + written + "' of type '" + type.spelling +
                    "' is not initialized by an aggregate initializer, so this body cannot state what each member holds";
         }
-        const std::vector<CXCursor> elements = children_of(initializer);
+        const std::vector<CXCursor> elements = children_of(list);
         if (elements.size() != components.size()) {
             return "'" + written + "' of type '" + type.spelling + "' is initialized with " +
                    std::to_string(elements.size()) + " values for " + std::to_string(components.size()) +
@@ -8650,12 +9383,28 @@ struct BodyLowering {
     std::optional<Expr> lower_aggregate(CXCursor declaration, const std::string& name, const Type& type,
                                         const std::vector<CXCursor>& declared, std::size_t index,
                                         const Continuation& next, const Locals& locals, unsigned depth) {
+        // A local initialized from a whole value of its type -- a copy or a
+        // move of another object, or a call's result -- takes each member from
+        // that value rather than from an initializer per member. A copy or move
+        // constructor the program provides is refused there, by name; any other
+        // constructor leaves the members holding what that code made them hold,
+        // which is refused below as before.
+        const CXCursor initializer = clang_Cursor_getVarDeclInitializer(declaration);
+        const CXCursor braced = braced_list(initializer);
+        if (clang_Cursor_isNull(initializer) == 0 && clang_Cursor_isNull(braced) != 0) {
+            const CXCursor stripped = strip_parens(initializer);
+            const CXCursor constructor = clang_getCursorReferenced(stripped);
+            if (!constructs(stripped) || clang_CXXConstructor_isCopyConstructor(constructor) != 0 ||
+                clang_CXXConstructor_isMoveConstructor(constructor) != 0) {
+                return lower_aggregate_copy(declaration, name, type, initializer, declared, index, next, locals, depth);
+            }
+        }
         // An array is a record whose members are its elements, so a constant
         // index names a place exactly as a field name does. A variable index
         // does not: which place it names is not decided here, and deciding it
         // needs the extent obligation the capability model supplies.
         std::vector<AggregateLeaf> leaves;
-        if (auto refusal = collect_leaves(type, clang_Cursor_getVarDeclInitializer(declaration), name, {}, leaves)) {
+        if (auto refusal = collect_leaves(type, initializer, name, {}, leaves)) {
             return reject("local " + *refusal);
         }
 
@@ -8693,6 +9442,82 @@ struct BodyLowering {
         for (std::size_t leaf = leaves.size(); leaf > 0; --leaf) {
             body = bind(versions[leaf - 1], place_of(declaring, locals.size() + leaf - 1), std::move(values[leaf - 1]),
                         std::move(*body), declaration, leaves[leaf - 1].type);
+        }
+        return body;
+    }
+
+    // An aggregate local initialized from a whole value of its type: a copy or a
+    // move of another object, or the result of a call. Each leaf is bound to the
+    // value's member at its path, at the leaf's own declared type, so a refined
+    // member owes its predicate here exactly as one an aggregate initializer
+    // supplies does (SPEC.md 17.6, TRUST.md TCB-OBJ-003). A call is evaluated
+    // once and its result bound before any leaf reads it, so its effects happen
+    // once and every member is read from one value. A member of an object this
+    // body tracks member by member is that member's own version, and of any
+    // other value its projection (TRUST.md TCB-AGGREGATE-001).
+    std::optional<Expr> lower_aggregate_copy(CXCursor declaration, const std::string& name, const Type& type,
+                                             CXCursor initializer, const std::vector<CXCursor>& declared,
+                                             std::size_t index, const Continuation& next, const Locals& locals,
+                                             unsigned depth) {
+        std::vector<AggregateLeaf> leaves;
+        if (auto refusal = collect_type_leaves(type, name, {}, leaves)) {
+            return reject("local " + *refusal);
+        }
+        Locals declaring = locals;
+        std::vector<std::size_t> invalidated;
+        std::optional<Expr> evaluated = evaluate(initializer, declaring, invalidated);
+        if (!evaluated) {
+            return std::nullopt;
+        }
+        if (const auto* unsupported = std::get_if<Unsupported>(&evaluated->node)) {
+            return reject(unsupported->reason);
+        }
+        if (!same_modeled_value(type, evaluated->type)) {
+            return reject("initializing '" + name + "' of type '" + type.spelling + "' from '" +
+                          evaluated->type.spelling + "' is a conversion that is not modeled");
+        }
+        if (std::holds_alternative<Conditional>(evaluated->node)) {
+            return reject("initializing '" + name +
+                          "' from a conditional expression choosing between two values of type '" + type.spelling +
+                          "' is not modeled");
+        }
+        std::optional<std::uint32_t> result;
+        Expr whole = *evaluated;
+        if (std::holds_alternative<Call>(evaluated->node)) {
+            result = next_version++;
+            whole.node = PlaceRef{*result, anonymous_place("the value initializing '" + name + "'")};
+        }
+        std::vector<std::uint32_t> versions;
+        std::vector<Expr> values;
+        const std::size_t first = declaring.size();
+        for (const AggregateLeaf& leaf : leaves) {
+            std::optional<Expr> member = member_at(whole, leaf.path);
+            if (!member.has_value()) {
+                return reject("'" + leaf.spelling + "' is not a member of the value initializing '" + name +
+                              "' this implementation can state");
+            }
+            versions.push_back(next_version++);
+            values.push_back(std::move(*member));
+            declaring.push_back(Local{.declaration = declaration,
+                                      .version = versions.back(),
+                                      .type = leaf.type,
+                                      .path = leaf.path,
+                                      .spelling = leaf.spelling});
+        }
+        std::optional<Expr> body = lower_declaration(declared, index + 1, next, declaring, depth);
+        if (!body) {
+            return std::nullopt;
+        }
+        for (std::size_t leaf = leaves.size(); leaf > 0; --leaf) {
+            body = bind(versions[leaf - 1], place_of(declaring, first + leaf - 1), std::move(values[leaf - 1]),
+                        std::move(*body), declaration, leaves[leaf - 1].type);
+        }
+        for (const std::size_t changed : invalidated) {
+            body = unknown(declaring, changed, std::move(*body), declaration);
+        }
+        if (result.has_value()) {
+            body = bind(*result, anonymous_place("the value initializing '" + name + "'"), std::move(*evaluated),
+                        std::move(*body), declaration);
         }
         return body;
     }

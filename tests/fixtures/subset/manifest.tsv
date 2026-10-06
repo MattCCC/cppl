@@ -143,8 +143,8 @@ CONSTRUCT-140	constructor	refused	x140_constructor.cpp	error \[unsupported-seman
 CONSTRUCT-141	destructor	refused	x141_destructor.cpp	error \[unsupported-semantics\]: a verified destructor is not verified by this implementation
 CONSTRUCT-142	copy constructor	verified	x142_copy_constructor.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-143	move constructor	verified	x143_move_constructor.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
-CONSTRUCT-144	copy assignment	refused	x144_copy_assignment.cpp	call does not resolve to an ordinary function or to a member function named on i
-CONSTRUCT-145	move assignment	refused	x145_move_assignment.cpp	call does not resolve to an ordinary function or to a member function named on i
+CONSTRUCT-144	copy assignment	verified	x144_copy_assignment.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
+CONSTRUCT-145	move assignment	verified	x145_move_assignment.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-146	virtual function	refused	x146_virtual_function.cpp	error \[unsupported-semantics\]: a verified virtual function is not verified by this implementation
 CONSTRUCT-147	pure virtual function	refused	x147_pure_virtual_function.cpp	error \[unsupported-semantics\]: a verified virtual function is not verified by this implementation
 CONSTRUCT-148	base class conversion	refused	x148_base_class_conversion.cpp	local 'base' has type 'const Base', which is not modeled
