@@ -119,6 +119,17 @@ CPP
 } > "$run/deep.in"
 reject deep_nesting < "$run/deep.in"
 
+# So is a parenthesized proposition nested past that depth beside `&&`: reading
+# whether each operand states formal syntax is bounded as the reading is.
+{
+    printf 'verified unsigned wrong(unsigned x) ensures ('
+    for _ in $(seq 1 300); do printf '(x == 0u -> result == 0u) && ('; done
+    printf 'x == 0u -> result == 0u'
+    for _ in $(seq 1 300); do printf ')'; done
+    printf ') { return x; }\n'
+} > "$run/deep_operands.in"
+reject deep_operands < "$run/deep_operands.in"
+
 grep -q 'existential quantification is not supported yet' "$run/existential.log"
 grep -q 'a quantifier, formal equality and a memory capability are not supported in a loop invariant yet' "$run/invariant.log"
 grep -q 'unsupported-semantics' "$run/no_block.log"
@@ -127,6 +138,7 @@ grep -q 'nested or malformed formal syntax' "$run/nested_in_an_argument.log"
 grep -q 'binder type' "$run/unmodeled_binder.log"
 grep -q 'no statement here can name' "$run/quantified_evidence.log"
 grep -qE 'nesting|deeply' "$run/deep_nesting.log"
+grep -qE 'nesting|deeply' "$run/deep_operands.log"
 grep -q 'kernel-rejection' "$run/false_universal.log"
 grep -q 'undeclared identifier' "$run/binder_named_in_a_statement.log"
 
