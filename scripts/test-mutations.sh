@@ -69,7 +69,23 @@ partial-warning-only-partial	compiler/driver/src/pipeline.cpp	if (claim.kind != 
 partial-callees-recorded	compiler/obligations/src/contracts.cpp	if (callee != index && !total[callee]) {	if (false && callee != index && !total[callee]) {	^(e2e_partial_correctness|e2e_cross_tu)$
 partial-warning-not-for-refused	compiler/driver/src/pipeline.cpp	!function->contract->measures.empty()) {	false) {	^e2e_partial_correctness$
 if-init-statement-refused	clang/src/bridge.cpp	return reject("an 'if' statement with an init-statement is not modeled");	(void)0;	^negative_verified_paths$
-init-statement-detected	clang/src/bridge.cpp	} else if (spelled == ";" && nesting == 1) {	} else if (false) {	^negative_verified_paths$
+init-statement-detected	clang/src/bridge.cpp	} else if (spelled == ";" && nesting == 1) {	} else if (false) {	^(negative_verified_paths|negative_switch_statements)$
+switch-init-statement-refused	clang/src/bridge.cpp	return reject("a 'switch' statement with an init-statement is not modeled");	(void)0;	^negative_switch_statements$
+switch-nested-label-refused	clang/src/bridge.cpp	if (holds_switch_label(statement)) {	if (false && holds_switch_label(statement)) {	^negative_switch_statements$
+switch-unreachable-prefix-refused	clang/src/bridge.cpp	if (entries.empty() && !is_switch_label(statement)) {	if (false && entries.empty() && !is_switch_label(statement)) {	^negative_switch_statements$
+switch-case-range-refused	clang/src/bridge.cpp	if (!fallback && label.size() == 3) {	if (false && !fallback && label.size() == 3) {	^negative_switch_statements$
+switch-fallthrough-only	clang/src/bridge.cpp	return spelled == standard || spelled == qualified;	return true;	^negative_switch_statements$
+switch-condition-read-once	clang/src/bridge.cpp	read.node = PlaceRef{version, anonymous_place("switch condition")};	read = *value;	^(e2e_switch_statements|negative_switch_statements)$
+switch-condition-effects	clang/src/bridge.cpp	body = unknown(state, changed, std::move(body), header.statement);	(void)changed;	^(e2e_switch_statements|negative_switch_statements)$
+switch-case-compares-equal	clang/src/bridge.cpp	matches.node = Binary{BinaryOp::Equal, {std::move(read), std::move(*literals[index])}};	matches.node = Binary{BinaryOp::NotEqual, {std::move(read), std::move(*literals[index])}};	^(e2e_switch_statements|negative_switch_statements|e2e_safety_subset)$
+switch-default-entered	clang/src/bridge.cpp	chain = std::move(entered[static_cast<std::size_t>(fallback - entries.begin())]);	chain = lower_statements(*header.exit, state, depth + 1);	^(e2e_switch_statements|negative_switch_statements)$
+switch-break-innermost	clang/src/bridge.cpp	if (!switch_frames.empty() && switch_frames.back()->loops_outside == frames.size()) {	if (!switch_frames.empty()) {	^(e2e_switch_statements|negative_switch_statements)$
+switch-exit-closes-frame	clang/src/bridge.cpp	switch_frames.resize(std::min(switch_frames.size(), frame.switches_outside));	(void)frame.switches_outside;	^e2e_switch_statements$
+switch-continue-closes-frames	clang/src/bridge.cpp	leave_switches_inside(frame);	(void)frame;	^e2e_switch_statements$
+switch-label-reachable	clang/src/bridge.cpp	const bool labelled = next.labels != nullptr && std::ranges::contains(*next.labels, next.index);	const bool labelled = false;	^(e2e_switch_statements|e2e_safety_subset)$
+switch-labels-propagate	clang/src/bridge.cpp	next.labels = from.labels;	(void)from.labels;	^e2e_switch_statements$
+comma-statement-left-operand	clang/src/bridge.cpp	return lower_statement(operands[0], then, locals, depth + 1);	return lower_statements(then, locals, depth + 1);	^(e2e_switch_statements|negative_switch_statements|negative_verified_locals)$
+comma-nested-refused-by-name	clang/src/bridge.cpp	if (op == CXBinaryOperator_Comma) {	if (false && op == CXBinaryOperator_Comma) {	^(negative_switch_statements|e2e_safety_subset)$
 lexer-records-directives	compiler/frontend/src/lexer.cpp	directives_.push_back(Directive{source::ByteSpan{offset_, cursor - offset_}, is_marker});	(void)is_marker;	^(unit_projection_test|e2e_erasure_directives)$
 erasure-blank-keeps-directives	compiler/frontend/src/projection.cpp	if (const Directive* directive = directive_at(stream, base + offset); directive != nullptr) {	if (const Directive* directive = directive_at(stream, base + offset); false && directive != nullptr) {	^(unit_projection_test|e2e_erasure_directives)$
 erasure-directive-kept	compiler/erasure/src/erase.cpp	directives_kept = false; // a directive erased with the C++L around it	directives_kept = true; // a directive erased with the C++L around it	^unit_projection_test$

@@ -51,7 +51,7 @@ CONSTRUCT-048	logical disjunction formal	verified	x048_logical_disjunction_forma
 CONSTRUCT-049	conditional operator	verified	x049_conditional_operator.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
 CONSTRUCT-050	assignment	verified	x050_assignment.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-051	compound assignment	verified	x051_compound_assignment.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
-CONSTRUCT-052	comma operator	refused	x052_comma_operator.cpp	operator ',' is not modeled
+CONSTRUCT-052	comma operator	refused	x052_comma_operator.cpp	the comma operator inside an expression is not modeled
 CONSTRUCT-053	member access dot	verified	x053_member_access_dot.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-054	member access arrow	verified	x054_member_access_arrow.cpp	reading 'pair' requires 'readable\(pair\)', which was not established; 'p != nullp
 CONSTRUCT-055	built-in subscript	verified	x055_built_in_subscript.cpp	error \[kernel-rejection\]: law 'probe element index' is not proven
@@ -90,7 +90,7 @@ CONSTRUCT-087	compound statement	verified	x087_compound_statement.cpp	error \[pr
 CONSTRUCT-088	declaration statement	verified	x088_declaration_statement.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-089	if statement	verified	x089_if_statement.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
 CONSTRUCT-090	if constexpr	verified	x090_if_constexpr.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
-CONSTRUCT-091	switch statement	refused	x091_switch_statement.cpp	only if/else, while and for loops, blocks, local declarations, assignments, and
+CONSTRUCT-091	switch statement	verified	x091_switch_statement.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
 CONSTRUCT-092	while statement	verified	x092_while_statement.cpp	error \[kernel-rejection\]: loop invariant 'probe loop at line [0-9]+ invariant [0-9]+' does not hold on entry
 CONSTRUCT-093	classic for statement	verified	x093_classic_for_statement.cpp	error \[kernel-rejection\]: loop invariant 'probe loop at line [0-9]+ invariant [0-9]+' is not preserved by an iteration
 CONSTRUCT-094	range-for statement	refused	x094_range_for_statement.cpp	range-based for loops are not modeled

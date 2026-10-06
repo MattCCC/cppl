@@ -118,8 +118,9 @@ reject chained_assignment 'not modeled' \
     'verified unsigned f(unsigned x) ensures (result == 0u) { unsigned y = 0u, z = 0u; y = z = x; return z; }'
 reject assignment_in_guard 'not modeled' \
     'verified unsigned f(unsigned x) ensures (result == 0u) { unsigned y = 0u; if ((y = x) == 0u) return y; return 0u; }'
-reject comma_assignments 'only if/else' \
-    'verified unsigned f(unsigned x) ensures (result == 2u) { unsigned y = 0u; y = 1u, y = 2u; return y; }'
+# A statement-level comma runs both operands, in order (C++ [expr.comma]).
+reject comma_assignments 'does not satisfy its contract' \
+    'verified unsigned f(unsigned x) ensures (result == 1u) { unsigned y = 0u; y = 1u, y = 2u; return y; }'
 reject forwarding_reference 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures (result == x) { unsigned y = x; auto&& r = y; r = 0u; return y; }'
 reject lambda_capture "local 'g' has type .*lambda.*which is not modeled" \

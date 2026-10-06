@@ -3725,6 +3725,12 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
         } else if (op == CXBinaryOperator_LOr) {
             mapped = BinaryOp::Or;
         }
+        // As a statement, `a, b` is two statements. Inside an expression, the
+        // effects and definedness of `a` would have to be modeled there.
+        if (op == CXBinaryOperator_Comma) {
+            return unsupported_expression(cursor, "the comma operator inside an expression is not modeled; write "
+                                                  "its operands as statements of their own");
+        }
         if (mapped == BinaryOp::Unsupported) {
             return unsupported_expression(cursor, "operator '" + take(clang_getBinaryOperatorKindSpelling(op)) +
                                                       "' is not modeled");
@@ -4155,6 +4161,28 @@ bool terminates(CXCursor statement, unsigned depth) {
     return false;
 }
 
+bool is_switch_label(CXCursor statement) {
+    const CXCursorKind kind = clang_getCursorKind(statement);
+    return kind == CXCursor_CaseStmt || kind == CXCursor_DefaultStmt;
+}
+
+// Whether a `case` or `default` label of the switch being lowered stands
+// somewhere in `root` (C++ [stmt.switch]): a nested switch and a lambda own
+// the labels inside them. Such a label is a way into the middle of `root`
+// that only lowering `root` from its start would never take.
+bool holds_switch_label(CXCursor root, unsigned depth = 0) {
+    if (depth > kMaxExpressionDepth) {
+        return true;
+    }
+    const CXCursorKind kind = clang_getCursorKind(root);
+    if (kind == CXCursor_SwitchStmt || kind == CXCursor_LambdaExpr) {
+        return false;
+    }
+    return std::ranges::any_of(children_of(root), [depth](CXCursor child) {
+        return is_switch_label(child) || holds_switch_label(child, depth + 1);
+    });
+}
+
 // Whether the parenthesized head of an `if` or a `switch` holds an
 // init-statement, `if (init; condition)` (C++ [stmt.select]): a `;` directly
 // inside the parentheses that follow the keyword. libclang does not expose a
@@ -4191,6 +4219,34 @@ std::optional<bool> holds_init_statement(CXCursor statement) {
     }
     clang_disposeTokens(unit, tokens, count);
     return found;
+}
+
+// Whether `statement` is `[[fallthrough]];`, an empty statement that says a
+// label is reached by falling into it (C++ [dcl.attr.fallthrough]). Any other
+// attribute on an empty statement, such as `[[assume(e)]]`, is not this one.
+bool is_fallthrough(CXCursor statement) {
+    if (clang_getCursorKind(statement) != CXCursor_UnexposedStmt) {
+        return false;
+    }
+    const std::vector<CXCursor> parts = children_of(statement);
+    if (parts.size() != 1 || clang_getCursorKind(parts.front()) != CXCursor_NullStmt) {
+        return false;
+    }
+    const CXTranslationUnit unit = clang_Cursor_getTranslationUnit(statement);
+    CXToken* tokens = nullptr;
+    unsigned count = 0;
+    clang_tokenize(unit, clang_getCursorExtent(statement), &tokens, &count);
+    std::vector<std::string> spelled;
+    for (unsigned index = 0; index < count; ++index) {
+        spelled.push_back(take(clang_getTokenSpelling(unit, tokens[index])));
+    }
+    clang_disposeTokens(unit, tokens, count);
+    if (!spelled.empty() && spelled.back() == ";") {
+        spelled.pop_back();
+    }
+    const std::vector<std::string> standard{"[", "[", "fallthrough", "]", "]"};
+    const std::vector<std::string> qualified{"[", "[", "clang", "::", "fallthrough", "]", "]"};
+    return spelled == standard || spelled == qualified;
 }
 
 // The declaration the projector put just inside an unsafe block's `{`, when
@@ -4733,6 +4789,8 @@ class GhostScan {
 // what makes a local's value path-sensitive without any merge rule.
 struct LoopFrame;
 struct LoopHeader;
+struct SwitchHeader;
+struct SwitchFrame;
 
 struct Continuation {
     const Continuation* outer = nullptr;
@@ -4744,6 +4802,17 @@ struct Continuation {
     const LoopFrame* iteration = nullptr;
     bool after_increment = false;
     const LoopHeader* header = nullptr;
+
+    // In place of statements: a `switch` whose condition variable is declared
+    // and which now dispatches, or the end of a switch's body, which goes on
+    // with what follows the switch, outside it.
+    const SwitchHeader* dispatch = nullptr;
+    const SwitchFrame* left = nullptr;
+
+    // With `statements`, the body of a switch: the positions a `case` or
+    // `default` label leads into, which a jump reaches whatever stands before
+    // them.
+    const std::vector<std::size_t>* labels = nullptr;
 };
 
 // A loop about to be entered.
@@ -4769,6 +4838,23 @@ struct LoopFrame {
     std::size_t frames_outside = 0; // the enclosing loops, for a `break` into what follows
     CXCursor condition = clang_getNullCursor();
     bool condition_last = false;
+};
+
+// A `switch` about to dispatch on its condition (C++ [stmt.switch]).
+struct SwitchHeader {
+    CXCursor statement = clang_getNullCursor();
+    CXCursor condition = clang_getNullCursor();
+    CXCursor body = clang_getNullCursor();
+    const Continuation* exit = nullptr; // what follows the switch
+};
+
+// A switch whose body is being lowered: where a `break` belonging to it goes.
+// A `break` belongs to the innermost loop or switch enclosing it, and a switch
+// is innermost when no loop was entered after it.
+struct SwitchFrame {
+    const Continuation* exit = nullptr;
+    std::size_t loops_outside = 0;    // the loops enclosing the switch
+    std::size_t switches_outside = 0; // the switches enclosing it
 };
 
 // A memory capability the contract of the body being lowered states, resolved
@@ -4815,6 +4901,7 @@ struct BodyLowering {
     std::uint32_t next_version = 0;
     std::uint32_t next_loop = 0;
     std::vector<const LoopFrame*> frames;
+    std::vector<const SwitchFrame*> switch_frames;
     std::vector<std::string> consumed_invariants;
     std::vector<std::string> consumed_contradictions;
     std::vector<Function::SplitSubject> consumed_splits;
@@ -6581,6 +6668,12 @@ struct BodyLowering {
         if (from.iteration != nullptr) {
             return end_iteration(*from.iteration, from.after_increment, locals, depth + 1);
         }
+        if (from.dispatch != nullptr) {
+            return lower_switch_dispatch(*from.dispatch, locals, depth + 1);
+        }
+        if (from.left != nullptr) {
+            return leave_switch(*from.left, locals, depth + 1);
+        }
         if (from.index == from.statements->size()) {
             if (from.outer == nullptr) {
                 if (result_type.kind == TypeKind::Void) {
@@ -6601,10 +6694,13 @@ struct BodyLowering {
         if (ghost_marker_of(statement, invariant_prefix)) {
             return lower_ghost(from, locals, depth);
         }
-        const Continuation next{from.outer, from.statements, from.index + 1};
-        // An unsafe block says for itself why a way out of it is refused.
-        if (next.index != from.statements->size() && !unsafe_marker_of(statement, invariant_prefix).has_value() &&
-            terminates(statement, 0)) {
+        Continuation next{from.outer, from.statements, from.index + 1};
+        next.labels = from.labels;
+        // An unsafe block says for itself why a way out of it is refused. A
+        // statement a switch's label leads into is reached by that label.
+        const bool labelled = next.labels != nullptr && std::ranges::contains(*next.labels, next.index);
+        if (next.index != from.statements->size() && !labelled &&
+            !unsafe_marker_of(statement, invariant_prefix).has_value() && terminates(statement, 0)) {
             return reject("unreachable trailing statements are not modeled");
         }
         return lower_statement(statement, next, locals, depth);
@@ -6657,8 +6753,24 @@ struct BodyLowering {
                               "user-provided destructor, which is not modeled (SPEC.md STDMODEL-023)");
             }
         }
-        if (kind == CXCursor_NullStmt)
+        if (kind == CXCursor_NullStmt || is_fallthrough(statement))
             return lower_statements(next, locals, depth + 1);
+        // `a, b;` as a statement, and as a `for` increment, runs `a` and then
+        // `b`, each as a statement of its own (C++ [expr.comma]); `a, b, c` is
+        // `(a, b), c`. A comma inside another expression is not this.
+        if (kind == CXCursor_BinaryOperator &&
+            clang_getCursorBinaryOperatorKind(statement) == CXBinaryOperator_Comma) {
+            const std::vector<CXCursor> operands = children_of(statement);
+            if (operands.size() != 2) {
+                return reject("the operands of this comma operator could not be resolved");
+            }
+            const std::vector<CXCursor> right{operands[1]};
+            const Continuation then{&next, &right, 0};
+            return lower_statement(operands[0], then, locals, depth + 1);
+        }
+        if (kind == CXCursor_SwitchStmt) {
+            return lower_switch(statement, next, locals, depth);
+        }
         if (kind == CXCursor_ReturnStmt) {
             const std::vector<CXCursor> returned = children_of(statement);
             if (returned.empty() && result_type.kind == TypeKind::Void)
@@ -7368,9 +7480,12 @@ struct BodyLowering {
         // runs under the versions current here and outside the loop.
         Expr condition = build_expression(frame.condition, signature, locals, 0);
         const std::vector<const LoopFrame*> inside = frames;
+        const std::vector<const SwitchFrame*> switches = switch_frames;
         frames.resize(frame.frames_outside);
+        leave_switches_inside(frame);
         std::optional<Expr> after = lower_statements(*frame.exit, locals, depth + 1);
         frames = inside;
+        switch_frames = switches;
         if (!after) {
             return std::nullopt;
         }
@@ -7381,17 +7496,238 @@ struct BodyLowering {
         return decided;
     }
 
-    // `break` continues with what follows the innermost loop, under the
-    // versions current here, and outside that loop.
+    // `break` continues with what follows the innermost loop or switch, under
+    // the versions current here, and outside it. A switch is the innermost when
+    // no loop was entered after it.
     std::optional<Expr> lower_break(const Locals& locals, unsigned depth) {
-        if (frames.empty()) {
-            return reject("'break' outside a modeled loop");
+        if (!switch_frames.empty() && switch_frames.back()->loops_outside == frames.size()) {
+            return leave_switch(*switch_frames.back(), locals, depth);
         }
+        if (frames.empty()) {
+            return reject("'break' outside a modeled loop or switch");
+        }
+        // No switch entered inside this loop is still open here: a `break`
+        // inside one belongs to it.
         const LoopFrame& frame = *frames.back();
         const std::vector<const LoopFrame*> inside = frames;
         frames.resize(frame.frames_outside);
         std::optional<Expr> after = lower_statements(*frame.exit, locals, depth + 1);
         frames = inside;
+        return after;
+    }
+
+    // Forgets the switches entered inside `frame`'s loop, for what follows the
+    // loop, where a `break` cannot belong to them. A `continue` in such a
+    // switch reaches the end of an iteration with the switch still open.
+    void leave_switches_inside(const LoopFrame& frame) {
+        while (!switch_frames.empty() && switch_frames.back()->loops_outside > frame.frames_outside) {
+            switch_frames.pop_back();
+        }
+    }
+
+    // A `switch` statement (C++ [stmt.switch]). Its condition is evaluated
+    // once, before any comparison, and that one value is compared with each
+    // case value in the order the labels appear: control enters the body at the
+    // first label whose value it equals, or else at `default:`, or else goes on
+    // with what follows the switch. From where it enters, the body runs to its
+    // end, through every later label, unless a `break`, `return` or `continue`
+    // leaves it first.
+    std::optional<Expr> lower_switch(CXCursor statement, const Continuation& next, const Locals& locals,
+                                     unsigned depth) {
+        // libclang lists no init-statement among a switch's children, so one
+        // left unseen would be a statement the program runs and the model
+        // drops.
+        const std::optional<bool> init = holds_init_statement(statement);
+        if (!init.has_value()) {
+            return reject("the head of this 'switch' statement could not be read, so whether it holds an "
+                          "init-statement is not known");
+        }
+        if (*init) {
+            return reject("a 'switch' statement with an init-statement is not modeled");
+        }
+        // The condition and the body, after the condition variable if one is
+        // declared.
+        const std::vector<CXCursor> parts = children_of(statement);
+        const bool declares = parts.size() == 3 && clang_getCursorKind(parts[0]) == CXCursor_VarDecl;
+        if ((parts.size() != 2 && !declares) || clang_isExpression(clang_getCursorKind(parts[parts.size() - 2])) == 0) {
+            return reject("the parts of this 'switch' statement could not be resolved");
+        }
+        const SwitchHeader header{statement, parts[parts.size() - 2], parts.back(), &next};
+        if (!declares) {
+            return lower_switch_dispatch(header, locals, depth);
+        }
+        // A condition variable is a local the condition's initializer
+        // initializes, in scope through the whole body, and the condition is a
+        // read of it (C++ [stmt.pre]).
+        const std::vector<CXCursor> variable{parts[0]};
+        Continuation dispatched;
+        dispatched.dispatch = &header;
+        return lower_declaration(variable, 0, dispatched, locals, depth);
+    }
+
+    // One `case` value, as a literal of the condition's type. It is a
+    // converted constant expression of that type (C++ [stmt.switch]), so Clang
+    // has converted it without narrowing and its value is one of the type's;
+    // what is read here is the value Clang evaluates, never one recomputed.
+    std::optional<Expr> case_value(CXCursor value, const Type& type) {
+        CXEvalResult evaluated = clang_Cursor_Evaluate(value);
+        const bool integer = evaluated != nullptr && clang_EvalResult_getKind(evaluated) == CXEval_Int;
+        const bool is_unsigned = integer && clang_EvalResult_isUnsignedInt(evaluated) != 0;
+        const unsigned long long magnitude = is_unsigned ? clang_EvalResult_getAsUnsigned(evaluated) : 0;
+        const long long signed_value = integer && !is_unsigned ? clang_EvalResult_getAsLongLong(evaluated) : 0;
+        if (evaluated != nullptr) {
+            clang_EvalResult_dispose(evaluated);
+        }
+        if (!integer) {
+            return reject("a 'case' value Clang does not evaluate to an integer is not modeled");
+        }
+        Expr literal;
+        literal.type = type;
+        literal.location = presumed_location(clang_getCursorLocation(value));
+        literal.node = IntLiteral{is_unsigned ? static_cast<std::int64_t>(magnitude) : signed_value};
+        return literal;
+    }
+
+    std::optional<Expr> lower_switch_dispatch(const SwitchHeader& header, const Locals& locals, unsigned depth) {
+        // The body's statements with every label taken off them, in order,
+        // and the labels, each with the position it leads into. A label's
+        // statement is the one it is written on; the statements after it in
+        // the body follow it.
+        struct Entry {
+            CXCursor label;
+            std::optional<CXCursor> value; // none for `default:`
+            std::size_t position = 0;
+        };
+        std::vector<CXCursor> written;
+        if (clang_getCursorKind(header.body) == CXCursor_CompoundStmt) {
+            written = children_of(header.body);
+        } else {
+            written.push_back(header.body);
+        }
+        std::vector<Entry> entries;
+        std::vector<CXCursor> statements;
+        std::vector<std::size_t> positions;
+        for (CXCursor statement : written) {
+            if (entries.empty() && !is_switch_label(statement)) {
+                return reject("a statement before the first label of a 'switch' is never executed, and is not "
+                              "modeled");
+            }
+            while (is_switch_label(statement)) {
+                const std::vector<CXCursor> label = children_of(statement);
+                const bool fallback = clang_getCursorKind(statement) == CXCursor_DefaultStmt;
+                if (!fallback && label.size() == 3) {
+                    return reject("a case range, 'case low ... high:', is not modeled");
+                }
+                if (label.size() != (fallback ? 1U : 2U)) {
+                    return reject("a label of this 'switch' could not be resolved");
+                }
+                entries.push_back(Entry{statement, fallback ? std::nullopt : std::optional<CXCursor>{label.front()},
+                                        statements.size()});
+                positions.push_back(statements.size());
+                statement = label.back();
+            }
+            // A label anywhere else is a way into the middle of a statement
+            // that lowering it from its start never takes (Duff's device).
+            if (holds_switch_label(statement)) {
+                return reject("a 'case' or 'default' label inside a nested statement of its 'switch' is not modeled");
+            }
+            statements.push_back(statement);
+        }
+
+        // The condition, evaluated once, with any call in it and that call's
+        // effects, and bound to one version every comparison reads.
+        Locals state = locals;
+        std::vector<std::size_t> invalidated;
+        std::optional<Expr> value = evaluate(header.condition, state, invalidated);
+        if (!value) {
+            return std::nullopt;
+        }
+        const Type condition = value->type;
+        const std::uint32_t version = next_version++;
+        std::vector<std::optional<Expr>> literals;
+        for (const Entry& entry : entries) {
+            if (!entry.value.has_value()) {
+                literals.emplace_back();
+                continue;
+            }
+            std::optional<Expr> literal = case_value(*entry.value, condition);
+            if (!literal) {
+                return std::nullopt;
+            }
+            literals.push_back(std::move(literal));
+        }
+
+        // Each way into the body, lowered from its label, inside the switch.
+        SwitchFrame frame{header.exit, frames.size(), switch_frames.size()};
+        Continuation leave;
+        leave.left = &frame;
+        switch_frames.push_back(&frame);
+        std::vector<Expr> entered;
+        for (const Entry& entry : entries) {
+            Continuation from{&leave, &statements, entry.position};
+            from.labels = &positions;
+            std::optional<Expr> lowered = lower_statements(from, state, depth + 1);
+            if (!lowered) {
+                switch_frames.pop_back();
+                return std::nullopt;
+            }
+            entered.push_back(std::move(*lowered));
+        }
+        switch_frames.pop_back();
+
+        // No value matches: `default:`, or else what follows the switch.
+        const auto fallback =
+            std::ranges::find_if(entries, [](const Entry& entry) { return !entry.value.has_value(); });
+        std::optional<Expr> chain;
+        if (fallback != entries.end()) {
+            chain = std::move(entered[static_cast<std::size_t>(fallback - entries.begin())]);
+        } else {
+            chain = lower_statements(*header.exit, state, depth + 1);
+        }
+        if (!chain) {
+            return std::nullopt;
+        }
+        Type truth;
+        truth.kind = TypeKind::Bool;
+        truth.spelling = "bool";
+        for (std::size_t index = entries.size(); index-- > 0;) {
+            if (!literals[index].has_value()) {
+                continue;
+            }
+            if (return_paths(entered[index]) + return_paths(*chain) > kMaxReturnPaths) {
+                return reject("more than " + std::to_string(kMaxReturnPaths) + " return paths are not modeled");
+            }
+            const source::SourceLocation at = presumed_location(clang_getCursorLocation(entries[index].label));
+            Expr read;
+            read.type = condition;
+            read.location = at;
+            read.node = PlaceRef{version, anonymous_place("switch condition")};
+            Expr matches;
+            matches.type = truth;
+            matches.location = at;
+            matches.node = Binary{BinaryOp::Equal, {std::move(read), std::move(*literals[index])}};
+            Expr branch;
+            branch.type = chain->type;
+            branch.location = at;
+            branch.node = Conditional{{std::move(matches), std::move(entered[index]), std::move(*chain)}};
+            chain = std::move(branch);
+        }
+        Expr body = std::move(*chain);
+        for (const std::size_t changed : invalidated) {
+            body = unknown(state, changed, std::move(body), header.statement);
+        }
+        return bind(version, anonymous_place("switch condition"), std::move(*value), std::move(body),
+                    header.statement);
+    }
+
+    // What follows a switch, reached by a `break` belonging to it or by the
+    // end of its body, lowered outside the switch: a `break` there belongs to
+    // whatever encloses the switch.
+    std::optional<Expr> leave_switch(const SwitchFrame& frame, const Locals& locals, unsigned depth) {
+        const std::vector<const SwitchFrame*> inside = switch_frames;
+        switch_frames.resize(std::min(switch_frames.size(), frame.switches_outside));
+        std::optional<Expr> after = lower_statements(*frame.exit, locals, depth + 1);
+        switch_frames = inside;
         return after;
     }
 
@@ -7702,6 +8038,8 @@ struct BodyLowering {
             clang_getCursorKind(statements[from.index + 1]) != CXCursor_DeclStmt) {
             return reject("a ghost declaration was not resolved");
         }
+        // No label of a switch follows a ghost declaration in the same body: a
+        // jump to it would bypass the declaration's initialization.
         return lower_ghost_declaration(children_of(statements[from.index + 1]), 0,
                                        Continuation{from.outer, from.statements, from.index + 2}, locals, depth);
     }

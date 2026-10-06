@@ -66,8 +66,9 @@ reject float_comparison 'not modeled' \
 # single route supposing both sides false. Returning `x` there is not justified.
 reject short_circuit_false_route 'return path.*does not satisfy' \
     'verified unsigned f(unsigned x) ensures (result <= 10u) { if (x <= 10u && x != 0u) return 0u; return x; }'
-reject switch_statement 'only if/else' \
-    'verified unsigned f(unsigned x) ensures (result <= 10u) { switch (x) { case 0: return 0u; default: return 10u; } }'
+# A switch is modeled (negative/switch_statements.sh): each case is a path.
+reject switch_statement 'return path.*does not satisfy' \
+    'verified unsigned f(unsigned x) ensures (result == 10u) { switch (x) { case 0: return 0u; default: return 10u; } }'
 reject if_initializer "an 'if' statement with an init-statement is not modeled" \
     'verified unsigned f(unsigned x) ensures (result <= 10u) { if (unsigned y = x; y <= 10u) return y; return 10u; }'
 # libclang lists the init-statement first, where the condition otherwise stands,

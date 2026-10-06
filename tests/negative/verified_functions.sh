@@ -113,8 +113,9 @@ reject conditional_operator_false 'does not satisfy its contract' \
 # `bool` converts by truth, which is not modeled.
 reject explicit_cast 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures (result == x) { return (unsigned)(bool)x; }'
-reject switch_statement "found a 'switch' statement" \
-    'verified unsigned f(unsigned x) ensures (result == x) { switch (x) { default: return x; } }'
+# A switch is modeled (negative/switch_statements.sh): what it returns is checked.
+reject switch_statement 'does not satisfy its contract' \
+    'verified unsigned f(unsigned x) ensures (result == 0u) { switch (x) { default: return x; } }'
 reject try_block "found a 'try' block" \
     'verified unsigned f(unsigned x) ensures (result == x) { try { return x; } catch (...) { return x; } }'
 reject discarded_call 'not declared pure' \
