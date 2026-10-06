@@ -214,16 +214,16 @@ probe-parameters-without-defaults	compiler/frontend/src/projection_declarations.
 probe-default-not-delimited	compiler/frontend/src/projection_declarations.cpp	if (angles != 0 && !parameters.ambiguous.has_value()) {	if (false && angles != 0 && !parameters.ambiguous.has_value()) {	^unit_default_arguments_test$|^negative_default_arguments$
 contract-probe-parameter-count	compiler/elaboration/src/elaborate_contracts.cpp	bool agrees = probe->parameters.size() ==	bool agrees = true || probe->parameters.size() ==	^unit_default_arguments_test$
 contract-probe-parameter-types	compiler/elaboration/src/elaborate_contracts.cpp	const clangbridge::Type& stated = probe->parameters[index].type;	const clangbridge::Type& stated = function.parameters[index].type;	^unit_default_arguments_test$
-range-for-initialization-refused	clang/src/bridge.cpp	if (range_for_initializes(statement)) {	if (false && range_for_initializes(statement)) {	^negative_range_for$
+range-for-initialization-refused	clang/src/range_for.cpp	if (range_for_initializes(statement)) {	if (false && range_for_initializes(statement)) {	^negative_range_for$
 range-for-invariant-before-variable	clang/src/bridge.cpp	named_declarations(initializer).contains(clang_hashCursor(header.range->variable))) {	false) {	^negative_range_for$
-range-for-range-is-a-name	clang/src/bridge.cpp	if (clang_getCursorKind(named) != CXCursor_DeclRefExpr) {	if (false) {	^negative_range_for$|^negative_sequence_boundaries$|^negative_verified_loops$
-range-for-unmodeled-range-refused	clang/src/bridge.cpp	return reject("the range of the range-based for at " + where + " is '" + range.range + "' of type '" +	(void)std::string("the range of the range-based for at " + where + " is '" + range.range + "' of type '" +	^negative_range_for$
-range-for-aggregate-elements-refused	clang/src/bridge.cpp	held.kind != CXType_Invalid && elements.kind != TypeKind::Int && elements.kind != TypeKind::Bool) {	false) {	^negative_range_for$
-range-for-span-parameter-reference	clang/src/bridge.cpp	if (range.reference && range.sequence && !range.region.root.has_value()) {	if (false) {	^negative_range_for$
-range-for-storage-kept	clang/src/bridge.cpp	locals[root].version == frame.head[root].version) {	true) {	^negative_range_for$|^negative_sequence_attacks$
-range-for-element-alias-carried	clang/src/bridge.cpp	    if (!range.writable) {	    if (true) {	^e2e_range_for$
+range-for-range-is-a-name	clang/src/range_for.cpp	if (clang_getCursorKind(named) != CXCursor_DeclRefExpr) {	if (false) {	^negative_range_for$|^negative_sequence_boundaries$|^negative_verified_loops$
+range-for-unmodeled-range-refused	clang/src/range_for.cpp	return reject("the range of the range-based for at " + where + " is '" + range.range + "' of type '" +	(void)std::string("the range of the range-based for at " + where + " is '" + range.range + "' of type '" +	^negative_range_for$
+range-for-aggregate-elements-refused	clang/src/range_for.cpp	held.kind != CXType_Invalid && elements.kind != TypeKind::Int && elements.kind != TypeKind::Bool) {	false) {	^negative_range_for$
+range-for-span-parameter-reference	clang/src/range_for.cpp	if (range.reference && range.sequence && !range.region.root.has_value()) {	if (false) {	^negative_range_for$
+range-for-storage-kept	clang/src/range_for.cpp	locals[root].version == frame.head[root].version) {	true) {	^negative_range_for$|^negative_sequence_attacks$
+range-for-element-alias-carried	clang/src/range_for.cpp	    if (!range.writable) {	    if (true) {	^e2e_range_for$
 range-for-generated-measure	clang/src/bridge.cpp	measures.push_back(range_measure(*header.range, frame.head));	(void)frame;	^e2e_range_for$
-range-for-condition-bounds-position	clang/src/bridge.cpp	below.op = BinaryOp::Less;	below.op = BinaryOp::LessEqual;	^e2e_range_for$
+range-for-condition-bounds-position	clang/src/range_for.cpp	below.op = BinaryOp::Less;	below.op = BinaryOp::LessEqual;	^e2e_range_for$
 operator-parameters-after-operator	compiler/frontend/src/recognizer_declarators.cpp	return at + 2;	return name + 1;	^unit_recognizer_test$|^negative_verified_methods$
 operator-conversion-function-refused	compiler/frontend/src/recognizer_state.hpp	if (operator_function && conversion_function(tokens, *name)) {	if (false && conversion_function(tokens, *name)) {	^unit_recognizer_test$
 call-element-beside-reallocatable-container	clang/src/calls.cpp	(container.storage != owner && !may_alias(holder, state[owner]))) {	true || (container.storage != owner && !may_alias(holder, state[owner]))) {	^negative_sequence_boundaries$

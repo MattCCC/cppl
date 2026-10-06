@@ -88,6 +88,7 @@ implementation:
     - clang/src/calls.cpp
     - clang/src/formed_places.cpp
     - clang/src/lowering.cpp
+    - clang/src/range_for.cpp
     - clang/src/refinements.cpp
     - clang/src/sequence_statements.cpp
     - clang/src/sequences.cpp

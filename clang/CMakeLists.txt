@@ -30,6 +30,7 @@ add_library(cppl_clang STATIC
     src/proof_instantiation.cpp
     src/proof_instantiation_cursors.cpp
     src/proof_instantiation_hazards.cpp
+    src/range_for.cpp
     src/refinements.cpp
     src/selections.cpp
     src/sequence_statements.cpp

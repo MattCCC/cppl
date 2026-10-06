@@ -78,6 +78,7 @@ implementation:
   clang:
     - clang/src/bridge.cpp
     - clang/src/control.cpp
+    - clang/src/range_for.cpp
     - clang/src/write_scan.cpp
   elaboration:
     - compiler/elaboration/src/elaborate_contracts.cpp
