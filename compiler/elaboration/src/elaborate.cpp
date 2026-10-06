@@ -409,6 +409,25 @@ class ExpressionElaborator {
             result.node = vir::Projection{projection->index, {std::move(*operand)}};
             return result;
         }
+        // A struct value assembled from its members keeps one operand per
+        // component of its type, in order; anything else would suppose a
+        // member's value of another member (TRUST.md TCB-AGGREGATE-001).
+        if (const auto* aggregate = std::get_if<clangbridge::Aggregate>(&expr.node)) {
+            if (!type->is_value() ||
+                aggregate->operands.size() != std::get<vir::ValueType>(type->node).projections.size()) {
+                failure_ = Failure{"malformed struct value", expr.location};
+                return std::nullopt;
+            }
+            vir::Aggregate converted;
+            for (const auto& operand : aggregate->operands) {
+                auto value = convert(operand);
+                if (!value)
+                    return std::nullopt;
+                converted.operands.push_back(std::move(*value));
+            }
+            result.node = std::move(converted);
+            return result;
+        }
         if (const auto* quantified = std::get_if<clangbridge::Universal>(&expr.node)) {
             if (quantified->binders.empty() || quantified->body.size() != 1) {
                 failure_ = Failure{"malformed universal proposition", expr.location};

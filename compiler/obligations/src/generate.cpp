@@ -352,6 +352,27 @@ class TermLowering {
             return kernel::Term::call(definition->second, std::move(arguments));
         }
 
+        // A struct value assembled from its members has no term of its own: the
+        // core builds no value from components. The path that evaluates it binds
+        // a fresh value whose projections it supposes, and that binder is what it
+        // denotes there; anywhere else it denotes nothing, and is refused rather
+        // than read as some other value (TRUST.md TCB-AGGREGATE-001).
+        if (std::holds_alternative<vir::Aggregate>(expr.node)) {
+            if (calls_ != nullptr) {
+                const auto binding = calls_->find(expr.id.value);
+                if (binding != calls_->end()) {
+                    if (binding->second >= parameter_count_) {
+                        return fail("an assembled struct value is outside its logical scope", location);
+                    }
+                    return kernel::Term::variable(kernel::parameter_reference(parameter_count_, binding->second));
+                }
+            }
+            return fail("a struct value assembled from its members has no term outside a path that evaluates it: "
+                        "the formal core builds no value from components, so such a value is verified path by path "
+                        "and never unfolded",
+                        location);
+        }
+
         if (const auto* binary = std::get_if<vir::Binary>(&expr.node)) {
             // `&&` and `||` state a proposition, and a proposition is not a
             // value: nothing computes one. Where a value is required - a
@@ -798,6 +819,10 @@ void collect_callees(const vir::Expr& expr, std::set<std::string>& callees) {
     }
     if (const auto* conversion = std::get_if<vir::Conversion>(&expr.node)) {
         for (const auto& operand : conversion->operands)
+            collect_callees(operand, callees);
+    }
+    if (const auto* aggregate = std::get_if<vir::Aggregate>(&expr.node)) {
+        for (const auto& operand : aggregate->operands)
             collect_callees(operand, callees);
     }
     if (const auto* loop = std::get_if<vir::Loop>(&expr.node)) {

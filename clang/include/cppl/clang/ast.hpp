@@ -188,6 +188,16 @@ struct Element {
     std::vector<Expr> operands; // subject, index
 };
 
+// A value of a record or array type assembled from the values its members hold
+// where it is read: one operand per component of the enclosing `Expr`'s type, in
+// component order, a member that is itself a record or an array being an
+// `Aggregate` of its own. The bridge forms one only for an object it tracks as
+// one place per scalar leaf, from every one of those places, so nothing about
+// the object is left out (TRUST.md TCB-AGGREGATE-001).
+struct Aggregate {
+    std::vector<Expr> operands; // one per component, in order
+};
+
 struct FormalEquality {
     Type operand_type;
     std::vector<Expr> operands;
@@ -423,7 +433,8 @@ struct Expr {
     source::SourceLocation location;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, PlaceVersion, PlaceRef, Loop, Iterate,
                  Projection, Element, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
-                 ElementBound, PathContradiction, CaseSplit, CaseBinder, UnsafeRegion, Minus, Conversion, Unsupported>
+                 ElementBound, PathContradiction, CaseSplit, CaseBinder, UnsafeRegion, Minus, Conversion, Aggregate,
+                 Unsupported>
         node;
 };
 

@@ -235,6 +235,14 @@ std::string describe(const Expr& expr) {
             } else if constexpr (std::is_same_v<Node, Conversion>) {
                 // Spelled with its target type above, where the type is known.
                 return node.operands.size() == 1 ? describe(node.operands[0]) : "<malformed-conversion>";
+            } else if constexpr (std::is_same_v<Node, Aggregate>) {
+                // Spelled as the braced list of member values it was assembled
+                // from, which is what a diagnostic needs to show.
+                std::string text = "{";
+                for (std::size_t index = 0; index < node.operands.size(); ++index) {
+                    text += (index != 0 ? ", " : "") + describe(node.operands[index]);
+                }
+                return text + "}";
             } else {
                 static_assert(std::is_same_v<Node, Binary>, "every VIR alternative is described by name");
                 if (node.operands.size() != 2) {

@@ -127,10 +127,13 @@ void collect(const vir::Expr& expression, Guards& guards, std::vector<Definednes
     const bool value = std::visit(
         [](const auto& node) {
             using Node = std::decay_t<decltype(node)>;
+            // A struct value assembled from its members evaluates each member's
+            // value, so an operation among them owes what it owes anywhere.
             return std::is_same_v<Node, vir::Binary> || std::is_same_v<Node, vir::Negation> ||
                    std::is_same_v<Node, vir::Minus> || std::is_same_v<Node, vir::Conversion> ||
                    std::is_same_v<Node, vir::Call> || std::is_same_v<Node, vir::Projection> ||
-                   std::is_same_v<Node, vir::Element> || std::is_same_v<Node, vir::FormalEquality>;
+                   std::is_same_v<Node, vir::Element> || std::is_same_v<Node, vir::FormalEquality> ||
+                   std::is_same_v<Node, vir::Aggregate>;
         },
         expression.node);
     if (!value) {

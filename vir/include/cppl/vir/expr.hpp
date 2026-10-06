@@ -133,6 +133,24 @@ struct Element {
     friend bool operator==(const Element&, const Element&) = default;
 };
 
+// A value of a record or array type assembled from the values of its members:
+// one operand per component of the expression's type, in component order, a
+// member that is itself a record or an array being an `Aggregate` of its own
+// (TRUST.md TCB-AGGREGATE-001).
+//
+// The formal core has no term that builds a value from its components, and none
+// is added: a value of such a type is observed only by projection (KERNEL.md
+// 2, 4). So this denotes no term on its own. A path that evaluates it binds a
+// fresh value of the type and supposes, of each scalar leaf, that its
+// projection is the operand's value. That supposes only that an object of the
+// type holding those member values exists, which holds of every type whose
+// members are all modeled, the only ones the bridge assembles. Anywhere the
+// value is not bound so, it has no term, and lowering it fails closed.
+struct Aggregate {
+    std::vector<Expr> operands; // one per component, in order
+    friend bool operator==(const Aggregate&, const Aggregate&) = default;
+};
+
 struct FormalEquality {
     Type operand_type;
     std::vector<Expr> operands;
@@ -336,7 +354,7 @@ struct Expr {
     Provenance provenance;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, PlaceVersion, PlaceRef, Loop, Iterate,
                  Projection, Element, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
-                 ElementBound, PathContradiction, CaseSplit, UnsafeRegion, Minus, Conversion>
+                 ElementBound, PathContradiction, CaseSplit, UnsafeRegion, Minus, Conversion, Aggregate>
         node;
 
     friend bool operator==(const Expr&, const Expr&) = default;
@@ -352,7 +370,7 @@ struct Expr {
 // alternative fail here first, so the author has to visit every dispatch site
 // and decide what the new node means to each (AGENTS.md 7 "exhaustive
 // handling"). Update the count only together with those sites.
-static_assert(std::variant_size_v<decltype(Expr::node)> == 24,
+static_assert(std::variant_size_v<decltype(Expr::node)> == 25,
               "a VIR expression alternative was added or removed: review every dispatch over Expr::node, "
               "including describe() in vir.cpp, lowering in obligations/generate.cpp, the walk in "
               "obligations/contracts.cpp, and conversion in elaboration/elaborate.cpp");
