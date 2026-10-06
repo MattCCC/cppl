@@ -488,6 +488,17 @@ declaration is written in, and only the projections of Laws and proofs nominate
 formal namespaces (`SPEC.md` `LAW-008`, `TRUST.md` `TCB-SOURCE-009`). Every
 other generated declaration has a reserved name a unit may not spell.
 
+**[ARCH-PROJ-005]** Analysis-only text MUST NOT instantiate what the runtime
+projection does not. An instantiation outlives the text that causes it, so a
+template instantiated only by a probe changes the ordinary C++ after it.
+
+The projector records the runs of the analysis text the runtime text lacks
+(`Projection::proof_only`), and the bridge refuses any of them whose Clang
+resolution reaches a template of the program's own, a member of one's
+specialization, or a standard template at such an argument, before anything
+is lowered (`clang/src/proof_instantiation.cpp`, `SPEC.md` `ERASE-019`,
+`TRUST.md` `TCB-SOURCE-010`).
+
 ---
 
 # 9. Analysis-only semantic probes

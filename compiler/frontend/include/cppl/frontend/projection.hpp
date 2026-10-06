@@ -237,6 +237,13 @@ struct Projection {
         source::ByteSpan original;
     };
     std::vector<Copy> copies;
+
+    // Every run of `analysis` the program run does not have, in order: all the
+    // projector generated, and each ghost declaration, which the analysis text
+    // keeps as written and the runtime text blanks. Ordinary C++ found here
+    // exists only in the program verified, so nothing it instantiates may
+    // change what the C++ around it means (SPEC.md ERASE-019).
+    std::vector<source::ByteSpan> proof_only;
 };
 
 struct ProjectionOptions {

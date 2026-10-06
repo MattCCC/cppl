@@ -7,7 +7,8 @@
 # AGENTS.md 14).
 add_library(cppl_clang STATIC
     src/bridge.cpp
-    src/editor.cpp)
+    src/editor.cpp
+    src/proof_instantiation.cpp)
 
 target_include_directories(cppl_clang PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)

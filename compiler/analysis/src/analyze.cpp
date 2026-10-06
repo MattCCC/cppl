@@ -53,6 +53,17 @@ void select(clangbridge::ParseRequest& request, const frontend::Projection& proj
     }
     for (const auto& law : projection.specification_functions)
         request.selection.offsets.push_back(law.analysis_offset);
+    request.selection.proof_only = projection.proof_only;
+    request.selection.defined_clause_probes.clear();
+    for (const frontend::ContractFunctions& contract : projection.contract_functions) {
+        if (contract.function_index >= syntax.verified_functions.size() ||
+            syntax.verified_functions[contract.function_index].body_open == 0)
+            continue;
+        auto& probes = request.selection.defined_clause_probes;
+        probes.push_back(contract.postcondition_name);
+        probes.insert(probes.end(), contract.precondition_names.begin(), contract.precondition_names.end());
+        probes.insert(probes.end(), contract.measure_names.begin(), contract.measure_names.end());
+    }
 }
 
 std::string spelling(const decomposition::ProofBinding& binding, const vir::Type& subject) {

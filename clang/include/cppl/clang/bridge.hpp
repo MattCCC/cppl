@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cppl/clang/ast.hpp"
+#include "cppl/source/location.hpp"
 #include "cppl/source/projection.hpp"
 
 #include <cstddef>
@@ -52,6 +53,18 @@ struct Selection {
         std::size_t alias_offset = 0;
     };
     std::vector<Refinement> refinements;
+
+    // Every run of the analysis text the program run lacks, as ascending
+    // offsets of that text. Nothing ordinary C++ there names may be a template
+    // whose instantiation could change what the rest of the unit means
+    // (SPEC.md ERASE-019). Empty for a text that is a program as written.
+    std::vector<source::ByteSpan> proof_only;
+
+    // The clause probes of the verified functions this unit defines. Each
+    // restates its function's parameters and return type, which the definition
+    // standing before it has completed already, so the restatement completes
+    // nothing the program run does not. A declaration completes none of them.
+    std::vector<std::string> defined_clause_probes;
 };
 
 struct ParseRequest {

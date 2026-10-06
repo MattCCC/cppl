@@ -985,7 +985,9 @@ declaration in its place would be. A qualified name names no Law. A contract,
 loop clause or refinement predicate resolves its names as ordinary C++ does,
 and names no Law. An
 implementation that cannot keep a Law out of ordinary lookup MUST refuse the
-unit rather than verify a program different from the one it runs.
+unit rather than verify a program different from the one it runs. What a Law's
+text names must not change that program either: ERASE-019 bounds what it may
+instantiate.
 
 ---
 
@@ -4225,6 +4227,37 @@ Sem_runtime(p) = Sem_runtime(erase(p))
 
 [ERASE-006] C++L verification may affect whether a program is accepted. It MUST NOT otherwise
 change what an accepted program does at runtime.
+
+[ERASE-019] Proof-only text -- a Law, a proof, a contract or loop clause, a refinement's
+predicate, a ghost declaration, a claim that a path cannot occur and a case
+split -- is C++ only in the program verified. It MUST NOT make that program
+instantiate a template, or deduce one's arguments, where the program run does
+not: a class template's specialization is instantiated once, at its first use,
+and what it then declares, such as a friend's definition, and what it computes
+stay for the rest of the unit, so an instantiation only proof-only text makes
+changes what ordinary C++ after it means in the program verified alone. An
+implementation that cannot establish this for a construct MUST refuse the unit.
+This implementation refuses proof-only text that names, calls, reads a member of,
+has a value of, or may consider in overload resolution:
+
+- a template the program declares, or a specialization or member of one, except
+  a class template that holds only data members, member types and member
+  enumerations of literal values -- with no base, friend, member function,
+  constraint, default argument or partial specialization, nor, where its name
+  is written, any deduction guide -- and an alias template that only forms a
+  type, whose meaning is fixed by their arguments;
+- a class of the program's own that declares a member template or befriends a
+  template, or whose bases, data members, constructors, conversions, destructor
+  or assignment involve what this rule refuses;
+- a specialization of the standard library at an argument that involves what
+  this rule refuses.
+
+A clause's restatement of its function's parameters and return type is not held
+to the rule where it completes nothing the function's declaration has not
+completed before it: a parameter taken by reference, and every parameter of a
+function the unit defines. The standard library's templates are trusted to mean
+the same wherever they are instantiated at what the rule admits (TRUST.md
+`TCB-SOURCE-010`).
 
 [ERASE-007] Verification-only constructs MUST NOT introduce hidden runtime assertions, proof
 interpreters, proof tables, theorem dispatch, proof-only branches or loops,

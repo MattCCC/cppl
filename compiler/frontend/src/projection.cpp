@@ -1750,6 +1750,38 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     }
     append_original(text.size());
 
+    // What the program run lacks: every run between the copied segments, and
+    // each ghost declaration where a segment copied it (SPEC.md ERASE-019).
+    std::vector<source::ByteSpan> proof_only;
+    std::size_t copied_up_to = 0;
+    for (const Projection::Segment& segment : projection.segments) {
+        if (segment.analysis > copied_up_to) {
+            proof_only.push_back(source::ByteSpan{copied_up_to, segment.analysis - copied_up_to});
+        }
+        copied_up_to = segment.analysis + segment.length;
+    }
+    if (projection.analysis.size() > copied_up_to) {
+        proof_only.push_back(source::ByteSpan{copied_up_to, projection.analysis.size() - copied_up_to});
+    }
+    for (const GhostDeclaration& ghost : syntax.ghost_declarations) {
+        for (const Projection::Segment& segment : projection.segments) {
+            const std::size_t begin = std::max(ghost.erased.offset, segment.original);
+            const std::size_t end = std::min(ghost.erased.end(), segment.original + segment.length);
+            if (begin < end) {
+                proof_only.push_back(source::ByteSpan{segment.analysis + (begin - segment.original), end - begin});
+            }
+        }
+    }
+    std::ranges::sort(proof_only, {}, &source::ByteSpan::offset);
+    for (const source::ByteSpan& span : proof_only) {
+        if (!projection.proof_only.empty() && span.offset <= projection.proof_only.back().end()) {
+            source::ByteSpan& last = projection.proof_only.back();
+            last.length = std::max(last.end(), span.end()) - last.offset;
+        } else {
+            projection.proof_only.push_back(span);
+        }
+    }
+
     refuse_misplaced_directives(stream, syntax, projection.diagnostics);
     return projection;
 }

@@ -5,6 +5,7 @@
 #include "cppl/source/projection.hpp"
 #include "cppl/source/representation.hpp"
 #include "cppl/source/storage.hpp"
+#include "proof_instantiation.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -9118,6 +9119,16 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
         reported.push_back(refusal);
         result.has_errors = true;
         result.diagnostics.push_back({Severity::Error, refusal.first, refusal.second});
+    }
+    // Nothing proof-only text names may be instantiated in the program verified
+    // where the program run does not instantiate it (SPEC.md ERASE-019). A unit
+    // Clang already refused is not asked: its recovery AST is never verified.
+    if (!result.has_errors) {
+        for (Diagnostic& refusal :
+             detail::proof_only_instantiations(unit, request.selection, collector.specializations)) {
+            result.has_errors = true;
+            result.diagnostics.push_back(std::move(refusal));
+        }
     }
     for (const CXCursor& specialization : collector.specializations) {
         collector.selected.push_back(specialization);

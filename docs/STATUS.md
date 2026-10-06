@@ -1942,6 +1942,21 @@ namespace nested in that one, and from the namespace enclosing an unnamed or
 inline one it is declared in; a qualified name such as `geo::area(x)` is
 refused as naming nothing.
 
+Nor does proof-only text instantiate what the program does not (`SPEC.md`
+`ERASE-019`). A Law, a proof's statements, a contract or loop clause, a
+refinement predicate, a ghost declaration, a claim or a case split that names,
+calls or reads a template of the program's own, or a class with a member
+template, or a standard template at one, or calls a function a template of the
+program's shares a name with, is refused where it does so: a class template's
+instantiation is kept for the rest of the unit, and a friend it defines changed
+a detection idiom in the program verified alone. Standard templates, templates
+of data alone and the program's own classes stay usable in all of them, and a
+clause restates the parameters of a function it is defined with
+(`tests/negative/proof_instantiation.sh`). The rule is conservative: a use of a
+specialization the program has already instantiated before it is refused too.
+The standard library is trusted not to change with where it is instantiated at
+the program's types (`TRUST.md` `TCB-SOURCE-010`).
+
 The check trusts the recognizer's spans. What shows a span wrong is comparison
 with programs written without C++L: each construct family has a C++L fixture and
 its erasure written by hand, and the two must print the same and compile to

@@ -84,6 +84,7 @@ covered	integration/text.cpp	negative/integration_text_changed.cpp	negative/inte
 covered	memory_capabilities.cpp	negative/memory_capability_empty_region.cpp	negative/memory_capabilities.sh	-	-
 covered	omitted_case.cpp	negative/rejected_omissions.cpp	negative/contradictions.sh	-	-
 covered	post_state_calls.cpp	negative/post_state_after_returned_call.cpp	negative/verified_storage.sh	-	-
+covered	proof_instantiation.cpp	negative/proof_instantiation_law.cpp	negative/proof_instantiation.sh	-	-
 covered	runtime_validation.cpp	negative/runtime_check_failure_path.cpp	negative/runtime_validation.sh	-	-
 covered	sequence_attacks.cpp	negative/sequence_attack_stale_after_reserve.cpp	negative/sequence_attacks.sh	-	-
 covered	sequence_attacks_cross_tu/client.cpp	negative/sequence_attack_xtu_stale.cpp	negative/sequence_attacks.sh	-	-

@@ -1121,3 +1121,64 @@ CPPL_TEST(the_parameters_and_expressions_of_a_formal_declaration_are_copies) {
     // A proof that takes no parameters has nothing copied for them.
     CPPL_CHECK_EQ(copies_of(syntax.proofs[1].parameters), 0);
 }
+
+// SPEC: ERASE-019
+// The proof-only text of the analysis is exactly what the program run lacks:
+// everything generated, and a ghost declaration, which the analysis keeps as
+// written. Nothing the program run has is in it, so nothing ordinary is held to
+// the rule for proof-only text, and nothing proof-only escapes it.
+CPPL_TEST(the_proof_only_text_is_what_the_program_run_lacks) {
+    const std::string text = "# 1 \"ghost.cpp\"\n"
+                             "law reflexive(unsigned x)\n"
+                             "    proves (x == x);\n"
+                             "verified unsigned f(unsigned x)\n"
+                             "    ensures (result == x)\n"
+                             "{\n"
+                             "    ghost unsigned seen = x + 1u;\n"
+                             "    unsigned kept = x;\n"
+                             "    return kept;\n"
+                             "}\n"
+                             "int main() { return 0; }\n";
+    cppl::diagnostics::Engine engine;
+    const auto stream = cppl::frontend::lex(text, "ghost.cpp");
+    const auto syntax = cppl::frontend::recognize(stream, engine);
+    CPPL_CHECK(!engine.has_errors());
+    const auto projection = cppl::frontend::project(stream, syntax, {});
+    const auto& spans = projection.proof_only;
+    const auto proof_only = [&spans](std::size_t offset) {
+        return std::ranges::any_of(spans,
+                                   [offset](const auto& span) { return offset >= span.offset && offset < span.end(); });
+    };
+    // Ordered, disjoint and not adjacent, as the bridge searches them.
+    for (std::size_t index = 1; index < spans.size(); ++index) {
+        CPPL_CHECK(spans[index - 1].end() < spans[index].offset);
+    }
+    // Every byte outside the copied segments is generated, and proof-only.
+    std::vector<bool> copied(projection.analysis.size(), false);
+    for (const auto& segment : projection.segments) {
+        for (std::size_t offset = segment.analysis; offset < segment.analysis + segment.length; ++offset) {
+            copied[offset] = true;
+        }
+    }
+    for (std::size_t offset = 0; offset < projection.analysis.size(); ++offset) {
+        if (!copied[offset]) {
+            CPPL_CHECK(proof_only(offset));
+        }
+    }
+    // The ghost declaration is copied as written, and proof-only all the same.
+    const std::size_t ghost = projection.analysis.find("seen = x + 1u;");
+    CPPL_CHECK(ghost != std::string::npos);
+    CPPL_CHECK(copied[ghost]);
+    CPPL_CHECK(proof_only(ghost));
+    CPPL_CHECK(proof_only(ghost + std::string_view("seen = x + 1u").size()));
+    // What the program run has is not.
+    for (const std::string_view runtime : {"unsigned kept = x;", "return kept;", "int main() { return 0; }"}) {
+        const std::size_t at = projection.analysis.find(runtime);
+        CPPL_CHECK(at != std::string::npos);
+        for (std::size_t offset = at; offset < at + runtime.size(); ++offset) {
+            CPPL_CHECK(!proof_only(offset));
+        }
+    }
+    // The Law's projection is.
+    CPPL_CHECK(proof_only(projection.analysis.find("x == x")));
+}
