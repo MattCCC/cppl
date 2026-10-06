@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -155,6 +156,41 @@ CPPL_TEST(a_cppl_word_before_specifiers_or_an_operator_is_the_type_it_names) {
         CPPL_CHECK(result.engine.diagnostics().empty());
         CPPL_CHECK(result.syntax.empty());
     }
+}
+
+// SPEC: CLASS-008
+// An operator function's parameter list opens after its operator: the `()` of
+// `operator()` and the `[]` of `operator[]` are its name, never its parameter
+// list, so the declarations its contract is read from take its parameters. An
+// operator function no C++L marks stays ordinary C++.
+CPPL_TEST(an_operator_function_is_verified_over_its_own_parameters) {
+    const std::string text = "struct A {\n"
+                             "    verified unsigned operator()(unsigned k) const ensures (result == k) { return k; }\n"
+                             "    verified unsigned operator[](unsigned i) const ensures (result == i) { return i; }\n"
+                             "};\n"
+                             "verified unsigned operator+(A a, unsigned b) ensures (result == b) { return b; }\n";
+    const cppl::frontend::TokenStream stream = cppl::frontend::lex(text, "main.cpp");
+    cppl::diagnostics::Engine engine;
+    const cppl::frontend::Syntax syntax = cppl::frontend::recognize(stream, engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK_EQ(syntax.verified_functions.size(), std::size_t{3});
+    const std::vector<std::pair<std::string, std::string>> expected = {
+        {"operator()", "unsigned k"}, {"operator[]", "unsigned i"}, {"operator+", "A a, unsigned b"}};
+    for (std::size_t index = 0; index < expected.size() && index < syntax.verified_functions.size(); ++index) {
+        const cppl::frontend::VerifiedFunction& verified = syntax.verified_functions[index];
+        CPPL_CHECK_EQ(verified.function_name, expected[index].first);
+        CPPL_CHECK_EQ(std::string(stream.spelling(verified.parameters)), expected[index].second);
+    }
+
+    Recognized ordinary;
+    recognize("struct B {\n"
+              "    bool operator==(const B&) const = default;\n"
+              "    unsigned operator()(unsigned k) const { return k; }\n"
+              "    unsigned operator[](unsigned i) const { return i; }\n"
+              "};\n",
+              ordinary);
+    CPPL_CHECK(ordinary.engine.diagnostics().empty());
+    CPPL_CHECK(ordinary.syntax.empty());
 }
 
 // SPEC: WORD-015

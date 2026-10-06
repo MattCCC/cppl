@@ -245,4 +245,56 @@ refuse_unit methods_cross_tu_no_interface \
     "verified function 'Counter::reset' is declared but not defined in this translation unit, and no imported verification interface records its contract" \
     "$cross/client.cpp"
 
+# SPEC: CLASS-008, CLASS-015
+# An operator function is verified over its own parameters: the `()` of
+# `operator()` and the `[]` of `operator[]` are its name, never its parameter
+# list, so its contract is stated over what it takes. Its false twin is refused
+# as any member function's is, and a call through its operator from a verified
+# body is refused by name rather than read as another call.
+operators="$run/methods_operator_functions"
+cat > "$operators.cpp" <<'CPP'
+struct Adder {
+    unsigned base;
+    verified unsigned operator()(unsigned k) const
+        expects (base < 100u && k < 100u)
+        ensures (result == base + k)
+    {
+        return base + k;
+    }
+};
+struct Table {
+    unsigned cells[4];
+    verified unsigned operator[](unsigned i) const
+        expects (i < 4u)
+        ensures (result == result)
+    {
+        return cells[i];
+    }
+};
+struct Money {
+    unsigned cents;
+};
+verified unsigned operator+(Money m, unsigned b)
+    ensures (result == b)
+{
+    return b;
+}
+int main() {
+    Adder add{1u};
+    Table table{{1u, 2u, 3u, 4u}};
+    return add(3u) == 4u && table[1u] == 2u && (Money{5u} + 3u) == 3u ? 0 : 1;
+}
+CPP
+"$CPPL" -std=c++20 --cppl-trust-report "$operators.cpp" -o "$operators" > "$operators.log" 2>&1 ||
+    { cat "$operators.log" >&2; echo "verified operator functions were refused" >&2; exit 1; }
+for function in 'Adder::operator()' 'Table::operator[]' 'operator+'; do
+    grep -qF "contract of $function (" "$operators.log" ||
+        { cat "$operators.log" >&2; echo "the contract of $function was not proven" >&2; exit 1; }
+done
+"$operators"
+refuse methods_operator_false_contract \
+    "methods_operator_false_contract.cpp:11:9: error [kernel-rejection]: return path 'Adder::operator() path 1' does not satisfy its contract"
+refuse methods_operator_call \
+    "an overloaded operator and a lambda's call operator are not modeled"
+
 echo 'member functions fail closed: false claims about objects, aliased and stale members, virtual dispatch and unmodeled objects'

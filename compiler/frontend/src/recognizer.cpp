@@ -1458,12 +1458,61 @@ constexpr auto kNotDeclaratorNames = std::to_array<std::string_view>(
     {"alignas", "alignof", "catch", "co_await", "co_return", "co_yield", "delete", "for", "if", "new", "noexcept",
      "requires", "return", "sizeof", "static_assert", "switch", "throw", "typeid", "while"});
 
+// Where the parameter list of the function declarator named at `name` opens: the
+// token after the name, or, for an operator function, the token after the whole
+// operator-function-id. `operator()` and `operator[]` hold brackets of their own,
+// which are part of the name and never the parameter list; a conversion
+// function's name runs to the first `(`.
+std::size_t declarator_parameters(const std::vector<Token>& tokens, std::size_t name) {
+    if (!tokens[name].is_identifier("operator")) {
+        return name + 1;
+    }
+    const std::size_t at = name + 1;
+    if (at + 1 < tokens.size() && ((tokens[at].is_punctuator("(") && tokens[at + 1].is_punctuator(")")) ||
+                                   (tokens[at].is_punctuator("[") && tokens[at + 1].is_punctuator("]")))) {
+        return at + 2;
+    }
+    if (at < tokens.size() && (tokens[at].is_identifier("new") || tokens[at].is_identifier("delete"))) {
+        return at + 2 < tokens.size() && tokens[at + 1].is_punctuator("[") && tokens[at + 2].is_punctuator("]")
+                   ? at + 3
+                   : at + 1;
+    }
+    if (at < tokens.size() && tokens[at].kind == TokenKind::Punctuator && !tokens[at].is_punctuator("(")) {
+        return at + 1;
+    }
+    std::size_t open = at;
+    while (open < tokens.size() && tokens[open].kind != TokenKind::EndOfFile && !tokens[open].is_punctuator("(")) {
+        ++open;
+    }
+    return open;
+}
+
+// The name a declarator at `name` declares, as diagnostics spell it: the
+// identifier, or an operator function's whole operator-function-id,
+// `operator()`, `operator[]`, `operator+`.
+std::string declarator_name_text(const std::vector<Token>& tokens, std::size_t name) {
+    std::string text(tokens[name].text);
+    const std::size_t end = std::min(declarator_parameters(tokens, name), tokens.size());
+    for (std::size_t at = name + 1; at < end; ++at) {
+        if (tokens[at].kind != TokenKind::Punctuator) {
+            text += ' ';
+        }
+        text += tokens[at].text;
+    }
+    return text;
+}
+
 std::optional<std::size_t> find_declarator_name(const std::vector<Token>& tokens, std::size_t index) {
     std::size_t depth = 0;
     for (std::size_t cursor = index + 1; cursor < tokens.size(); ++cursor) {
         const Token& token = tokens[cursor];
         if (token.kind == TokenKind::EndOfFile) {
             break;
+        }
+        // An operator function is named by `operator` and the symbol after it,
+        // whatever brackets that symbol holds.
+        if (depth == 0 && token.is_identifier("operator")) {
+            return cursor;
         }
         if (token.is_punctuator("(")) {
             if (depth == 0 && cursor > index + 1 && tokens[cursor - 1].kind == TokenKind::Identifier &&
@@ -1574,7 +1623,7 @@ bool try_explicit_instantiation(const TokenStream& stream, const std::vector<Tok
         return false;
     }
     const std::size_t start = qualified_name_start(tokens, *name);
-    instantiation.function_name = std::string(tokens[*name].text);
+    instantiation.function_name = declarator_name_text(tokens, *name);
     instantiation.location = stream.location_of(tokens[*name]);
     instantiation.id_expression =
         source::ByteSpan{tokens[start].span.offset, tokens[parameters].span.offset - tokens[start].span.offset};
@@ -1658,7 +1707,7 @@ std::size_t skip_ordinary_declarator_suffix(const std::vector<Token>& tokens, st
 // A clause stands only where the declarator's ordinary suffix ends, so only
 // that one position is examined.
 bool has_specification_clause(const std::vector<Token>& tokens, std::size_t name_index, std::size_t& clause_index) {
-    const std::size_t open = name_index + 1;
+    const std::size_t open = declarator_parameters(tokens, name_index);
     if (open >= tokens.size() || !tokens[open].is_punctuator("(")) {
         return false;
     }
@@ -1768,7 +1817,7 @@ bool has_cppl_keyword(const std::vector<Token>& tokens, std::size_t index, std::
 bool record_unchecked_clauses(const TokenStream& stream, std::size_t keyword_index, std::size_t name_index,
                               diagnostics::Engine& engine, Syntax& syntax) {
     const std::vector<Token>& tokens = stream.tokens();
-    const std::size_t open = name_index + 1;
+    const std::size_t open = declarator_parameters(tokens, name_index);
     const std::size_t close = matching_parenthesis(tokens, open);
     if (close >= tokens.size()) {
         return false;
@@ -1890,9 +1939,23 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
     }
 
     // An explicit specialization's declarator is `name<args>(...)`, so the
-    // parameter list opens after the arguments rather than after the name.
-    std::size_t open = *name + 1;
-    if (open < tokens.size() && tokens[open].is_punctuator("<")) {
+    // parameter list opens after the arguments rather than after the name, and
+    // an operator function's opens after its operator: the `()` of
+    // `operator()` is its name, not its parameters.
+    const bool operator_function = tokens[*name].is_identifier("operator");
+    // A conversion function names a type where an operator function names its
+    // operator, and states no return type of its own for `result` to have.
+    if (operator_function && *name + 1 < tokens.size() && tokens[*name + 1].kind != TokenKind::Punctuator &&
+        !tokens[*name + 1].is_identifier("new") && !tokens[*name + 1].is_identifier("delete") &&
+        !tokens[*name + 1].is_identifier("co_await") && tokens[*name + 1].kind != TokenKind::StringLiteral) {
+        report(engine, stream, tokens[*name], diagnostics::Category::UnsupportedSemantics,
+               "a verified conversion function is not modeled",
+               "a conversion function states no return type before its name, so a contract would have no "
+               "'result' type to read; state the property on a member function instead");
+        return false;
+    }
+    std::size_t open = declarator_parameters(tokens, *name);
+    if (!operator_function && open < tokens.size() && tokens[open].is_punctuator("<")) {
         const std::size_t arguments_close = matching_angle_bracket(tokens, open);
         if (arguments_close >= tokens.size()) {
             return false;
@@ -1954,7 +2017,7 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
         verified.clauses, [](const Clause& clause) { return clause.kind == ClauseKind::Ensures; });
     if (ensures_count > 1) {
         report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
-               "verified function '" + std::string(tokens[*name].text) + "' has " + std::to_string(ensures_count) +
+               "verified function '" + declarator_name_text(tokens, *name) + "' has " + std::to_string(ensures_count) +
                    " ensures clauses",
                "a verified function has exactly one ensures clause");
         return false;
@@ -1962,7 +2025,7 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
     const bool declaration_only = cursor < tokens.size() && tokens[cursor].is_punctuator(";");
     if (cursor >= tokens.size() || (!tokens[cursor].is_punctuator("{") && !declaration_only)) {
         report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-               "verified function '" + std::string(tokens[*name].text) + "' is declared but not defined here",
+               "verified function '" + declarator_name_text(tokens, *name) + "' is declared but not defined here",
                "its obligation comes from the body, so this implementation verifies a "
                "function where it is defined");
         return false;
@@ -1989,7 +2052,7 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
         verified.explicit_specialization = *header + 2 < tokens.size() && tokens[*header + 1].is_punctuator("<") &&
                                            tokens[*header + 2].is_punctuator(">");
     }
-    verified.function_name = std::string(tokens[*name].text);
+    verified.function_name = declarator_name_text(tokens, *name);
     verified.function_location = stream.location_of(tokens[*name]);
     verified.function_offset = tokens[*name].span.offset;
     // A static member function has no implicit object, so its probes are
@@ -3121,7 +3184,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                     PureMarker marker;
                     marker.keyword = tokens[index].span;
                     marker.keyword_location = stream.location_of(tokens[index]);
-                    marker.function_name = std::string(tokens[*name].text);
+                    marker.function_name = declarator_name_text(tokens, *name);
                     marker.function_location = stream.location_of(tokens[*name]);
                     marker.function_offset = tokens[*name].span.offset;
                     syntax.pure_markers.push_back(std::move(marker));
@@ -3406,7 +3469,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                 UnsafeFunction function;
                 function.keyword = keyword.span;
                 function.keyword_location = stream.location_of(keyword);
-                function.function_name = std::string(tokens[*name].text);
+                function.function_name = declarator_name_text(tokens, *name);
                 function.function_location = stream.location_of(tokens[*name]);
                 function.function_offset = tokens[*name].span.offset;
                 syntax.unsafe_functions.push_back(std::move(function));
