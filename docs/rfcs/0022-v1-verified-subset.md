@@ -213,7 +213,7 @@ so a construct the specification adds is refused until it is classified.
 | CONSTRUCT-128 | static_assert | verified | -- |
 | CONSTRUCT-129 | attribute specifier | verified | -- |
 | CONSTRUCT-130 | alignas specifier | verified | -- |
-| CONSTRUCT-131 | extern linkage declaration | refused | error [unsupported-semantics]: 'verified' is applied outside namespace scope |
+| CONSTRUCT-131 | extern linkage declaration | verified | -- |
 | CONSTRUCT-132 | template declaration | verified | -- |
 | CONSTRUCT-133 | template specialization | verified | -- |
 | CONSTRUCT-134 | explicit instantiation | verified | -- |

@@ -2028,6 +2028,12 @@ enum class ScopeKind : std::uint8_t {
 // implementation; elsewhere they are diagnosed rather than half-handled
 // (GRAMMAR.md 36).
 ScopeKind scope_kind_before(const std::vector<Token>& tokens, std::size_t brace) {
+    // A linkage specification, `extern "C" { ... }`, gives what it encloses a
+    // language linkage and opens no scope: a declaration in it stands at the
+    // namespace scope around it (C++ [dcl.link]).
+    if (brace >= 2 && tokens[brace - 1].kind == TokenKind::StringLiteral && tokens[brace - 2].is_identifier("extern")) {
+        return ScopeKind::Namespace;
+    }
     for (std::size_t cursor = brace; cursor > 0; --cursor) {
         const Token& token = tokens[cursor - 1];
         if (token.is_punctuator(";") || token.is_punctuator("{") || token.is_punctuator("}")) {

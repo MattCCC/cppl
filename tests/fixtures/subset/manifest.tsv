@@ -130,7 +130,7 @@ CONSTRUCT-127	friend declaration	verified	x127_friend_declaration.cpp	error \[pr
 CONSTRUCT-128	static_assert	verified	x128_static_assert.cpp	error \[cpp-semantic\]: static assertion failed
 CONSTRUCT-129	attribute specifier	verified	x129_attribute_specifier.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-130	alignas specifier	verified	x130_alignas_specifier.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
-CONSTRUCT-131	extern linkage declaration	refused	x131_extern_linkage_declaration.cpp	error \[unsupported-semantics\]: 'verified' is applied outside namespace scope
+CONSTRUCT-131	extern linkage declaration	verified	x131_extern_linkage_declaration.cpp	error \[proof-failure\]: verified function 'cppl_probe' does not satisfy its contract
 CONSTRUCT-132	template declaration	verified	x132_template_declaration.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-133	template specialization	verified	x133_template_specialization.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
 CONSTRUCT-134	explicit instantiation	verified	x134_explicit_instantiation.cpp	error \[proof-failure\]: verified function 'probe' does not satisfy its contract
