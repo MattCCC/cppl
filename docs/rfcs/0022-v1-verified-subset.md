@@ -79,7 +79,7 @@ so a construct the specification adds is refused until it is classified.
 
 ## The subset
 
-84 constructs are verified and 67 are refused. The manifest is the normative list; this table is it at acceptance.
+At acceptance 84 constructs were verified and 67 refused. The manifest is the normative list, and this table follows it: 96 verified and 55 refused.
 
 | Construct | Name | V1 | Refused with |
 | --- | --- | --- | --- |
@@ -226,8 +226,8 @@ so a construct the specification adds is refused until it is classified.
 | CONSTRUCT-141 | destructor | refused | error [unsupported-semantics]: a verified destructor is not verified by this implementation |
 | CONSTRUCT-142 | copy constructor | verified | -- |
 | CONSTRUCT-143 | move constructor | verified | -- |
-| CONSTRUCT-144 | copy assignment | refused | call does not resolve to an ordinary function or to a member function named on i |
-| CONSTRUCT-145 | move assignment | refused | call does not resolve to an ordinary function or to a member function named on i |
+| CONSTRUCT-144 | copy assignment | verified | -- |
+| CONSTRUCT-145 | move assignment | verified | -- |
 | CONSTRUCT-146 | virtual function | refused | error [unsupported-semantics]: a verified virtual function is not verified by this implementation |
 | CONSTRUCT-147 | pure virtual function | refused | error [unsupported-semantics]: a verified virtual function is not verified by this implementation |
 | CONSTRUCT-148 | base class conversion | refused | local 'base' has type 'const Base', which is not modeled |

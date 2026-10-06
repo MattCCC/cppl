@@ -1148,9 +1148,38 @@ is bounded at eight levels and 256 leaves per declaration, and construction must
 stay fully visible at every level: partial initialization, default
 initialization and a union member are each refused by name.
 
-Writing a member of a by-value aggregate *parameter* is still refused: the
-parameter is not tracked storage, so the write has no modeled effect. The
-refusal is the same for an ordinary record and for a specialization.
+A member of a by-value aggregate *parameter* the body writes is tracked as a
+place, starting from the value the parameter arrived with; a member it never
+writes is read as that value's projection. This is the same for an ordinary
+record and for a specialization.
+
+A struct also flows whole (`TRUST.md` TCB-AGGREGATE-001, TCB-AGGREGATE-002). A
+struct a body tracks member by member -- a local, a by-value parameter, the
+implicit object (`*this`) or a member of any of them, nested records and arrays
+included -- may be returned, passed by value, handed to a reference parameter,
+copied into a local (`Config d = c;`, `Config d = make(7u);`) and assigned
+whole (`d = c;`, `d = std::move(e);`). A value flowing out is assembled from
+the leaves the body tracks and bound where it is evaluated as a fresh value
+whose leaf projections are those leaves; a value flowing in is taken member by
+member, each leaf bound at its declared type, so a refined member owes its
+predicate there. A copy or a move is read as the value it copies only where
+C++ defines it memberwise: a copy or move constructor or assignment operator
+that the class, or the class of any member, provides is refused by name, and a
+defaulted one is accepted. A struct handed to a reference the callee may write,
+or to any reference when the callee may run unsafe code, leaves one post-state
+value of which only the callee's `ensures` is known, and each of its leaves is
+rebound to its own member of that value; every leaf must be tracked there, or
+the call is refused. Copy and move assignment are verified constructs of the
+subset (CONSTRUCT-144, CONSTRUCT-145). Still refused: a conditional expression
+choosing between two structs; a reference local of struct type, one bound to a
+temporary included; a struct-typed global; a constructor other than a copy or a
+move; a class with a base, a union, an unmodeled member or a user-provided
+destructor; a library type such as `std::pair` or `std::optional` (a
+`std::array` member is modeled); assigning a struct while an element of it is
+selected at a term; `a.operator=(b)` spelled as a member call; and a `pure`
+function whose body assembles a struct value, which is not a definition a
+contract may unfold. `e2e_struct_values` runs each accepted flow and
+`negative_struct_values` refuses each false claim through one.
 
 A type with a member this implementation does not model -- a floating-point
 value, a union, a base subobject -- is never tracked as places, at any depth.
@@ -1560,9 +1589,11 @@ An array local is the same model: it is a record whose members are its elements,
 so a constant index names a place and a write reaches exactly that element. A
 variable index names a symbolic element place instead, which is not resolved to
 any particular element: it owes its bound, its value is opaque, and it is never
-concluded disjoint from a sibling. Only aggregate initialization is admitted for
-a tracked record, because a constructor call or default initialization would
-leave a tracked member holding a value the body cannot state.
+concluded disjoint from a sibling. Only aggregate initialization, or a copy or
+a move C++ defines memberwise of a whole value of the record's own type, is
+admitted for a tracked record, because any other constructor call or default
+initialization would leave a tracked member holding a value the body cannot
+state.
 
 The same membership checks cover partial-correctness bodies containing loops and
 their callers, including unused refined locals. Corrupt or unresolved refinement
@@ -1790,10 +1821,10 @@ same as C++ unsigned arithmetic.
 The constructs a verified body may use are listed, one row for each construct
 of `SPEC.md` Annex X, in `tests/fixtures/subset/manifest.tsv`, and
 `e2e_safety_subset` checks every row on every run (RFC 0022). Of the 151
-constructs, 94 are verified: each has a fixture that is proven with nothing
+constructs, 96 are verified: each has a fixture that is proven with nothing
 unresolved and runs, and a refused twin, the same program with one thing
 changed, that shows the construct is modeled rather than passed over. The other
-57 are refused wherever a verified body uses them, each with the diagnostic its
+55 are refused wherever a verified body uses them, each with the diagnostic its
 row pins, and never written to an object: among them floating point, pointers
 other than parameters read under `readable`, shifts and bitwise operators,
 a comma inside an expression, `goto`, exceptions, dynamic allocation, lambdas,
@@ -1808,11 +1839,12 @@ RFC.
 The rest of the test fixtures are held to the same standard. Every fixture the
 compiler accepts has a refused twin, the same program with one thing false,
 listed in `tests/fixtures/negative/twins/manifest.tsv` and checked by
-`negative_refused_twins`: 56 are written out there and compiled beside their
-fixture, units they import included; 47 are refused fixtures written out before
-and run by the negative script that owns them; eight fixtures are exempt, each
-with its reason, because they state no claim (ordinary C++ clients, tampered
-erasures, a C++ type error). A fixture added without a row fails the test.
+`negative_refused_twins`: 66 are written out there and compiled beside their
+fixture, units they import included; 55 are refused fixtures written out before
+and run by the negative script that owns them; 18 fixtures are exempt, each
+with its reason, because they state no claim (ordinary C++ clients, among them
+programs using C++L words as their own names, tampered erasures, a C++ type
+error). A fixture added without a row fails the test.
 
 ---
 
