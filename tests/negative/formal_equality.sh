@@ -13,7 +13,11 @@ reject() {
         exit 1
     fi
     test ! -e "$run/$name"
-    ! grep -q 'PROVEN' "$run/$name.log"
+    if grep -q 'PROVEN' "$run/$name.log"; then
+        echo "invalid formal equality described as proven: $name" >&2
+        cat "$run/$name.log" >&2
+        exit 1
+    fi
     grep -q 'error' "$run/$name.log"
 }
 reject false <<'CPP'

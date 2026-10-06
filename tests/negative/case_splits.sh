@@ -59,7 +59,11 @@ refuse split_loop_carried \
     "omitted case 'Mode::busy' of verified function 'loop_carried' is not shown to be impossible"
 # Refused inside the loop, not at the split before it, where the entry fact holds.
 grep -q "split_loop_carried.cpp:34:" "$run/split_loop_carried.log"
-! grep -q "split_loop_carried.cpp:22:" "$run/split_loop_carried.log"
+if grep -q "split_loop_carried.cpp:22:" "$run/split_loop_carried.log"; then
+    echo "split_loop_carried was refused at the split before the loop, where the entry fact holds" >&2
+    cat "$run/split_loop_carried.log" >&2
+    exit 1
+fi
 
 # SPEC: CASE-017, CASE-018
 # A binder is the value its case exposes, and an arm supposes its own case and
@@ -68,7 +72,11 @@ refuse split_member_binder \
     "omitted case 'Mode::idle' of verified function 'member_binder' is not shown to be impossible"
 refuse split_arm_reachable_claim "is not shown to be unreachable"
 grep -q "split_arm_reachable_claim.cpp:23:13" "$run/split_arm_reachable_claim.log"
-! grep -q "split_arm_reachable_claim.cpp:19:13" "$run/split_arm_reachable_claim.log"
+if grep -q "split_arm_reachable_claim.cpp:19:13" "$run/split_arm_reachable_claim.log"; then
+    echo "split_arm_reachable_claim was refused at line 19 as well as at the claim on line 23" >&2
+    cat "$run/split_arm_reachable_claim.log" >&2
+    exit 1
+fi
 
 # SPEC: CASE-004, CASE-002, CASE-003
 # The arms are read by the one rule for arms, and a refusal of them is reported
@@ -77,7 +85,11 @@ refuse split_non_exhaustive "non-exhaustive cases: 'Mode::busy' has no arm"
 refuse split_wrong_label "this label does not name a case of 'Mode'"
 refuse split_decompose_sum "decompose requires a product; use cases for alternative states"
 for name in split_non_exhaustive split_wrong_label split_decompose_sum; do
-    ! grep -q "cannot state as a value" "$run/$name.log"
+    if grep -q "cannot state as a value" "$run/$name.log"; then
+        echo "$name was refused again as a value that cannot be stated, not once in the rule for arms" >&2
+        cat "$run/$name.log" >&2
+        exit 1
+    fi
 done
 
 # SPEC: CASE-017

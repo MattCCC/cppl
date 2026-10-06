@@ -14,7 +14,11 @@ reject() {
         exit 1
     fi
     test ! -e "$run/$name"
-    ! grep -q PROVEN "$run/$name.log"
+    if grep -q PROVEN "$run/$name.log"; then
+        echo "invalid enum case described as proven: $name" >&2
+        cat "$run/$name.log" >&2
+        exit 1
+    fi
     if ! grep -q "$diagnostic" "$run/$name.log"; then
         cat "$run/$name.log" >&2
         exit 1

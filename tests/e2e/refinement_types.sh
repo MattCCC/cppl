@@ -31,9 +31,25 @@ for standard in c++17 c++20 c++23; do
     grep -Eqx 'using Small = unsigned; *' "$run/runtime.cpp"
     grep -Eqx 'template <unsigned n> using Index = unsigned; *' "$run/runtime.cpp"
     grep -Eqx 'template <unsigned n> using Short = unsigned; *' "$run/runtime.cpp"
-    ! grep -q 'where' "$run/runtime.cpp"
-    ! grep -q '\bself\b' "$run/runtime.cpp"
-    ! grep -q 'struct Percentage\|class Percentage' "$run/runtime.cpp"
+    # A `where` clause is only ever `= type-id where (...)` (GRAMMAR.md 14), so
+    # that is what must not survive; the fixture's own function named `where` is
+    # ordinary C++ and stays.
+    clause='(=.*[^_[:alnum:]]|^[[:space:]]*)where[[:space:]]*\('
+    if grep -Eq "$clause" "$run/runtime.cpp"; then
+        echo "a refinement's 'where' clause survived into the runtime program ($standard):" >&2
+        grep -nE "$clause" "$run/runtime.cpp" >&2
+        exit 1
+    fi
+    if grep -q '\bself\b' "$run/runtime.cpp"; then
+        echo "a refinement predicate's 'self' survived into the runtime program ($standard):" >&2
+        grep -n '\bself\b' "$run/runtime.cpp" >&2
+        exit 1
+    fi
+    if grep -q 'struct Percentage\|class Percentage' "$run/runtime.cpp"; then
+        echo "the refinement Percentage became a wrapper type in the runtime program ($standard):" >&2
+        grep -n 'struct Percentage\|class Percentage' "$run/runtime.cpp" >&2
+        exit 1
+    fi
 
     # A refined data member keeps its declared spelling and gains nothing: the
     # record is the same record, with the same members in the same order and no

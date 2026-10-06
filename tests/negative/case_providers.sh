@@ -47,7 +47,11 @@ refuse() {
 # because the kernel evaluates it to false, which it can only do if the
 # enumerator arrived as the value its type holds.
 refuse enum_top_bit_claimed_false "eq(4294967295, 4294967295) reduces to 1 while 0 reduces to 0"
-! grep -q "malformed literal" "$run/enum_top_bit_claimed_false.log"
+if grep -q "malformed literal" "$run/enum_top_bit_claimed_false.log"; then
+    echo "the top-bit enumerator reached the kernel as a malformed literal, not as the value its type holds" >&2
+    cat "$run/enum_top_bit_claimed_false.log" >&2
+    exit 1
+fi
 
 # SPEC: CASE-002
 # A member enumeration of each class template instantiation is its own type, so
@@ -61,7 +65,11 @@ grep -q "enum_label_of_another_instantiation.cpp:15:9" "$run/enum_label_of_anoth
 # so it stays incomplete and is refused by the provider rather than by C++.
 refuse decompose_undefined_template "proof decomposition unavailable for incomplete type"
 grep -q "decompose_undefined_template.cpp:12:5" "$run/decompose_undefined_template.log"
-! grep -q "cpp-semantic" "$run/decompose_undefined_template.log"
+if grep -q "cpp-semantic" "$run/decompose_undefined_template.log"; then
+    echo "decompose_undefined_template was refused by C++, not by the provider" >&2
+    cat "$run/decompose_undefined_template.log" >&2
+    exit 1
+fi
 
 # SPEC: CASE-006
 # Composition adds no special cases: a binder nested under another provider's

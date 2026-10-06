@@ -35,7 +35,11 @@ refuse() {
         exit 1
     fi
     test ! -e "$run/$name"
-    ! grep -q PROVEN "$run/$name.log"
+    if grep -q PROVEN "$run/$name.log"; then
+        echo "an unproven refinement flow was described as proven: $name" >&2
+        cat "$run/$name.log" >&2
+        exit 1
+    fi
     if ! grep -Eq "$pattern" "$run/$name.log"; then
         echo "$name was refused for an unexpected reason:" >&2
         cat "$run/$name.log" >&2

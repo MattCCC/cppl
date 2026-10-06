@@ -27,9 +27,17 @@ for standard in c++17 c++20 c++23; do
     # becomes, and the one written as the body of an unbraced `if` leaves a `;`.
     start=$(grep -n -m 1 '^enum class Mode' "$run/runtime.cpp" | cut -d: -f1)
     tail -n "+$start" "$run/runtime.cpp" > "$run/own.cpp"
-    ! grep -Eq '(^|[^_[:alnum:]])(cases|decompose|omit|components|unnamed|non_null|contradiction)([^_[:alnum:]]|$)' \
-        "$run/own.cpp"
-    ! grep -q '[^<]=>' "$run/own.cpp"
+    split_word='(^|[^_[:alnum:]])(cases|decompose|omit|components|unnamed|non_null|contradiction)([^_[:alnum:]]|$)'
+    if grep -Eq "$split_word" "$run/own.cpp"; then
+        echo "a split survived into the program the fixture's own text becomes ($standard):" >&2
+        grep -nE "$split_word" "$run/own.cpp" >&2
+        exit 1
+    fi
+    if grep -q '[^<]=>' "$run/own.cpp"; then
+        echo "a case arm survived into the program the fixture's own text becomes ($standard):" >&2
+        grep -n '[^<]=>' "$run/own.cpp" >&2
+        exit 1
+    fi
     unbraced=$(awk '/if \(flag\)/ { armed = 1; next } armed && /[^[:space:]]/ { print; exit }' "$run/own.cpp")
     grep -Eq '^[[:space:]]*;$' <<< "$unbraced"
     "$CLANG" "-std=$standard" -x c++-cpp-output "$run/runtime.cpp" -o "$run/erased"

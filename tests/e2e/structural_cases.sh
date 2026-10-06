@@ -16,9 +16,17 @@ for standard in c++17 c++20 c++23; do
     grep -Eq '^Trusted external axioms: +0$' "$run/report"
     test "$("$run/program")" = '7'
     # 32. No proof construct survives into the erased translation unit.
-    ! grep -qE '(^|[^_[:alnum:]])(cases|decompose|valueless|components|non_null)[^_[:alnum:]]*(v|o|p|t|a|n|e|inner|maybe)? *[{(]' \
-        "$run/runtime.cpp"
-    ! grep -q 'alternative<0>\|=> *{\|proves (\|refl;' "$run/runtime.cpp"
+    split='(^|[^_[:alnum:]])(cases|decompose|valueless|components|non_null)[^_[:alnum:]]*(v|o|p|t|a|n|e|inner|maybe)? *[{(]'
+    if grep -qE "$split" "$run/runtime.cpp"; then
+        echo "a case split or decomposition survived into the runtime program ($standard):" >&2
+        grep -nE "$split" "$run/runtime.cpp" >&2
+        exit 1
+    fi
+    if grep -q 'alternative<0>\|=> *{\|proves (\|refl;' "$run/runtime.cpp"; then
+        echo "a case arm or proof survived into the runtime program ($standard):" >&2
+        grep -n 'alternative<0>\|=> *{\|proves (\|refl;' "$run/runtime.cpp" >&2
+        exit 1
+    fi
     "$CLANG" "-std=$standard" -x c++-cpp-output "$run/runtime.cpp" -o "$run/erased"
     test "$("$run/erased")" = "$("$run/program")"
 done
@@ -29,7 +37,11 @@ if "$CPPL" -std=c++23 -fsyntax-only "$FIXTURES/expected_cases.cpp" > /dev/null 2
     grep -Eq '^Proof declarations proven: +11$' "$run/expected_report"
     grep -Eq '^Trusted external axioms: +0$' "$run/expected_report"
     test "$("$run/expected")" = '5'
-    ! grep -q 'alternative<0>\|=> *{\|proves (\|refl;' "$run/expected_runtime.cpp"
+    if grep -q 'alternative<0>\|=> *{\|proves (\|refl;' "$run/expected_runtime.cpp"; then
+        echo 'a case arm or proof survived into the std::expected runtime program:' >&2
+        grep -n 'alternative<0>\|=> *{\|proves (\|refl;' "$run/expected_runtime.cpp" >&2
+        exit 1
+    fi
     "$CLANG" -std=c++23 -x c++-cpp-output "$run/expected_runtime.cpp" -o "$run/expected_erased"
     test "$("$run/expected_erased")" = "$("$run/expected")"
     echo 'std::expected decomposes and erases'
@@ -45,7 +57,11 @@ if "$CPPL" "$run/added.cpp" -o "$run/added" > "$run/added.log" 2>&1; then
 fi
 test ! -e "$run/added"
 grep -q "non-exhaustive cases: 'alternative<2>' has no arm" "$run/added.log"
-! grep -q PROVEN "$run/added.log"
+if grep -q PROVEN "$run/added.log"; then
+    echo 'the program with a newly added variant alternative was described as proven' >&2
+    cat "$run/added.log" >&2
+    exit 1
+fi
 # 13. The same holds for a field added to a product.
 sed 's/^    int y;$/    int y;\n    bool z;/' "$FIXTURES/structural_cases.cpp" > "$run/field.cpp"
 if "$CPPL" "$run/field.cpp" -o "$run/field" > "$run/field.log" 2>&1; then

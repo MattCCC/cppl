@@ -14,7 +14,11 @@ for standard in c++17 c++20 c++23; do
     grep -Eq '^Unresolved obligations: +0$' "$run/report"
     grep -Eq '^Trusted external axioms: +0$' "$run/report"
     test "$("$run/program")" = '37 -1 4'
-    ! grep -q 'cases s\|cases t\|unnamed(value)\|choose_one' "$run/runtime.cpp"
+    if grep -q 'cases s\|cases t\|unnamed(value)\|choose_one' "$run/runtime.cpp"; then
+        echo "a case split or proof survived into the runtime program ($standard):" >&2
+        grep -n 'cases s\|cases t\|unnamed(value)\|choose_one' "$run/runtime.cpp" >&2
+        exit 1
+    fi
     "$CLANG" "-std=$standard" -x c++-cpp-output "$run/runtime.cpp" -o "$run/erased"
     test "$("$run/erased")" = "$("$run/program")"
 done
@@ -29,5 +33,9 @@ fi
 test ! -e "$run/added"
 # The diagnostic names the state that gained no arm, not just that one did.
 grep -q "non-exhaustive cases: 'One::added' has no arm" "$run/added.log"
-! grep -q PROVEN "$run/added.log"
+if grep -q PROVEN "$run/added.log"; then
+    echo 'the program with a newly added enumerator was described as proven' >&2
+    cat "$run/added.log" >&2
+    exit 1
+fi
 echo 'enum cases verify, survive erasure, and reject newly added alternatives'
