@@ -6,7 +6,10 @@
 # only relocates C++L-specific clauses (SPEC.md 10, 11; GRAMMAR.md 4, 8, 25,
 # 26).
 add_library(cppl_formatter STATIC
-    src/format.cpp)
+    src/format.cpp
+    src/format_arms.cpp
+    src/format_clang.cpp
+    src/format_clauses.cpp)
 
 target_include_directories(cppl_formatter PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)

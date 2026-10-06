@@ -115,7 +115,7 @@ implementation:
   erasure:
     - compiler/erasure/src/erase.cpp
   formatter:
-    - compiler/formatter/src/format.cpp
+    - compiler/formatter/src/format_arms.cpp
   lsp:
     - src/lsp/src/decomposition_view.cpp
     - src/lsp/src/semantic_tokens.cpp

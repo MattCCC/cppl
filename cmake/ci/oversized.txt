@@ -13,7 +13,6 @@ clang/src/bridge.cpp 10674
 clang/src/editor.cpp 1965
 clang/src/proof_instantiation.cpp 1186
 compiler/elaboration/src/elaborate.cpp 2915
-compiler/formatter/src/format.cpp 1568
 compiler/frontend/src/projection.cpp 1892
 compiler/frontend/src/recognizer.cpp 3639
 compiler/obligations/src/contracts.cpp 3121
