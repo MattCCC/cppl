@@ -105,6 +105,8 @@ case_run refuse law_answers_ordinary_lookup \
     "law_answers_ordinary_lookup.cpp:43:12: note: goal: forall u32. Eq<u32>(7:u32, 1:u32)" \
     "law_answers_ordinary_lookup.cpp:64:12: error [proof-failure]: verified function 'detected' does not satisfy its contract" \
     "law_answers_ordinary_lookup.cpp:64:12: note: goal: forall u32. Eq<u32>(2:u32, 1:u32)"
+case_run refuse law_in_a_class \
+    "law_in_a_class.cpp:12:5: error [unsupported-semantics]: law 'positive' is declared outside namespace scope"
 case_run refuse law_answers_explicit_instantiation \
     "law_answers_explicit_instantiation.cpp:24:12: error [proof-failure]: verified function 'g' does not satisfy its contract" \
     "law_answers_explicit_instantiation.cpp:24:12: note: goal: forall u32. Eq<u32>(7:u32, 1:u32)"
