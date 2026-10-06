@@ -935,10 +935,34 @@ A function's header declaration and its definition may both be marked
 clauses must be; the two must state the same contract, compared by meaning, or
 the function is refused (`SPEC.md` TU-003).
 
-A verified function with a default argument is refused, and the diagnostic
-names it: a call relying on the default passes a value its caller does not
-write, which this implementation does not model (`SPEC.md` R.16,
-`a_default_argument_of_a_verified_function` in `negative_refinement_types`).
+A call relying on a default argument of a verified or pure function is
+verified with the default evaluated where the call stands, exactly as if the
+caller had written it there (`SPEC.md` R.16, CONTRACTCOMP-002, EDGECASE-038,
+`TRUST.md` 13): the callee's contract is
+instantiated at the default's value, its precondition and each refined
+parameter's predicate are owed for that value at the call, a call the default
+makes owes its own precondition there, a recursive call relying on one descends
+by its value, and a contract clause relying on one states the clause at it. The
+default is no part of the contract. The declarations a verified function's
+clauses are read back from restate its parameter list without the defaults,
+every comment, attribute and name kept, and elaboration reads a clause only from
+one whose parameters are the function's own; the program and the analysis text
+keep the function's declaration as written. A default is evaluated only by a
+call relying on it, so one that violates the precondition or the refinement is
+refused at the verified call relying on it, never at the declaration, and an
+unverified caller relying on it is as unverified as one writing the value out.
+Across units a caller relies on its own declaration's default: a contract's
+identity in a verification interface depends on no default, so a declaration
+stating one matches a definition stating none. Refused, each by name: a default
+the bridge cannot evaluate at the call, such as one reading a global, naming the
+parameter and the function whose default it is; a default calling a function
+that is not pure, naming that function and the default; a reference parameter's
+default, which binds storage the call does not name; a default whose end
+depends on lookup Clang has not done when the declarations are written, a comma
+after a `<` it leaves open as in `first<1, 2>()`, until it is parenthesized; and
+a ghost initializer relying on a default with an effect or a call that is not
+pure (`e2e_default_arguments`, `negative_default_arguments`,
+`unit_default_arguments_test`, `default_arguments` in `e2e_erasure_equivalence`).
 
 ---
 
