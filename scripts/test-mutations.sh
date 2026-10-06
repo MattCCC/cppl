@@ -381,6 +381,7 @@ first-order-split-offered	compiler/automation/src/arithmetic.cpp	return decided_
 first-order-split-only-orders	compiler/automation/src/arithmetic.cpp	return decided_by_order(sides) || decided_by_enumeration(sides) || decided_by_first_order(sides);	return decided_by_order(sides) || decided_by_enumeration(sides) || decide(*sides.front()).has_value();	^(e2e_disjunction|negative_conditions)$
 selection-in-disjunctive-goal	compiler/automation/src/arithmetic.cpp	return found ? found : selection_in(*disjunction->right);	return std::nullopt;	^e2e_conditions$
 premise-selection-split	compiler/automation/src/arithmetic.cpp	if (premises_[index - 1].selected) {	if (true) {	^e2e_conditions$
+implied-premise-proven	compiler/automation/src/arithmetic.cpp	auto premise = prove(*implication->premise);	std::optional<k::ProofTerm> premise;	^e2e_conditions$
 selection-route-reads-condition	compiler/obligations/src/contracts_routes.cpp	self(choice->operands[0], true, self);	self(choice->operands[0], inside, self);	^e2e_conditions$
 definedness-unsequenced-call	compiler/obligations/src/contracts_evaluation.cpp	if (!sequenced_before(site, *post.call)) {	if (false && !sequenced_before(site, *post.call)) {	^negative_signed_arithmetic$
 pure-definedness-refused	compiler/obligations/src/generate.cpp	if (const auto site = detail::first_definedness_site(*function.returned_value)) {	if (const auto site = (false ? detail::first_definedness_site(*function.returned_value) : std::nullopt)) {	^negative_signed_arithmetic$

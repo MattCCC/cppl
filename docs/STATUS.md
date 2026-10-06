@@ -148,7 +148,10 @@ goal's first side states, machine order being total, so `b0 > 0 || (a == a0 &&
 b == 0)` holds where `b0 <= 0` gives the rest, while `x == 0 || x != 0` is
 still not built; on a selection in a disjunctive goal; and, where nothing else
 closes a goal, on a selection a premise states something about, such as the
-route fact of a Boolean local holding `c ? true : d`. Such a local read in a
+route fact of a Boolean local holding `c ? true : d`. Where nothing else closes
+a goal, it also uses an implication in scope whose premise it proves rather
+than finds as stated, such as a callee's `(s == 0 && e != button) -> r == 0`
+called with `e` the timeout. Such a local read in a
 later condition is split where that condition stands, as the composed
 contract nests it. Each case is a kernel rule checked on its own; none adds
 an assumption. A value a body computes with `&&` or `||`, in a declaration, an

@@ -11,7 +11,8 @@
 # that is a disjunction of conjunctions, and one that is a conjunction holding
 # a disjunction, each operand specified on its own; a ghost snapshot related
 # to the loop case by case; callers taking apart the disjunction inside a
-# callee's postcondition; a flag computed with `||` that decides a branch;
+# callee's postcondition and proving the premise of a callee's implication; a
+# flag computed with `||` that decides a branch;
 # and a disjunction about a selection no side of which holds alone.
 # Every contract is proven in both standards with a span, with nothing
 # unresolved and no warning; the program prints what the contracts state; and
@@ -33,7 +34,8 @@ expected='4 -1 2 3
 1 3 1 0 1 0
 1 0 2 4
 6 5 4 3 2
-1 0 8 7'
+1 0 8 7
+0 1'
 
 fail() {
     echo "$1" >&2
@@ -51,7 +53,7 @@ for standard in c++20 c++23; do
         cat "$base.err" >&2
         fail "verifying the conditions warned ($standard)"
     fi
-    for line in 'Laws proven: +3' 'Function contracts proven: +22' '  partial correctness only: +0' 'Loop invariants proven: +16' \
+    for line in 'Laws proven: +3' 'Function contracts proven: +24' '  partial correctness only: +0' 'Loop invariants proven: +16' \
         'Loop measures proven: +8' 'Unresolved obligations: +0' 'Laws trusted: +0'; do
         grep -Eq "^$line\$" "$base.report" || { cat "$base.report" >&2; fail "the report does not state '$line'"; }
     done

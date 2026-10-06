@@ -4,10 +4,10 @@
 // a returned `?:`, `&&` or `||` whose arms read elements; loop invariants
 // stating `&&` and `||`, nested in each other, each operand specified on its
 // own; `&&` and `||` as values in a definition and a contract's term; a ghost
-// snapshot related to the loop case by case; callers taking apart
-// the disjunction inside a callee's postcondition; and a flag that decides a
-// branch. e2e/conditions.sh verifies and runs this; negative/conditions.sh
-// refuses its false twins.
+// snapshot related to the loop case by case; callers taking apart the
+// disjunction inside a callee's postcondition, and proving the premise of a
+// callee's implication; and a flag that decides a branch. e2e/conditions.sh
+// verifies and runs this; negative/conditions.sh refuses its false twins.
 #include <cstddef>
 #include <cstdio>
 #include <span>
@@ -221,6 +221,26 @@ verified int median(int a, int b, int c)
     return max_of(min_of(a, b), min_of(max_of(a, b), c));
 }
 
+// A caller relies on a callee's implication by proving its premise, which it
+// does not suppose as written: the event it passes is not the button.
+enum class Event : unsigned char { button, sensor, timeout };
+
+verified unsigned next_state(unsigned s, Event e)
+    ensures ((s == 0u && e != Event::button) -> result == 0u)
+{
+    if (s == 0u) {
+        return e == Event::button ? 1u : 0u;
+    }
+    return s;
+}
+
+verified unsigned idle(unsigned s)
+    expects (s == 0u)
+    ensures (result == 0u)
+{
+    return next_state(s, Event::timeout);
+}
+
 // What a flag computed with `||` says is known case by case where it decides
 // a branch, and a disjunction no side of which holds alone holds by one in
 // each case.
@@ -255,5 +275,6 @@ int main() {
     std::printf("%u %u %u %u\n", countdown(5u, 2u), countdown(5u, 9u), last_below(6u, 3u), last_below(4u, 0u));
     std::printf("%u %u %u %u %d\n", gcd(12u, 18u), gcd(5u, 0u), clamp(9u, 2u, 4u), clamp(3u, 2u, 4u), median(3, 1, 2));
     std::printf("%u %u %u %u\n", either(0u, 4u), either(0u, 0u), bump(7u, 2u), bump(7u, 0u));
+    std::printf("%u %u\n", idle(0u), next_state(0u, Event::button));
     return 0;
 }

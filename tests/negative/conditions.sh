@@ -467,6 +467,46 @@ verified unsigned either(unsigned x, unsigned y)
 int main() { return 0; }
 CPP
 
+# The button is the event the implication excludes, so it says nothing here.
+refused implication_premise_false "$false_claim" <<'CPP'
+enum class Event : unsigned char { button, sensor, timeout };
+verified unsigned next_state(unsigned s, Event e)
+    ensures ((s == 0u && e != Event::button) -> result == 0u)
+{
+    if (s == 0u) {
+        return e == Event::button ? 1u : 0u;
+    }
+    return s;
+}
+verified unsigned idle(unsigned s)
+    expects (s == 0u)
+    ensures (result == 0u)
+{
+    return next_state(s, Event::button);
+}
+int main() { return 0; }
+CPP
+
+# An event the caller does not know may be the button.
+refused implication_premise_unknown "$false_claim" <<'CPP'
+enum class Event : unsigned char { button, sensor, timeout };
+verified unsigned next_state(unsigned s, Event e)
+    ensures ((s == 0u && e != Event::button) -> result == 0u)
+{
+    if (s == 0u) {
+        return e == Event::button ? 1u : 0u;
+    }
+    return s;
+}
+verified unsigned idle(unsigned s, Event e)
+    expects (s == 0u)
+    ensures (result == 0u)
+{
+    return next_state(s, e);
+}
+int main() { return 0; }
+CPP
+
 # `x == 1u` adds one too.
 refused bump_claims_strict "$false_claim" <<'CPP'
 verified unsigned bump(unsigned count, unsigned x)

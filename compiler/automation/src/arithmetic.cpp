@@ -37,6 +37,9 @@ constexpr std::size_t kMaxCaseSplits = 24;
 // attempted only where nothing else closed a goal, so each one is bounded on
 // its own and does not draw on the splits above.
 constexpr std::size_t kMaxSelectionSplits = 16;
+// Implications in scope whose premise is proven rather than found, which are
+// likewise attempted only where nothing else closed a goal.
+constexpr std::size_t kMaxImpliedPremises = 16;
 // The widest machine type whose values this search will enumerate side by side.
 //
 // A resource threshold, not a semantic boundary. Every machine type is finite
@@ -140,7 +143,7 @@ class Prover {
             if (auto branch = by_conditional(goal)) {
                 return branch;
             }
-            return by_premise_selection(goal);
+            return by_implied_or_selection(goal);
         }
         if (auto branch = by_conditional(goal)) {
             return branch;
@@ -148,7 +151,7 @@ class Prover {
         if (auto closed = rewriting_ ? rewrite_then_close(goal) : by_arithmetic(goal)) {
             return closed;
         }
-        return by_premise_selection(goal);
+        return by_implied_or_selection(goal);
     }
 
   private:
@@ -301,6 +304,60 @@ class Prover {
         return k::ProofTerm::conditional_elimination(k::Type{branch.type}, branch.arguments[0], branch.arguments[1],
                                                      branch.arguments[2], *motive, std::move(*when_true),
                                                      std::move(*when_false));
+    }
+
+    // What is tried once nothing else closed a goal: an implication in scope
+    // whose premise is proven, then a case analysis on a premise's selection.
+    std::optional<k::ProofTerm> by_implied_or_selection(const k::Proposition& goal) {
+        if (auto implied = by_implied_premise(goal)) {
+            return implied;
+        }
+        return by_premise_selection(goal);
+    }
+
+    // Evidence for `goal` from an implication in scope, a premise or a side of
+    // one, whose own premise is not in scope as stated but is proven here: a
+    // callee's `(s == closed && e != button) -> r == closed`, called where
+    // `s == closed` is supposed and `e` is `timeout`. Its conclusion is then
+    // supposed for the goal, and the kernel checks both steps of that cut.
+    // An implication being used this way is not used again inside the proof
+    // of its own premise or under its conclusion.
+    std::optional<k::ProofTerm> by_implied_premise(const k::Proposition& goal) {
+        std::vector<std::pair<k::Proposition, k::ProofTerm>> available;
+        for (std::size_t index = 0; index < premises_.size(); ++index) {
+            const Premise& premise = premises_[index];
+            offer(
+                k::shift(premise.proposition, static_cast<std::uint32_t>(binders_.size() - premise.binders)),
+                k::ProofTerm::hypothesis(k::HypothesisIndex{static_cast<std::uint32_t>(premises_.size() - 1 - index)}),
+                available);
+        }
+        for (const auto& [proposition, evidence] : available) {
+            const auto* implication = std::get_if<k::Implies>(&proposition.node);
+            if (implication == nullptr || std::ranges::contains(implying_, proposition) ||
+                std::ranges::any_of(available,
+                                    [&](const auto& entry) { return entry.first == *implication->premise; })) {
+                continue;
+            }
+            if (++implied_premises_ > kMaxImpliedPremises) {
+                return std::nullopt;
+            }
+            const std::size_t spent = splits_;
+            implying_.push_back(proposition);
+            auto premise = prove(*implication->premise);
+            std::optional<k::ProofTerm> body;
+            if (premise) {
+                body = under_premise(*implication->conclusion, [&] { return prove(goal); });
+            }
+            implying_.pop_back();
+            if (!premise || !body) {
+                splits_ = spent;
+                continue;
+            }
+            return k::ProofTerm::implication_elimination(
+                k::Proposition::implication(*implication->conclusion, goal), std::move(*body),
+                k::ProofTerm::implication_elimination(proposition, evidence, std::move(*premise)));
+        }
+        return std::nullopt;
     }
 
     // Evidence for `goal` by taking cases on a selection a premise states
@@ -813,6 +870,8 @@ class Prover {
     std::vector<Premise> premises_;
     std::size_t splits_ = 0;
     std::size_t selection_splits_ = 0;
+    std::size_t implied_premises_ = 0;
+    std::vector<k::Proposition> implying_;
 };
 
 } // namespace
