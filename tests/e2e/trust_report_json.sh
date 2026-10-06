@@ -215,6 +215,18 @@ imported_free=$(awk '
 ' "$json")
 [ -z "$imported_free" ] || fail "a claim proven through another unit's contract is marked assumption-free"
 
+# TRUST.md TCB-XTU-007, TCB-XTU-010 -- an interface imported and not used is
+# still imported: both reports say its provenance is unauthenticated and that
+# no claim rests on it, never that nothing was imported. The ledger compiles
+# without the tokenizer's contracts, so importing them changes no claim.
+compile unused -std=c++20 -c "$run/ledger/ledger.cpp" -o "$run/unused.o" \
+    "--cppl-import-interface=$run/ledger/text.cppli" "--cppl-import-interface=$run/ledger/./text.cppli"
+[ "$(json_count "$run/unused.json" function_contracts_imported)" -eq 0 ] || fail "the ledger rests on the tokenizer"
+grep -q '^  "interface_provenance": "unauthenticated"$' "$run/unused.json" ||
+    fail "an imported interface no claim rests on is said not to have been imported"
+grep -q "^Interface provenance: *unauthenticated; 1 imported verification interface, and no claim rests on a contract it records" \
+    "$run/unused.report" || fail "the text report does not say an interface was imported and nothing rests on it"
+
 # --- The same compile is the same document -------------------------------------
 
 "$CPPL" -std=c++20 "$FIXTURES/trust_closure.cpp" -o "$run/again" "--cppl-emit-trust-report=$run/again.json" > /dev/null

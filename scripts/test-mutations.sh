@@ -71,7 +71,9 @@ unsafe-not-assumption-free	compiler/driver/src/trust_report.cpp	!obligations::re
 library-model-not-assumption-free	compiler/driver/src/trust_report.cpp	!obligations::rests_on_library_models(claim);	true;	^e2e_containers$
 xtu-external-dependency-listed	compiler/driver/src/driver.cpp	std::cout << "    rests on the " << imported_from(imported) << ", "	std::cout << ""	^e2e_cross_tu$|^negative_cross_tu$
 xtu-import-not-assumption-free	compiler/driver/src/trust_report.cpp	return claim.imported.empty() && !obligations::rests_on_trusted_laws(claim) &&	return !obligations::rests_on_trusted_laws(claim) &&	^e2e_cross_tu$|^negative_cross_tu$|^e2e_cross_feature$|^e2e_integration_ledger$|^e2e_containers$
-xtu-provenance-stated	compiler/driver/src/driver.cpp	if (summary.imports.empty()) {	if (true) {	^e2e_cross_tu$|^negative_cross_tu$|^e2e_containers$
+xtu-provenance-stated	compiler/driver/src/driver.cpp	if (summary.imports.empty() && summary.interfaces_imported == 0) {	if (true) {	^e2e_cross_tu$|^negative_cross_tu$|^e2e_containers$|^e2e_trust_report_json$
+xtu-provenance-unused-interfaces	compiler/driver/src/trust_report.cpp	summary.imports.empty() && summary.interfaces_imported == 0 ? "none_imported"	summary.imports.empty() ? "none_imported"	^unit_trust_report_test$|^e2e_trust_report_json$
+xtu-provenance-interfaces-counted	compiler/driver/src/driver.cpp	summary.interfaces_imported = imported_interfaces.size();	(void)imported_interfaces;	^e2e_trust_report_json$
 trust-json-closure-flag	compiler/driver/src/trust_report.cpp	json.boolean(!obligations::rests_on_trusted_laws(claim));	json.boolean(true);	^unit_trust_report_test$|^e2e_trust_report_json$
 trust-json-assumption-free-flag	compiler/driver/src/trust_report.cpp	json.boolean(assumption_free(claim));	json.boolean(true);	^unit_trust_report_test$|^e2e_trust_report_json$
 trust-json-escaped	compiler/driver/src/trust_report.cpp	if (character == '"' || character == '\\') {	if (false) {	^unit_trust_report_test$

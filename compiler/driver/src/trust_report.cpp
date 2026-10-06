@@ -610,9 +610,10 @@ std::string render_trust_report(const TrustSummary& summary, const BuildRecord& 
     json.end_array();
     json.end_object();
     // An interface's integrity is checked and its origin is not (TRUST.md
-    // TCB-XTU-010).
+    // TCB-XTU-010). That holds of every interface imported, whether or not a
+    // claim rests on a contract it records; `imported_contracts` says which do.
     json.key("interface_provenance");
-    json.string(summary.imports.empty() ? "none_imported" : "unauthenticated");
+    json.string(summary.imports.empty() && summary.interfaces_imported == 0 ? "none_imported" : "unauthenticated");
     json.end_object();
     return std::move(json).take();
 }

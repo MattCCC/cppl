@@ -2456,6 +2456,13 @@ rests on, each kind apart:
 translation from C++ to the core, which is trusted and not verified (`TRUST.md`
 7 to 17 and 29). The text report states it on its `Trusted translation` line.
 
+`interface_provenance` is `none_imported` when the compile imported no
+verification interface, and `unauthenticated` whenever it imported one, whether
+or not a claim rests on a contract it records (`TRUST.md` TCB-XTU-007,
+TCB-XTU-010); `imported_contracts` lists those a claim does rest on. The text
+report's `Interface provenance` line says the same, and says when no claim rests
+on what was imported.
+
 `trusted_closure_empty` answers whether a `PROVEN` claim rests on any trusted
 law, its own or one an imported record's proof rested on, and
 `assumption_free` whether it rests on nothing at all, exactly as the text

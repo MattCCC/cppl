@@ -368,6 +368,17 @@ CPPL_TEST(unsafe_regions_and_runtime_sites_carry_their_own_status) {
     CPPL_CHECK(count(report, "runtime_validation_sites") == 1.0);
 }
 
+// TRUST.md TCB-XTU-007, TCB-XTU-010 -- an interface imported is unauthenticated
+// whether or not a claim rests on a contract it records, and the document
+// never says none was imported when one was.
+CPPL_TEST(an_imported_interface_nothing_rests_on_is_still_unauthenticated) {
+    d::TrustSummary summary;
+    summary.interfaces_imported = 1;
+    const j::Value report = document(summary);
+    CPPL_CHECK(member(report, "interface_provenance").as_string() == "unauthenticated");
+    CPPL_CHECK(array(report, "imported_contracts").empty());
+}
+
 // SPEC: TUBOUND-006 -- an imported contract carries every category its
 // producing unit's proof rested on, and the document says interface provenance
 // is unauthenticated (TRUST.md TCB-XTU-010).

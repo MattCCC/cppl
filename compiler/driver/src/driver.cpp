@@ -28,6 +28,7 @@
 #include <iostream>
 #include <map>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -514,8 +515,16 @@ void print_trust_report(const Options& options, const TrustSummary& summary) {
     // claim resting on one is assumption-free, and nothing in this report says
     // an interface is authentic (SPEC.md TUBOUND-012, TUBOUND-014, TRUST.md
     // TCB-XTU-010).
-    if (summary.imports.empty()) {
+    if (summary.imports.empty() && summary.interfaces_imported == 0) {
         std::cout << "Interface provenance:        no verification interface was imported\n";
+    } else if (summary.imports.empty()) {
+        // Imported, and nothing rests on them: their provenance is no less
+        // unauthenticated for that, and no claim depends on it.
+        const bool one = summary.interfaces_imported == 1;
+        std::cout << "Interface provenance:        unauthenticated; " << summary.interfaces_imported
+                  << (one ? " imported verification interface" : " imported verification interfaces")
+                  << ", and no claim rests on a contract " << (one ? "it records" : "they record")
+                  << " (TRUST.md TCB-XTU-010)\n";
     } else {
         std::cout << "Interface provenance:        unauthenticated; " << summary.imports.size()
                   << " imported contracts are believed on the build's word (TRUST.md TCB-XTU-010)\n";
@@ -680,6 +689,15 @@ int run_driver(int argc, const char* const* argv) {
     const obligations::Imports imports = configuration.has_value()
                                              ? detail::read_imports(options.import_interfaces, *configuration, engine)
                                              : obligations::Imports{};
+    // Each interface the compile imports, once however often it is named, so
+    // a report says so even when no claim rests on what it records.
+    std::set<std::filesystem::path> imported_interfaces;
+    for (const std::string& path : options.import_interfaces) {
+        std::error_code error;
+        const std::filesystem::path absolute = std::filesystem::absolute(path, error);
+        imported_interfaces.insert((error ? std::filesystem::path(path) : absolute).lexically_normal());
+    }
+    summary.interfaces_imported = imported_interfaces.size();
 
     std::vector<std::string> files;
     std::vector<artifact::Entry> exported;

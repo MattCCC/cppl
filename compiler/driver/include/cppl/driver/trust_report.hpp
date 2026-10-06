@@ -65,6 +65,10 @@ struct TrustSummary {
     std::vector<UnsafeBoundary> unsafe;
     // Every contract of another unit established from an interface.
     std::vector<obligations::ImportedDependency> imports;
+    // How many verification interfaces the compile imported, whether or not a
+    // claim rests on a contract they record. Their provenance is
+    // unauthenticated either way (TRUST.md TCB-XTU-007, TCB-XTU-010).
+    std::size_t interfaces_imported = 0;
     // Every runtime validation site of a proven contract (SPEC.md
     // RUNTIMECHECK-013).
     std::vector<obligations::RuntimeCheck> runtime_sites;
