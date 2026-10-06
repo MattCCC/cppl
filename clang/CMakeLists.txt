@@ -6,10 +6,13 @@
 # place in the project that includes a Clang header (ARCHITECTURE.md 11,
 # AGENTS.md 14).
 add_library(cppl_clang STATIC
+    src/access.cpp
     src/aggregate_effects.cpp
     src/aggregate_values.cpp
     src/bridge.cpp
+    src/conversions.cpp
     src/cursors.cpp
+    src/default_arguments.cpp
     src/editor.cpp
     src/editor_completion.cpp
     src/editor_description.cpp

@@ -48,4 +48,6 @@ struct ElementRegion {
     source::RepresentationKind family = source::RepresentationKind::None;
 };
 
+std::optional<SequenceCall> sequence_call(CXCursor cursor);
+
 } // namespace cppl::clangbridge::detail

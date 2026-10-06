@@ -9,7 +9,7 @@
 # CheckFileLength.cmake that reads it are deleted.
 #
 # <path> <line count when listed>
-clang/src/bridge.cpp 9782
+clang/src/bridge.cpp 9066
 compiler/frontend/src/projection.cpp 1892
 compiler/frontend/src/recognizer.cpp 3712
 tests/unit/projection_test.cpp 1184

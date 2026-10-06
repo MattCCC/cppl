@@ -84,6 +84,7 @@ implementation:
     - compiler/frontend/src/projection.cpp
   clang:
     - clang/include/cppl/clang/ast.hpp
+    - clang/src/access.cpp
     - clang/src/bridge.cpp
   elaboration:
     - compiler/elaboration/src/elaborate.cpp

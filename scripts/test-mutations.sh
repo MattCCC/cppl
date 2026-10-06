@@ -167,8 +167,8 @@ trust-translation-stated-json	compiler/driver/src/trust_report.cpp	json.key("ver
 trust-json-needs-a-compile	compiler/driver/src/driver.cpp	if (!options.emit_trust_report.empty() && (options.passthrough || options.inputs.empty())) {	if (false) {	^e2e_trust_report_json$
 xtu-unsafe-imported	compiler/obligations/src/contracts.cpp	recorded->entry.unsafe, recorded->entry.depends,	std::vector<artifact::UnsafeBlock>{}, recorded->entry.depends,	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
 library-model-closure-through-calls	compiler/obligations/src/trust.cpp	changed = models[index].emplace(model, LibraryDependency{model, false}).second || changed;	changed = (models[index].contains(model) && false) || changed;	^e2e_containers$
-container-stale-view	clang/src/bridge.cpp	if (root.version == entry.borrows->version) {	if (true) {	^negative_containers$|^negative_integration_ledger$|^negative_cross_feature$|^negative_sequence_attacks$
-container-element-generation	clang/src/bridge.cpp	return !entry.formed_at.has_value() ||	return true ||	^negative_containers$|^negative_sequence_attacks$
+container-stale-view	clang/src/access.cpp	if (root.version == entry.borrows->version) {	if (true) {	^negative_containers$|^negative_integration_ledger$|^negative_cross_feature$|^negative_sequence_attacks$
+container-element-generation	clang/src/access.cpp	return !entry.formed_at.has_value() ||	return true ||	^negative_containers$|^negative_sequence_attacks$
 sequence-mutator-new-generation	clang/src/bridge.cpp	effects.push_back(new_generation(state[*root], where));	(void)where;	^negative_containers$|^negative_sequence_attacks$
 call-two-writable-views	clang/src/bridge.cpp	for (const std::size_t other : written_roots) {	for (const std::size_t other : std::vector<std::size_t>{}) {	^negative_sequence_boundaries$
 call-span-parameter-written-twice	clang/src/bridge.cpp	if (writes && std::ranges::any_of(written_span_parameters, [&](CXCursor written_parameter) {	if (false && writes && std::ranges::any_of(written_span_parameters, [&](CXCursor written_parameter) {	^negative_sequence_boundaries$
@@ -184,8 +184,8 @@ global-constant-read	clang/src/bridge.cpp	            clang_Cursor_hasVarDeclGlo
 global-constant-const-only	clang/src/bridge.cpp	            if (clang_isConstQualifiedType(declared) != 0 && clang_isVolatileQualifiedType(declared) == 0) {	            if (clang_isVolatileQualifiedType(declared) == 0) {	^negative_global_constants$
 unscoped-enumeration-converts	clang/src/bridge.cpp	            if (kind == CXCursor_UnexposedExpr && integral(converted) && nested.kind == CXType_Enum &&	            if (false && kind == CXCursor_UnexposedExpr && integral(converted) && nested.kind == CXType_Enum &&	^negative_global_constants$
 unscoped-enumeration-modeled	clang/src/types.cpp	const bool opaque_enumeration = clang_Cursor_isNull(definition) != 0;	const bool opaque_enumeration = clang_EnumDecl_isScoped(declaration) == 0 || clang_Cursor_isNull(definition) != 0;	^negative_global_constants$|^negative_proof_cases$
-boolean-conversion-direction	clang/src/bridge.cpp	    if (type.kind == TypeKind::Bool) {	    if (type.kind != TypeKind::Bool) {	^negative_boolean_conversions$
-integer-to-boolean-nonzero	clang/src/bridge.cpp	nonzero.node = Binary{BinaryOp::NotEqual, {std::move(operand), std::move(zero)}};	nonzero.node = Binary{BinaryOp::Equal, {std::move(operand), std::move(zero)}};	^negative_boolean_conversions$
+boolean-conversion-direction	clang/src/conversions.cpp	    if (type.kind == TypeKind::Bool) {	    if (type.kind != TypeKind::Bool) {	^negative_boolean_conversions$
+integer-to-boolean-nonzero	clang/src/conversions.cpp	nonzero.node = Binary{BinaryOp::NotEqual, {std::move(operand), std::move(zero)}};	nonzero.node = Binary{BinaryOp::Equal, {std::move(operand), std::move(zero)}};	^negative_boolean_conversions$
 boolean-conversion-implicit	clang/src/bridge.cpp	if (kind == CXCursor_UnexposedExpr && boolean_pair(original, converted)) {	if (false && kind == CXCursor_UnexposedExpr && boolean_pair(original, converted)) {	^negative_boolean_conversions$
 boolean-conversion-written	clang/src/bridge.cpp	            if (destination.kind == TypeKind::Bool && source.kind == TypeKind::Bool) {	            if (false && destination.kind == TypeKind::Bool && source.kind == TypeKind::Bool) {	^negative_boolean_conversions$
 requires-expression-constant	clang/src/bridge.cpp	if (kind == CXCursor_UnaryExpr || kind == CXCursor_RequiresExpr) {	if (kind == CXCursor_UnaryExpr || false) {	^e2e_safety_subset$
@@ -193,7 +193,7 @@ label-names-statement	clang/src/bridge.cpp	    if (kind == CXCursor_LabelStmt) {
 reference-binds-temporary	clang/src/bridge.cpp	const bool binds_temporary = reference && is_prvalue(initializer);	const bool binds_temporary = false && reference && is_prvalue(initializer);	^e2e_safety_subset$
 linkage-specification-is-namespace-scope	compiler/frontend/src/recognizer.cpp	if (brace >= 2 && tokens[brace - 1].kind == TokenKind::StringLiteral && tokens[brace - 2].is_identifier("extern")) {	if (false && brace >= 2 && tokens[brace - 1].kind == TokenKind::StringLiteral && tokens[brace - 2].is_identifier("extern")) {	^e2e_safety_subset$
 call-statement-temporaries-mutator-only	clang/src/bridge.cpp	if (clang_getCursorKind(inner) == CXCursor_CallExpr && sequence_call(inner).has_value()) {	if (clang_getCursorKind(inner) == CXCursor_CallExpr) {	^negative_sequence_generations$
-call-writable-span-havocs-pointees	clang/src/bridge.cpp	return convert_type(canonical).representation.kind == source::RepresentationKind::Span &&	return false && convert_type(canonical).representation.kind == source::RepresentationKind::Span &&	^negative_sequence_boundaries$
+call-writable-span-havocs-pointees	clang/src/access.cpp	return convert_type(canonical).representation.kind == source::RepresentationKind::Span &&	return false && convert_type(canonical).representation.kind == source::RepresentationKind::Span &&	^negative_sequence_boundaries$
 unsafe-reaches-viewed-container	clang/src/bridge.cpp	reach(*held->views);	(void)held;	^negative_sequence_attacks$
 unsafe-reaches-whole-object	clang/src/bridge.cpp	reach(other);	(void)other;	^negative_sequence_attacks$
 unsafe-refined-container-refused	clang/src/bridge.cpp	held.has_value() && !held->element.refinements.empty()) {	held.has_value() && false && !held->element.refinements.empty()) {	^negative_sequence_attacks$|^negative_sequence_boundaries$
@@ -203,7 +203,7 @@ template-argument-decltype-refinement	clang/src/bridge.cpp	if (kind == CXCursor_
 template-specializations-indexed	clang/src/bridge.cpp	collector.specializations.push_back(specialization);	(void)specialization;	^negative_template_identity$
 template-index-resolves-specialization	clang/src/bridge.cpp	const CXCursor referenced = clang_getCursorReferenced(reference->cursor);	const CXCursor referenced = reference->referencedEntity->cursor;	^negative_template_identity$
 default-argument-evaluated-at-call	clang/src/bridge.cpp	if (is_default_argument(argument)) {	if (false && is_default_argument(argument)) {	^e2e_default_arguments$|^negative_default_arguments$
-default-argument-refusal-named	clang/src/bridge.cpp	refused->reason = "the default argument of " + owner +	refused->reason = std::string() +	^negative_default_arguments$
+default-argument-refusal-named	clang/src/default_arguments.cpp	refused->reason = "the default argument of " + owner +	refused->reason = std::string() +	^negative_default_arguments$
 default-argument-reference-refused	clang/src/bridge.cpp	if (is_default_argument(clang_Cursor_getArgument(cursor, static_cast<unsigned>(index)))) {	if (false && is_default_argument(clang_Cursor_getArgument(cursor, static_cast<unsigned>(index)))) {	^negative_default_arguments$
 default-argument-ghost-effects	clang/src/bridge.cpp	if (std::optional<std::string> found = ghost_effect(*initializer, depth + 1)) {	if (std::optional<std::string> found = std::nullopt) {	^negative_default_arguments$
 default-argument-ghost-calls	clang/src/bridge.cpp	collect_calls(*initializer, ghost, depth + 1);	(void)initializer;	^negative_default_arguments$
@@ -460,7 +460,7 @@ struct-copy-user-code	clang/src/aggregate_values.cpp	if ((copy || move) && clang
 struct-copy-member-user-code	clang/src/aggregate_values.cpp	if (std::optional<std::string> inner = user_provided_copy(clang_getCursorType(field), copying, depth + 1)) {	if (std::optional<std::string> inner = (false ? user_provided_copy(clang_getCursorType(field), copying, depth + 1) : std::nullopt)) {	^negative_struct_values$
 struct-copy-constructor-kind	clang/src/aggregate_values.cpp	if ((!copy && !move) || clang_Cursor_getNumArguments(construction) != 1) {	if (false && ((!copy && !move) || clang_Cursor_getNumArguments(construction) != 1)) {	^negative_struct_values$
 unsafe-callee-call-sequenced	clang/src/bridge.cpp	if (!sequenced_call && writes_unsafely(signature.unsafe_effects, referenced)) {	if (false && !sequenced_call && writes_unsafely(signature.unsafe_effects, referenced)) {	^negative_unsafe_callees$
-unsafe-callee-default-argument-sequenced	clang/src/bridge.cpp	{}, std::nullopt, signature.clause, signature.refinements, signature.unsafe_effects};	{}, std::nullopt, signature.clause, signature.refinements, nullptr};	^negative_unsafe_callees$
+unsafe-callee-default-argument-sequenced	clang/src/default_arguments.cpp	{}, std::nullopt, signature.clause, signature.refinements, signature.unsafe_effects};	{}, std::nullopt, signature.clause, signature.refinements, nullptr};	^negative_unsafe_callees$
 MUTATIONS
 )
 

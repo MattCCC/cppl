@@ -44,6 +44,7 @@ implementation:
     # Records are decomposed from the resolved type, so an instantiated class
     # template decomposes like any other record and a base subobject stays
     # visible (record_fields, record_has_base, field_index_of).
+    - clang/src/access.cpp
     - clang/src/bridge.cpp
     - clang/src/refinements.cpp
     - clang/src/types.cpp
