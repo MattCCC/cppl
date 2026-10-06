@@ -157,6 +157,12 @@ bool BodyLowering::may_alias(const Local& target, const Local& other) const {
         return storage.external || escaped.contains(clang_hashCursor(storage.declaration));
     }
     if (clang_equalCursors(target.declaration, other.declaration) != 0) {
+        // Distinct members of one object are distinct storage, by Clang's
+        // resolved member identity, wherever else their paths select an
+        // element at a term.
+        if (target.diverges_from(other)) {
+            return false;
+        }
         // A symbolic index selects an element this implementation cannot
         // decide, so two element places of one array may be the same
         // element unless their indices are proved unequal. That proof does

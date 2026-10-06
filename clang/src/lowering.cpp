@@ -38,6 +38,24 @@ using bridge::children_of;
 using bridge::presumed_location;
 using bridge::take;
 
+namespace {
+
+// Whether a value of `type` states a refinement of an object rather than of a
+// scalar: its own, where it is a record or an array, or that of a member or an
+// element that is one. Past the depth places are tracked to, the answer is yes.
+bool refines_an_object(const Type& type, unsigned depth = 0) {
+    if (type.kind != TypeKind::Value) {
+        return false;
+    }
+    if (!type.refinements.empty() || depth > kMaxPlaceDepth) {
+        return true;
+    }
+    return std::ranges::any_of(type.projections,
+                               [depth](const Type& component) { return refines_an_object(component, depth + 1); });
+}
+
+} // namespace
+
 std::size_t return_paths(const Expr& expression) {
     if (const auto* branch = std::get_if<Conditional>(&expression.node)) {
         return return_paths(branch->operands[1]) + return_paths(branch->operands[2]);
@@ -173,10 +191,45 @@ Expr BodyLowering::completed(Expr value, const Locals& locals, CXCursor at) {
             returned(*local);
         }
     }
+    // The object a reference parameter designates, followed member by member,
+    // is handed back as the value its leaves assemble: bound where the return
+    // stands, of which its members' values are all that is supposed, as of any
+    // value a body assembles (TRUST.md TCB-AGGREGATE-001, TCB-AGGREGATE-003).
+    struct AssembledState {
+        std::uint32_t version = 0;
+        Expr value;
+        std::string spelling;
+    };
+    std::vector<AssembledState> assembled_states;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
         const auto local = find_local(locals, parameters[index]);
-        if (local && source::aliases_storage(passing_of(clang_getCursorType(parameters[index])))) {
+        const bool aliases = source::aliases_storage(passing_of(clang_getCursorType(parameters[index])));
+        std::optional<Expr> designated =
+            aliases && !local ? aggregates::designated_value(parameters[index], locals, frame_of(signature), at)
+                              : std::nullopt;
+        if (local && aliases) {
             returned(*local);
+        } else if (designated.has_value()) {
+            if (std::holds_alternative<Unsupported>(designated->node)) {
+                return std::move(*designated);
+            }
+            // Each leaf is charged its refinement where its version was not
+            // established, exactly as a scalar the caller sees again is.
+            for (std::size_t leaf = 0; leaf < locals.size(); ++leaf) {
+                if (clang_equalCursors(locals[leaf].declaration, parameters[index]) != 0 &&
+                    !locals[leaf].referent.has_value() && !locals[leaf].has_symbolic_step() &&
+                    !valid_versions.contains(locals[leaf].version) && carries_refinement(locals[leaf].type)) {
+                    unestablished.push_back(leaf);
+                }
+            }
+            AssembledState assembled{next_version++, std::move(*designated),
+                                     "the post-state of '" + take(clang_getCursorSpelling(parameters[index])) + "'"};
+            Expr post;
+            post.type = assembled.value.type;
+            post.location = presumed_location(clang_getCursorLocation(at));
+            post.node = PlaceRef{assembled.version, anonymous_place(assembled.spelling)};
+            state.operands.push_back(std::move(post));
+            assembled_states.push_back(std::move(assembled));
         } else {
             Expr input;
             input.type = convert_type(clang_getCursorType(parameters[index]), 0, ReferenceModel::Referent);
@@ -194,6 +247,11 @@ Expr BodyLowering::completed(Expr value, const Locals& locals, CXCursor at) {
     // A function that runs off its end has no return statement to stand
     // at; the charge stands where the function completes.
     const auto where = result.location;
+    for (AssembledState& assembled : std::ranges::reverse_view(assembled_states)) {
+        result = bind(assembled.version, anonymous_place(assembled.spelling), std::move(assembled.value),
+                      std::move(result), at, {});
+        result.location = where;
+    }
     for (const std::size_t local : std::ranges::reverse_view(unestablished)) {
         Expr handed_back = read_place(locals, local, at);
         handed_back.location = where;
@@ -446,6 +504,32 @@ void extract_body(Function& function, CXCursor cursor, const Signature& signatur
         // after such a write projects a value nothing states, never the one
         // the parameter arrived with (SPEC.md 12.9, CLASS-010). A pointer is
         // left as it was: what it designates is a dereference place of its own.
+        //
+        // A record or an array whose every member is modeled is followed member
+        // by member instead, as the implicit object is: one place per scalar
+        // leaf, each caller storage the common alias model relates to every
+        // other reference, so a write to one member leaves the others, and a
+        // member call or a call handed the object takes each leaf's effect. A
+        // normal return hands back the value its leaves assemble (TRUST.md
+        // TCB-AGGREGATE-003). An object whose own type, or a nested member's,
+        // states a refinement keeps one place: its predicate is charged of the
+        // whole, which leaf-by-leaf writes would never be.
+        if (source::aliases_storage(parameter.passing) && parameter.type.kind == TypeKind::Value &&
+            aggregates::structural(parameter.type) && !refines_an_object(parameter.type)) {
+            std::vector<BodyLowering::AggregateLeaf> leaves;
+            const std::string name = take(clang_getCursorSpelling(parameters[index]));
+            if (!lowering.collect_type_leaves(parameter.type, name, {}, leaves)) {
+                for (BodyLowering::AggregateLeaf& leaf : leaves) {
+                    Local member{.declaration = parameters[index],
+                                 .type = leaf.type,
+                                 .path = std::move(leaf.path),
+                                 .spelling = std::move(leaf.spelling)};
+                    member.external = true;
+                    candidates.push_back(std::move(member));
+                }
+                continue;
+            }
+        }
         if (parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&
             parameter.type.representation.kind != source::RepresentationKind::Pointer) {
             candidates.push_back(Local{.declaration = parameters[index],

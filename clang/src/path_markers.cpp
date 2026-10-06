@@ -126,7 +126,8 @@ std::optional<Expr> BodyLowering::lower_split(const std::string& marker, const C
     }
     CaseSplit split;
     split.marker = marker;
-    split.operands.push_back(build_expression(value, signature, locals, 0));
+    ReadSubject read = read_subject(build_expression(value, signature, locals, 0));
+    split.operands.push_back(read.read);
     consumed_splits.push_back(Function::SplitSubject{marker, split.operands.front().type});
 
     // The request that the subject's type be complete computes nothing.
@@ -203,11 +204,37 @@ std::optional<Expr> BodyLowering::lower_split(const std::string& marker, const C
         return reject("this case split was not resolved");
     }
 
+    return split_value(std::move(split), statements[from.index], std::move(read));
+}
+
+// A subject this body tracks member by member -- a local, a parameter or the
+// object a reference parameter designates -- is the value its leaves assemble,
+// which has no term until a path binds it. It is bound to a version where the
+// split stands, and the split reads that version, so what the split decides is
+// decided of the value the leaves hold there (TRUST.md TCB-AGGREGATE-001).
+BodyLowering::ReadSubject BodyLowering::read_subject(Expr value) {
+    ReadSubject subject;
+    if (!std::holds_alternative<Aggregate>(value.node)) {
+        subject.read = std::move(value);
+        return subject;
+    }
+    subject.version = next_version++;
+    subject.read = value;
+    subject.read.node = PlaceRef{*subject.version, anonymous_place("the subject of this case split")};
+    subject.assembled = std::move(value);
+    return subject;
+}
+
+Expr BodyLowering::split_value(CaseSplit split, CXCursor at, ReadSubject subject) {
     Expr result;
     result.type = result_type;
-    result.location = presumed_location(clang_getCursorLocation(statements[from.index]));
+    result.location = presumed_location(clang_getCursorLocation(at));
     result.node = std::move(split);
-    return result;
+    if (!subject.version.has_value()) {
+        return result;
+    }
+    return bind(*subject.version, anonymous_place("the subject of this case split"), std::move(subject.assembled),
+                std::move(result), at);
 }
 
 } // namespace cppl::clangbridge::detail

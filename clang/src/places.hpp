@@ -188,6 +188,28 @@ struct Local {
                                    [](const PlaceStep& step) { return step.kind == PlaceStep::Kind::SymbolicElement; });
     }
 
+    // Whether this place and `other`, of one declaration, take different
+    // members or different constant elements at some step of their paths,
+    // which makes them distinct storage whichever element a symbolic step of
+    // either selects: `this->items[i]` is never `this->size`, and `a[i].x` is
+    // never `a[j].y` (C++ [intro.object]). Up to the step they diverge at, the
+    // two paths walk one type, so a step of one is a step of the same kind of
+    // the other. A symbolic step decides nothing: it may select any element,
+    // the constant one beside it included (RFC 0014 §4).
+    [[nodiscard]] bool diverges_from(const Local& other) const {
+        const std::size_t shared = std::min(path.size(), other.path.size());
+        for (std::size_t step = 0; step < shared; ++step) {
+            if (path[step].kind == PlaceStep::Kind::SymbolicElement ||
+                other.path[step].kind == PlaceStep::Kind::SymbolicElement) {
+                continue;
+            }
+            if (path[step].index != other.path[step].index) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Whether a write to `other` reaches this place: `s` covers `s.x`, and
     // `s.x` covers neither `s.y` nor `s`.
     //

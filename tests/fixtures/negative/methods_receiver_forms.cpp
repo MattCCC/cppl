@@ -1,10 +1,11 @@
 // SPEC: CLASS-011, CLASS-015
 //
 // Receivers this implementation forms no sound place for, each refused where
-// the call is written: an object a parameter designates by reference, which is
-// read here as one value and never written member by member; an element
-// selected at a term of an array of class type, whose members have no place;
-// and a temporary, which is a new object rather than one the caller holds.
+// the call is written: an element selected at a term of an array of class
+// type, whose members have no place; and a temporary, which is a new object
+// rather than one the caller holds. An object a parameter designates by
+// reference is followed member by member, so a call on it leaves the value
+// its contract states, and a claim of another value is refused.
 struct Cell {
     unsigned v;
 
@@ -22,7 +23,7 @@ struct Cell {
 };
 
 verified unsigned through_reference(Cell& c)
-    ensures (result == 5u)
+    ensures (result == 6u)
 {
     c.set(5u);
     return c.get();

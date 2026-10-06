@@ -62,6 +62,12 @@ bool leaf_paths(const Type& type, const std::vector<PlaceStep>& prefix, std::vec
 [[nodiscard]] std::optional<Expr> receiver_value(CXCursor cursor, const ResolvedAccess& access, const Locals& locals,
                                                  const Frame& frame);
 
+// The value of the object reference parameter `parameter` designates, where
+// `at` stands, assembled from the leaves the body tracks it as. Nothing when the
+// body tracks it as one place, or not at all.
+[[nodiscard]] std::optional<Expr> designated_value(CXCursor parameter, const Locals& locals, const Frame& frame,
+                                                   CXCursor at);
+
 // The two ways one object takes another's value: by being constructed from it,
 // or by being assigned it.
 enum class Copying : std::uint8_t { Construction, Assignment };

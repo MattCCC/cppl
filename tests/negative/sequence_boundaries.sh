@@ -426,9 +426,9 @@ verified unsigned b_array_param_guarded(std::array<unsigned, 4> a, std::size_t i
 }
 
 CPP
-refused b_array_ref_param "an element of the std::array a reference designates is not modeled" <<'CPP'
+refused b_array_ref_param "return path 'b_array_ref_param path 1' does not satisfy its contract" <<'CPP'
 verified unsigned b_array_ref_param(const std::array<unsigned, 4>& a)
-    ensures (result == result)
+    ensures (result == a[1])
 {
     return a[0];
 }
@@ -1347,11 +1347,12 @@ verified unsigned n_span_of_array_local()
 }
 
 CPP
-refused n_vector_of_array_ref "reference 'r' must bind a tracked local object" <<'CPP'
+refused n_vector_of_array_ref "return path 'n_vector_of_array_ref path 1' does not satisfy its contract" <<'CPP'
 verified unsigned n_vector_of_array_ref(std::array<unsigned, 2>& a)
-    ensures (result == result)
+    ensures (result == a[1])
 {
     unsigned& r = a[0];
+    r = 5u;
     return r;
 }
 

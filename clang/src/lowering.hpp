@@ -473,6 +473,16 @@ struct BodyLowering {
                                                           std::size_t index) const;
     std::optional<Expr> lower_split(const std::string& marker, const Continuation& from, const Locals& locals,
                                     unsigned depth);
+    // How a split reads its subject: as it is, or, for a value the body
+    // assembles from the leaves it tracks, through a version bound to that
+    // value where the split stands.
+    struct ReadSubject {
+        Expr read;
+        std::optional<std::uint32_t> version;
+        Expr assembled;
+    };
+    ReadSubject read_subject(Expr value);
+    Expr split_value(CaseSplit split, CXCursor at, ReadSubject subject);
 
     // Loops (loops.cpp).
     [[nodiscard]] bool is_instantiation_marker(CXCursor statement) const;

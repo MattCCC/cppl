@@ -248,6 +248,17 @@ std::optional<Expr> object_value(CXCursor cursor, CXCursor declaration, const Lo
     return assemble_object(locals, frame, declaration, {}, whole, take(clang_getCursorSpelling(declaration)), cursor);
 }
 
+// A body follows the object a reference parameter designates member by member
+// where every member is modeled, so the value a normal return hands back is the
+// one its leaves hold there (TRUST.md TCB-AGGREGATE-003).
+std::optional<Expr> designated_value(CXCursor parameter, const Locals& locals, const Frame& frame, CXCursor at) {
+    const Type whole = convert_type(clang_getCursorType(parameter), 0, ReferenceModel::Referent);
+    if (!structural(whole) || !tracked_inside(locals, parameter, {})) {
+        return std::nullopt;
+    }
+    return assemble_object(locals, frame, parameter, {}, whole, take(clang_getCursorSpelling(parameter)), at);
+}
+
 std::optional<Expr> member_value(CXCursor cursor, const Locals& locals, const Frame& frame) {
     const Type type = convert_type(clang_getCursorType(cursor));
     if (!structural(type)) {

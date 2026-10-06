@@ -76,7 +76,7 @@ case_run refuse container_divide_by_length "division by zero: the divisor"
 case_run refuse container_parser_false_bound "does not satisfy its contract"
 case_run refuse container_element_in_condition "law 'is_digit_at element index' is not proven"
 # SPEC: STDMODEL-011
-case_run refuse container_array_reference_parameter "an element of the std::array a reference designates is not modeled"
+case_run refuse container_array_reference_parameter "return path 'through_reference path 1' does not satisfy its contract"
 
 # --- Summaries owe their preconditions (STDMODEL-013, STDMODEL-023) ---------
 

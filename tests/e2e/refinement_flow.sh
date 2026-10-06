@@ -1066,12 +1066,14 @@ verified int f(S s) ensures (result > 0) {
 CPP
 
 # A parameter that may designate caller storage gets none of this: a write
-# through it reaches storage the callee does not own.
+# through it reaches storage the callee does not own, which another reference
+# may designate too, so a write through that one invalidates it.
 # SPEC: STORAGE-011
-refuse a_reference_parameter_member_is_not_callee_storage 'not tracked storage|cannot state as a value' <<'CPP'
+refuse a_reference_parameter_member_is_not_callee_storage 'does not satisfy its contract' <<'CPP'
 struct S { int x; int y; };
-verified int f(S& s) ensures (result == 5) {
+verified int f(S& s, int& r) ensures (result == 5) {
     s.x = 5;
+    r = 6;
     return s.x;
 }
 CPP

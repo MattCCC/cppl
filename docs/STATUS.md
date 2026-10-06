@@ -1331,11 +1331,15 @@ with a base, calls through pointers to member and `this` as a value are refused
 by name (CLASS-015), and so are members whose storage may overlap another place
 or change unseen: reference members, bit-fields, members of anonymous unions and
 structs, and volatile members. These receivers are refused as limitations of
-this implementation, not of `SPEC.md`: a mutating call on an object a parameter
-designates by reference, which is read as one value and never written member by
-member; a call on an element of an array of class type selected at a term,
-whose members get no place; and a call through a pointer that is not a
-parameter, which no contract names a capability for. A
+this implementation, not of `SPEC.md`: a call on an element of an array of
+class type selected at a term, whose members get no place; and a call through a
+pointer that is not a parameter, which no contract names a capability for. A
+member array of the implicit object, `std::array` or built in, is one place per
+element and is subscripted at a term against the extent its type states, as a
+local array is; one whose `std::array` element type is written as a refinement
+refuses the member function (STDMODEL-020). A member access whose element
+place sits in another member than a write's is apart from it, wherever either
+selects an element at a term (`e2e_member_storage`, `negative_member_storage`). A
 contract is stated on the declaration in the class, and an out-of-line
 definition inherits it. A clause cannot call a member function, which is not a
 definition the formal core unfolds, and without `old(...)` a postcondition
@@ -1367,10 +1371,16 @@ places among the parameters, and a caller uses it only when its own declaration
 states the same contract, qualifiers and `mutable` members included
 (`fixtures/methods_cross_tu/`, `e2e_verified_methods`, `negative_verified_methods`).
 
-An object a parameter designates by reference is tracked as one place whose
-version any write that may alias it replaces, so a member read after such a
+An object a parameter designates by reference is caller storage whose places
+any write that may alias them gives a new version, so a member read after such a
 write is of a value nothing states, and the object's post-state is what it holds
-at return (`SPEC.md` VERIFIED-030, VERIFIED-031). Before this, the member was
+at return (`SPEC.md` VERIFIED-030, VERIFIED-031). A record or an array whose
+every member is modeled and whose type states no refinement of the whole is
+followed member by member, as the implicit object is: a member of it is written
+in place, a member call on it and a call handed it take each member's effect,
+and a normal return hands back the value its members assemble (`TRUST.md`
+TCB-AGGREGATE-003, `e2e_member_storage`). Any other is tracked as one place,
+which is read and never written. Before this, the member was
 read as the value it arrived with even after a write through another reference,
 and a contract false at run time was proven (`negative/methods_reference_object_stale.cpp`,
 `negative_verified_storage`).
@@ -2537,9 +2547,11 @@ TCB-LIB-010). An interface of the earlier format, which could not say, is
 refused, and so is one naming a model this compiler does not have. Iterators, range-`for`, `at`, `front`, `insert`, `resize`,
 `emplace_back`, `subspan`, `std::string_view`, static-extent spans, custom
 allocators, `std::vector<bool>`, element types other than integers and `bool`,
-refined element types anywhere but a `vector` local (parameters, results, spans
-and `std::array`), and an element of a `std::array` a reference designates are
-refused. An element or a dereference read in an `if` or loop condition, or in
+and refined element types anywhere but a `vector` local (parameters, results,
+spans and `std::array`) are refused. A `std::array` a reference designates, or
+one a member of the implicit object holds, is its `N` element places, each
+caller storage, read and written at a term within its extent; a clause reads
+its element as the parameter's at the state the clause describes. An element or a dereference read in an `if` or loop condition, or in
 an arm of a `?:`, `&&` or `||` that is returned, declares one local or is
 assigned, is formed where it is evaluated, and owes its bound or capability
 only on the routes that evaluate it (`e2e/conditions.sh`). A container handed to a verified call by value is copied into the

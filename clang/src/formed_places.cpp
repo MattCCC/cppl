@@ -538,10 +538,14 @@ bool BodyLowering::materialize_derefs(CXCursor cursor, Locals& state, unsigned d
             call && call->family == source::RepresentationKind::StdArray && !call->constructor) {
             library_models.insert(source::RepresentationKind::StdArray);
             if (call->name == "operator[]" && call->arguments.size() == 1) {
+                // The array is tracked when the declaration its access is
+                // rooted in is: a local's or a parameter's, or for a member of
+                // the implicit object, its class. What a pointer designates is
+                // a dereference place, formed under a capability, never here.
                 const auto access = resolve_access(cursor);
                 const bool tracked =
-                    access && std::ranges::any_of(state, [&](const Local& entry) {
-                        return clang_equalCursors(entry.declaration, clang_getCursorReferenced(access->object)) != 0;
+                    access && !access->dereferenced && std::ranges::any_of(state, [&](const Local& entry) {
+                        return clang_equalCursors(entry.declaration, access->declaration) != 0;
                     });
                 if (tracked && !access->symbolic_indices.empty() && !resolve_symbolic_element(state, *access)) {
                     return false;

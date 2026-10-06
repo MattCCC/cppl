@@ -356,7 +356,7 @@ virtual-member-refused	clang/src/signature.cpp	if (clang_CXXMethod_isVirtual(cur
 virtual-call-refused	clang/src/expressions.cpp	if (clang_CXXMethod_isVirtual(referenced) != 0) {	if (false && clang_CXXMethod_isVirtual(referenced) != 0) {	^negative_verified_methods$
 member-refinement-kept	clang/src/signature.cpp	converted.refinements = std::move(*declared);	(void)declared;	^negative_verified_methods$
 container-element-refinement-kept	clang/src/refinements.cpp	auto refinements = refinements_of(declared, element, *known);	auto refinements = decltype(refinements_of(declared, element, *known)){};	^negative_containers$|^negative_integration_ledger$
-reference-aggregate-witness	clang/src/lowering.cpp	if (parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	if (false && parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	^negative_verified_storage$
+reference-aggregate-witness	clang/src/lowering.cpp	if (parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	if (false && parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	^negative_verified_storage$|^negative_member_storage$
 unsafe-member-write-rooted	clang/src/unsafe.cpp	return access.has_value() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	return access.has_value() && access->path.empty() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	^negative_unsafe_boundary$
 alias-write-charged	clang/src/writes.cpp	        require(locals[index].type);	        (void)index;	^negative_verified_methods$
 alias-write-validity-from-prior	clang/src/writes.cpp	const bool valid = valid_versions.contains(locals[index].version);	const bool valid = true;	^negative_verified_methods$
@@ -465,6 +465,13 @@ struct-copy-member-user-code	clang/src/aggregate_values.cpp	if (std::optional<st
 struct-copy-constructor-kind	clang/src/aggregate_values.cpp	if ((!copy && !move) || clang_Cursor_getNumArguments(construction) != 1) {	if (false && ((!copy && !move) || clang_Cursor_getNumArguments(construction) != 1)) {	^negative_struct_values$
 unsafe-callee-call-sequenced	clang/src/expressions.cpp	if (!sequenced_call && writes_unsafely(signature.unsafe_effects, referenced)) {	if (false && !sequenced_call && writes_unsafely(signature.unsafe_effects, referenced)) {	^negative_unsafe_callees$
 unsafe-callee-default-argument-sequenced	clang/src/default_arguments.cpp	{}, std::nullopt, signature.clause, signature.refinements, signature.unsafe_effects};	{}, std::nullopt, signature.clause, signature.refinements, nullptr};	^negative_unsafe_callees$
+member-disjoint-symbolic-target	clang/src/places.hpp	if (path[step].kind == PlaceStep::Kind::SymbolicElement ||	if (false ||	^negative_member_storage$
+member-disjoint-symbolic-other	clang/src/places.hpp	other.path[step].kind == PlaceStep::Kind::SymbolicElement) {	false) {	^negative_member_storage$
+reference-object-leaves-external	clang/src/lowering.cpp	member.external = true;	member.external = false;	^negative_member_storage$
+reference-object-post-state	clang/src/lowering.cpp	} else if (designated.has_value()) {	} else if (false) {	^negative_member_storage$|^negative_refused_twins$
+reference-object-refined-whole	clang/src/lowering.cpp	aggregates::structural(parameter.type) && !refines_an_object(parameter.type)) {	aggregates::structural(parameter.type)) {	^negative_member_storage$
+receiver-std-array-refined-element	clang/src/signature.cpp	if (!stated || !stated->empty()) {	if (false) {	^negative_member_storage$
+std-array-element-not-through-pointer	clang/src/formed_places.cpp	access && !access->dereferenced && std::ranges::any_of(state, [&](const Local& entry) {	access && std::ranges::any_of(state, [&](const Local& entry) {	^negative_member_storage$
 MUTATIONS
 )
 

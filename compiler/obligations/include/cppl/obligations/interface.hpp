@@ -37,7 +37,12 @@ namespace cppl::obligations {
 // code may write what it is handed anywhere but in a position of its own, where
 // version 5 passed over that call's writes, so a contract version 5 recorded
 // through one may rest on an argument kept that was not (TCB-UNSAFE-004).
-inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-6";
+// Version 7 gives a member function's implicit object one place per element of
+// a `std::array` member, so the parameter positions a contract it records
+// numbers differ from version 6's for such a class, and it follows an object a
+// reference designates member by member, handing back the value its members
+// assemble, which version 6 stated of no contract (TRUST.md TCB-AGGREGATE-003).
+inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-7";
 
 // A contract another translation unit proved, offered to this one by the
 // verification interface that recorded it (SPEC.md TUBOUND-003).

@@ -36,6 +36,33 @@ using bridge::take;
 
 namespace {
 
+// A `std::array` specialization as its elements are tracked: the element type
+// and how many there are, both from Clang's resolved template arguments. The
+// count does not depend on which refinements are known, so a caller and the
+// member function it calls see the same leaves.
+struct StdArrayShape {
+    CXType element;
+    long long count = 0;
+};
+
+std::optional<StdArrayShape> std_array_shape(CXType written) {
+    const CXType canonical = clang_getCanonicalType(written);
+    if (canonical.kind != CXType_Record) {
+        return std::nullopt;
+    }
+    const CXCursor declaration = clang_getTypeDeclaration(canonical);
+    if (library_kind(declaration) != source::RepresentationKind::StdArray ||
+        clang_Cursor_getTemplateArgumentKind(declaration, 1) != CXTemplateArgumentKind_Integral) {
+        return std::nullopt;
+    }
+    const long long count = clang_Cursor_getTemplateArgumentValue(declaration, 1);
+    const CXType element = clang_Type_getTemplateArgumentAsType(canonical, 0);
+    if (count < 0 || count > static_cast<long long>(kMaxTrackedLeaves) || element.kind == CXType_Invalid) {
+        return std::nullopt;
+    }
+    return StdArrayShape{element, count};
+}
+
 // The scalar leaves of the storage `path` names, of written type `written`,
 // appended to `leaves` in declaration order (SPEC.md CLASS-008). A member that
 // is itself a record or an array is followed into its own members and elements,
@@ -56,6 +83,40 @@ std::optional<std::string> collect_receiver_leaves(CXType written, CXCursor fiel
         return std::nullopt;
     }
     const CXType canonical = clang_getCanonicalType(written);
+    // `std::array<T, N>` is `N` element places exactly as `T[N]` is, as a local
+    // of it is (RFC 0020 §3, SPEC.md STDMODEL-011): its subscript resolves to
+    // an element step on the array itself, never to its library layout. An
+    // element type written as a refinement is the base type in the
+    // specialization, and std::array states no such content invariant, so a
+    // member of one is refused where its refinements are read (STDMODEL-020).
+    if (const std::optional<StdArrayShape> shape = std_array_shape(written); shape.has_value()) {
+        if (known != nullptr) {
+            const CXType element = written_element_type(written);
+            auto stated =
+                element.kind == CXType_Invalid
+                    ? std::expected<std::vector<Refinement>, RefinementFailure>{std::unexpected(RefinementFailure{
+                          Category::UnsupportedSemantics, "an element type that could not be read from how the type is "
+                                                          "written"})}
+                    : refinements_of(clang_getNullCursor(), element, *known);
+            if (!stated || !stated->empty()) {
+                return "member '" + spelling + "' is a std::array whose element type " +
+                       (stated ? "is written as the refinement '" + stated->front().name +
+                                     "', which std::array does not state; a built-in array of that refinement has "
+                                     "refined elements (SPEC.md STDMODEL-020)"
+                               : "has " + stated.error().message);
+            }
+        }
+        for (long long position = 0; position < shape->count; ++position) {
+            std::vector<PlaceStep> at = path;
+            at.push_back(PlaceStep{PlaceStep::Kind::Element, static_cast<std::uint32_t>(position)});
+            if (auto refused =
+                    collect_receiver_leaves(shape->element, field, at, spelling + "[" + std::to_string(position) + "]",
+                                            mutable_member, known, leaves)) {
+                return refused;
+            }
+        }
+        return std::nullopt;
+    }
     // Scalar places are pairwise disjoint: two objects that are not bit-fields
     // share storage only when one is nested in the other or one has no size
     // (C++ [intro.object]), and a scalar has a size and nests nothing. That holds

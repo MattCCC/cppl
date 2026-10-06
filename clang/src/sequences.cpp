@@ -465,10 +465,13 @@ Expr sequence_expression(const SequenceCall& call, CXCursor cursor, const Signat
                 return read_place(locals, *element, cursor);
             }
             // An array a reference designates is caller storage another
-            // reference may write while the body runs, so it is not read as the
-            // value it had on entry (TRUST.md TCB-MEM-005).
+            // reference may write while the body runs, so a body that does not
+            // follow it element by element does not read it as the value it had
+            // on entry (TRUST.md TCB-MEM-005). A clause runs nothing: it reads
+            // the parameter at the state it describes, as it reads a member of
+            // an object a reference designates.
             if (const CXCursor named = strip_parens(call.object);
-                clang_getCursorKind(named) == CXCursor_DeclRefExpr &&
+                !signature.clause && clang_getCursorKind(named) == CXCursor_DeclRefExpr &&
                 source::aliases_storage(passing_of(clang_getCursorType(clang_getCursorReferenced(named))))) {
                 return unsupported_expression(cursor, "an element of the std::array a reference designates is not "
                                                       "modeled; take the array by value (SPEC.md STDMODEL-011)");

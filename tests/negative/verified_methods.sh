@@ -185,9 +185,9 @@ refuse methods_static_pure_false \
 # SPEC: CLASS-011, CLASS-015
 # Receivers for which this implementation forms no sound place.
 refuse methods_receiver_forms \
-    "methods_receiver_forms.cpp:24:19: error [unsupported-semantics]: verified function 'through_reference' has a body this implementation cannot state as a value: 'Cell::set' may write the object it is called on, which a parameter designates by reference" \
-    "methods_receiver_forms.cpp:31:19: error [unsupported-semantics]: verified function 'at_index' has a body this implementation cannot state as a value: this subscript's array is not tracked storage of this body" \
-    "methods_receiver_forms.cpp:39:19: error [unsupported-semantics]: verified function 'temporary' has a body this implementation cannot state as a value: the object of this call is not storage this implementation can name"
+    "methods_receiver_forms.cpp:29:5: error [kernel-rejection]: return path 'through_reference path 1' does not satisfy its contract" \
+    "methods_receiver_forms.cpp:32:19: error [unsupported-semantics]: verified function 'at_index' has a body this implementation cannot state as a value: this subscript's array is not tracked storage of this body" \
+    "methods_receiver_forms.cpp:40:19: error [unsupported-semantics]: verified function 'temporary' has a body this implementation cannot state as a value: the object of this call is not storage this implementation can name"
 
 # SPEC: CLASS-015
 refuse methods_unmodeled_receivers \
