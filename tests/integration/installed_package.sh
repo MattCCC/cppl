@@ -191,7 +191,7 @@ receive() {
 await() {
     local pattern="$1" what="$2"
     while receive; do
-        if printf '%s' "$MESSAGE" | grep -Eq "$pattern"; then
+        if grep -Eq "$pattern" <<< "$MESSAGE"; then
             return 0
         fi
     done
@@ -201,7 +201,7 @@ await() {
 root="file://$run/project"
 send '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":"'"$root"'","capabilities":{}}}'
 await '"id": ?1[,}].*"capabilities"|"capabilities".*"id": ?1[,}]' 'its capabilities'
-printf '%s' "$MESSAGE" | grep -q '"textDocumentSync"' || fail "the installed cppl-lsp offers no document sync"
+grep -q '"textDocumentSync"' <<< "$MESSAGE" || fail "the installed cppl-lsp offers no document sync"
 send '{"jsonrpc":"2.0","method":"initialized","params":{}}'
 
 text=$(sed 's/\\/\\\\/g; s/"/\\"/g' "$run/project/false_law.cpp" | awk '{ printf "%s\\n", $0 }')

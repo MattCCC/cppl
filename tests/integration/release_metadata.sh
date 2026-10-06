@@ -122,7 +122,7 @@ if "$CPPL" --cppl-version "--cppl-clang=$run/no-such-clang" > "$run/missing" 2> 
     fail "--cppl-version succeeded without a Clang driver to ask"
 fi
 for field in 'Clang driver' 'Target' 'C++ mode'; do
-    grep "^$field: " "$run/missing" | grep -q ': *unavailable: ' ||
+    reported=$(grep "^$field: " "$run/missing") && grep -q ': *unavailable: ' <<< "$reported" ||
         fail "without a driver, '$field' is not reported unavailable"
 done
 grep -q 'could not be asked' "$run/missing.err" || fail "without a driver, --cppl-version gives no reason"

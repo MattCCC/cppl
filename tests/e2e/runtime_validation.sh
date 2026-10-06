@@ -54,7 +54,7 @@ reference="$FIXTURES/runtime_validation.reference.cpp"
 # Each standard is a case of its own, in files of its own, and so are the units
 # below, so they are checked side by side (support/parallel.sh).
 in_standard() {
-    local standard="$1"
+    local standard="$1" checked
     base="$run/runtime-validation-$standard"
     "$CPPL" "-std=$standard" "$fixture" -o "$base" --cppl-trust-report "--cppl-emit-projection=$base.runtime.ii" \
         > "$base.report"
@@ -119,7 +119,7 @@ REPORT
         fail "the claims resting on validations differ ($standard)"
     fi
     # A site's fact is never shown as a universal proof (TCB-REPORT-004).
-    if grep -E 'RUNTIME-CHECKED' "$report" | grep -q 'PROVEN'; then
+    if checked=$(grep -E 'RUNTIME-CHECKED' "$report") && grep -q 'PROVEN' <<< "$checked"; then
         fail "a runtime-checked site was described as proven ($standard)"
     fi
 

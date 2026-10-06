@@ -87,7 +87,8 @@ reseal() {
         { print }
         END { if (!done) { print "no " field " line in " entry > "/dev/stderr"; exit 1 } }
     ' > "$resealed/resealed.body"
-    sed '$d' producer.cppli | cmp -s - "$resealed/resealed.body" && fail "the edit $1 $2 $3 changed nothing"
+    sed '$d' producer.cppli > "$resealed/unedited.body"
+    cmp -s "$resealed/unedited.body" "$resealed/resealed.body" && fail "the edit $1 $2 $3 changed nothing"
     { cat "$resealed/resealed.body"; printf 'checksum %s\n' "$(sha256 < "$resealed/resealed.body")"; } \
         > "$resealed/resealed.cppli"
 }

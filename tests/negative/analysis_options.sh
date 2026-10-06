@@ -150,7 +150,8 @@ mkdir driver
 ln -s "$CLANG" driver/clang++
 printf -- '%s\n' "$other_char" > driver/beside.cfg
 beside=("--cppl-clang=$run/driver/clang++" -no-canonical-prefixes)
-"$run/driver/clang++" "${beside[@]:1}" --config beside.cfg --version | grep -q "^Configuration file: .*driver/beside.cfg$" ||
+beside_version=$("$run/driver/clang++" "${beside[@]:1}" --config beside.cfg --version) &&
+    grep -q "^Configuration file: .*driver/beside.cfg$" <<< "$beside_version" ||
     fail "the driver does not read beside.cfg from its own directory, so this case shows nothing"
 # The driver's own directory holds no builtin header under -no-canonical-prefixes,
 # so the unit is one that includes none, compiled to an object.

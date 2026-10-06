@@ -61,11 +61,12 @@ probe() {
 # source line naming a system header is edited only the first time, since the
 # rest are the same kind of line, each read only through the checksum.
 exhaust() {
-    local interface="$1" lines at size bytes edited=0 system=0 tampered="$1.tampered"
+    local interface="$1" lines at content size bytes edited=0 system=0 tampered="$1.tampered"
     mkdir -p "$tampered"
     lines=$(wc -l < "$interface" | tr -d ' ')
     for at in $(seq 1 "$lines"); do
-        if sed -n "${at}p" "$interface" | grep -qE '^source [0-9a-f]+ /(usr|opt)/|^source [0-9a-f]+ .*/lib/clang/'; then
+        if content=$(sed -n "${at}p" "$interface") &&
+            grep -qE '^source [0-9a-f]+ /(usr|opt)/|^source [0-9a-f]+ .*/lib/clang/' <<< "$content"; then
             system=$((system + 1))
             [ "$system" -eq 1 ] || continue
         fi

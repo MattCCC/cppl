@@ -71,14 +71,15 @@ recorded() {
 }
 
 gnu_cxx=""
-if command -v g++ > /dev/null 2>&1 && g++ --version 2>/dev/null | grep -q 'Free Software Foundation'; then
+if command -v g++ > /dev/null 2>&1 && gxx_version=$(g++ --version 2>/dev/null) &&
+    grep -q 'Free Software Foundation' <<< "$gxx_version"; then
     gnu_cxx=g++
 fi
 
 # Each standard is a case of its own, in a copy of its own, so the two are
 # checked side by side (support/parallel.sh).
 in_standard() {
-    local standard="$1"
+    local standard="$1" premises
     mkdir "$run/$standard"
     cp "$FIXTURES"/integration/* "$run/$standard/"
     cd "$run/$standard"
@@ -110,7 +111,8 @@ in_standard() {
     [ "$(recorded "$text.cppli" '@F@line_limit#' unsafe | cut -d' ' -f2)" = "$unsafe_line" ] ||
         fail "the record of line_limit does not name its unsafe block"
     for name in 'Ledger@F@free_on_page#' '@F@page_room#'; do
-        recorded "$ledger.cppli" "$name" premise | grep -q ' page_holds$' || fail "the record of $name names no premise"
+        premises=$(recorded "$ledger.cppli" "$name" premise) && grep -q ' page_holds$' <<< "$premises" ||
+            fail "the record of $name names no premise"
     done
     for name in 'Ledger@F@line_amount#' 'Ledger@F@after#' 'Ledger@F@set#' '@F@directed#'; do
         [ -z "$(recorded "$ledger.cppli" "$name" premise)" ] || fail "the record of $name names a premise"

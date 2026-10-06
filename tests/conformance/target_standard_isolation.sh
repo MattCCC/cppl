@@ -22,13 +22,14 @@ formal='(^|[^[:alnum:]_])(law|ensures|expects|pure|proof|proves|ghost|refl|exact
 isolated() {
     local name="$1"
     local projection="$run/$name.runtime.cpp"
+    local program
 
     "$CPPL" -std=c++17 "$FIXTURES/$name.cpp" -o "$run/$name" \
         "--cppl-emit-projection=$projection"
 
     # Line markers name source files, and a path may contain any of these
     # words, so only the program text is searched.
-    if grep -v '^# [0-9]' "$projection" | grep -Eq "$formal"; then
+    if program=$(grep -v '^# [0-9]' "$projection") && grep -Eq "$formal" <<< "$program"; then
         echo "the runtime program for $name still contains formal syntax" >&2
         grep -v '^# [0-9]' "$projection" | grep -nE "$formal" >&2
         exit 1

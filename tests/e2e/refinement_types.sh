@@ -65,7 +65,7 @@ for standard in c++17 c++20 c++23; do
 
     # No refinement name reaches the object either. A symbol carrying one would
     # mean the type survived erasure into the runtime image.
-    if nm "$run/erased_clang.o" 2>/dev/null | grep -Eq 'Percentage|NonNegative'; then
+    if symbols=$(nm "$run/erased_clang.o" 2>/dev/null) && grep -Eq 'Percentage|NonNegative' <<< "$symbols"; then
         echo "a refinement name reached the object code for $standard" >&2
         exit 1
     fi

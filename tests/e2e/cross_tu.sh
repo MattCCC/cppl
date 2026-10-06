@@ -243,9 +243,11 @@ closure_units() {
     listed '^      which rests on the contract of \[c:@F@plain#i#\], entry [0-9a-f]{16}$' "$closure/interfaced.listed"
     # The records of `plain` rest on nothing trusted, so neither claim through one
     # is in any list of what a record carries.
+    local listing
     for section in 'Trust-dependent claims:/,/^Unsafe-dependent claims:' 'Unsafe-dependent claims:/,/^Assumption-free claims:' \
         'Library-model-dependent claims:/,/^$'; do
-        if sed -n "/^$section/p" "$closure_report" | grep -Eq '^  contract of through_(relayed_)?plain '; then
+        if listing=$(sed -n "/^$section/p" "$closure_report") &&
+            grep -Eq '^  contract of through_(relayed_)?plain ' <<< "$listing"; then
             fail "a claim through a record resting on nothing trusted was listed resting on an assumption"
         fi
     done

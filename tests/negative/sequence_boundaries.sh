@@ -40,7 +40,7 @@ refused() {
     cases+=("$1|$first|$(wc -l < "$run/$unit.cpp")|$2")
 }
 check() {
-    local log="$run/$unit.log" status=0 entry name first last reason line owned
+    local log="$run/$unit.log" status=0 entry name first last reason line owned errors
     echo 'int main() { return 0; }' >> "$run/$unit.cpp"
     (cd "$run" && "$CPPL" -std=c++20 -c "$unit.cpp" -o "$unit.o") > "$log" 2>&1 || status=$?
     [ "$status" -ne 0 ] || fail "unit '$unit' was accepted"
@@ -51,7 +51,7 @@ check() {
         cat "$log" >&2
         fail "unit '$unit' was described as proven"
     fi
-    if grep 'error \[' "$log" | grep -qv "^$unit\.cpp:[0-9]*:[0-9]*: error \["; then
+    if errors=$(grep 'error \[' "$log") && grep -qv "^$unit\.cpp:[0-9]*:[0-9]*: error \[" <<< "$errors"; then
         cat "$log" >&2
         fail "unit '$unit' has an error without a source location"
     fi

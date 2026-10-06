@@ -25,13 +25,13 @@ for standard in c++17 c++20 c++23; do
     # SPEC: ERASE-016
     # Nothing of any split survives in the program the fixture's own text
     # becomes, and the one written as the body of an unbraced `if` leaves a `;`.
-    start=$(grep -n '^enum class Mode' "$run/runtime.cpp" | head -1 | cut -d: -f1)
+    start=$(grep -n -m 1 '^enum class Mode' "$run/runtime.cpp" | cut -d: -f1)
     tail -n "+$start" "$run/runtime.cpp" > "$run/own.cpp"
     ! grep -Eq '(^|[^_[:alnum:]])(cases|decompose|omit|components|unnamed|non_null|contradiction)([^_[:alnum:]]|$)' \
         "$run/own.cpp"
     ! grep -q '[^<]=>' "$run/own.cpp"
-    awk '/if \(flag\)/ { armed = 1; next } armed && /[^[:space:]]/ { print; exit }' "$run/own.cpp" \
-        | grep -Eq '^[[:space:]]*;$'
+    unbraced=$(awk '/if \(flag\)/ { armed = 1; next } armed && /[^[:space:]]/ { print; exit }' "$run/own.cpp")
+    grep -Eq '^[[:space:]]*;$' <<< "$unbraced"
     "$CLANG" "-std=$standard" -x c++-cpp-output "$run/runtime.cpp" -o "$run/erased"
     test "$("$run/erased")" = "$("$run/program")"
 done

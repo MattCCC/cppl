@@ -30,8 +30,9 @@ grep -Eq "^Laws proven: +5$" "$report"
 grep -Eq "^ +by a written proof: +5$" "$report"
 grep -Eq "^Omitted cases proven: +8$" "$report"
 # Nothing here is assumed, so every omission is proven outright (TRUST.md 3.2).
-grep -A2 "^Omitted cases proven:" "$report" | grep -Eq "^ +assumption-free: +8$"
-grep -A2 "^Omitted cases proven:" "$report" | grep -Eq "^ +relative to trusted laws: +0$"
+omitted=$(grep -A2 "^Omitted cases proven:" "$report")
+grep -Eq "^ +assumption-free: +8$" <<< "$omitted"
+grep -Eq "^ +relative to trusted laws: +0$" <<< "$omitted"
 grep -Eq "^Trust-dependent claims: +0$" "$report"
 grep -Eq "^Impossible paths proven: +0$" "$report"
 grep -Eq "^Unresolved obligations: +0$" "$report"

@@ -279,6 +279,6 @@ refused preprocess "compiles nothing" -std=c++20 -E "$FIXTURES/trust_closure.cpp
 mkdir "$run/occupied.json"
 refused occupied "cannot write trust report" -std=c++20 "$FIXTURES/trust_closure.cpp" -o "$run/occupied" \
     "--cppl-emit-trust-report=$run/occupied.json"
-ls "$run" | grep -q 'partial' && fail "a report that could not be written left a partial file"
+listing=$(ls "$run") && grep -q 'partial' <<< "$listing" && fail "a report that could not be written left a partial file"
 
 echo "the JSON trust report states what the text report states, and only for a compile that verified"

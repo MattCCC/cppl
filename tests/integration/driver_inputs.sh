@@ -124,14 +124,14 @@ grep -q "'linker' input unused" unused.err || fail "a linker input under -c was 
 mkdir out deps
 succeeds depfile "$CPPL" -I include -isystem system -include config.h -MD -c configured.cpp -o out/configured.o
 [ -f out/configured.d ] || fail "-MD without -MF wrote no dependency file beside the object"
-head -1 out/configured.d | grep -q '^out/configured.o: configured.cpp ' ||
+rule=$(head -1 out/configured.d) && grep -q '^out/configured.o: configured.cpp ' <<< "$rule" ||
     fail "-MD names another target than the object: $(head -1 out/configured.d)"
 grep -q 'include/config.h' out/configured.d || fail "-MD does not list the header -include reads"
 grep -q 'system/limit.h' out/configured.d || fail "-MD does not list a system header"
 
 succeeds depfile_named "$CPPL" -I include -isystem system -include config.h -MMD -MF deps/named.d -c configured.cpp \
     -o out/named.o
-head -1 deps/named.d | grep -q '^out/named.o: configured.cpp ' ||
+rule=$(head -1 deps/named.d) && grep -q '^out/named.o: configured.cpp ' <<< "$rule" ||
     fail "-MF without -MT names another target than the object: $(head -1 deps/named.d)"
 if grep -q 'system/limit.h' deps/named.d; then
     fail "-MMD lists a system header"
@@ -139,7 +139,7 @@ fi
 
 succeeds depfile_target "$CPPL" -I include -isystem system -include config.h -MD -MF deps/target.d -MT custom \
     -c configured.cpp -o out/target.o
-head -1 deps/target.d | grep -q '^custom: configured.cpp ' || fail "-MT is not the target named"
+rule=$(head -1 deps/target.d) && grep -q '^custom: configured.cpp ' <<< "$rule" || fail "-MT is not the target named"
 
 # `-c` with neither `-o` nor `-MF`: each output is named after the source.
 mkdir bare
@@ -147,7 +147,7 @@ mkdir bare
     fail "a compile with no -o failed"
 [ -f bare/configured.o ] || fail "-c without -o wrote no configured.o: $(ls bare)"
 [ -f bare/configured.d ] || fail "-MD without -o or -MF wrote no configured.d: $(ls bare)"
-head -1 bare/configured.d | grep -q '^configured.o: ' || fail "-MD without -o names another target"
+rule=$(head -1 bare/configured.d) && grep -q '^configured.o: ' <<< "$rule" || fail "-MD without -o names another target"
 [ "$(ls bare | wc -l)" -eq 2 ] || fail "a compile with no -o left more than its object and dependency file: $(ls bare)"
 
 echo "cppl takes objects, archives, every source extension and the preprocessing and dependency options as Clang does"

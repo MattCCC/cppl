@@ -69,7 +69,7 @@ done
 "$CPPL" -std=c++17 -g -S "$fixture" -o "$run/debug.s"
 if grep -Fq '.runtime.' "$run/debug.s"; then
     echo 'debug information names the scratch runtime file instead of the source' >&2
-    grep -F '.runtime.' "$run/debug.s" | head -n 5 >&2
+    grep -m 5 -F '.runtime.' "$run/debug.s" >&2
     exit 1
 fi
 grep -Fq 'erasure_lines.cpp' "$run/debug.s"

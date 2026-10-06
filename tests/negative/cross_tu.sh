@@ -234,7 +234,8 @@ case_run refuse semantics_fixture "it was verified under other verification sema
 # it, so what is decided is the edited field alone.
 reseal() {
     sed '$d' "$1" | sed "$3" > "$2.body"
-    sed '$d' "$1" | cmp -s - "$2.body" && fail "the edit making $2 changed nothing"
+    sed '$d' "$1" > "$2.unedited"
+    cmp -s "$2.unedited" "$2.body" && fail "the edit making $2 changed nothing"
     { cat "$2.body"; printf 'checksum %s\n' "$(sha256 < "$2.body")"; } > "$2"
 }
 

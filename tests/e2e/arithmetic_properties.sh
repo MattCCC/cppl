@@ -52,7 +52,7 @@ while IFS= read -r name; do
         fail "'$name' was not refused for its definedness" "$run/undefined.log"
     fi
 done < "$run/undefined.names"
-if grep -E 'error' "$run/undefined.log" | grep -vqF 'is not shown to have defined behavior'; then
+if errors=$(grep -E 'error' "$run/undefined.log") && grep -vqF 'is not shown to have defined behavior' <<< "$errors"; then
     fail "an undefined operation was refused for another reason" "$run/undefined.log"
 fi
 echo "seed $seed: $(grep -c . "$run/undefined.names") undefined operations refused, and every defined one verified with its value"

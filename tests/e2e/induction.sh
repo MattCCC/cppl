@@ -54,8 +54,9 @@ for standard in c++17 c++20 c++23; do
 
     # No induction statement, arm or premise name reaches the runtime program.
     # Line markers name source files, whose paths may contain any word.
-    if grep -v '^# [0-9]' "$base.runtime.ii" |
-        grep -Eq '(^|[^_[:alnum:]])induction +[A-Za-z_]|(zero|successor)(\([A-Za-z_]+\))? *=>|proves \(|__cppl_'; then
+    if program=$(grep -v '^# [0-9]' "$base.runtime.ii") &&
+        grep -Eq '(^|[^_[:alnum:]])induction +[A-Za-z_]|(zero|successor)(\([A-Za-z_]+\))? *=>|proves \(|__cppl_' \
+            <<< "$program"; then
         echo "a proof construct survived into the erased translation unit ($standard)" >&2
         exit 1
     fi

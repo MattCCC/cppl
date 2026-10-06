@@ -65,6 +65,23 @@ outputs, so this changes only when each case runs: every case still runs, and
 the test still fails on the first failing case in the order it names them, with
 that case's own messages.
 
+The test scripts, like those under `scripts/`, run under `set -euo pipefail`,
+so they never pipe a producer into a consumer that may stop reading early:
+`grep -q`, `grep -m`, `head`, `sed` with `q`, `awk` with `exit`, a `read` loop
+that breaks, `cmp`. Once such a consumer exits, the producer's next write kills
+it with `SIGPIPE`, and pipefail turns a match into a failure, or under `!` or
+`&& fail` a failure into a pass. Whether there is a next write depends on how
+much the producer writes, which for a compiler's macro list, a report, a log or
+`nm` output differs from host to host, so the test fails on some machines and
+loads and not others. Read the output whole first and match that:
+`out=$(producer)` and then `grep -q pattern <<< "$out"`, or a file in the
+test's own run directory where every byte counts, as it does for `cmp`. Where
+the producer's own failure decided the outcome, keep it in the condition:
+`if out=$(producer) && grep -q pattern <<< "$out"; then` holds exactly when the
+pipeline did. A consumer reading a file argument itself, as in
+`grep -m 1 pattern file`, is no pipeline. A pipeline whose status is discarded
+on purpose, as in `diff a b | head -n 40 >&2 || true`, may be cut short.
+
 ---
 
 # 2. What each CI preset corresponds to
