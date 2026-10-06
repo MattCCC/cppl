@@ -165,13 +165,13 @@ container-element-generation	clang/src/bridge.cpp	return !entry.formed_at.has_va
 sequence-mutator-new-generation	clang/src/bridge.cpp	effects.push_back(new_generation(state[*root], where));	(void)where;	^negative_containers$|^negative_sequence_attacks$
 call-two-writable-views	clang/src/bridge.cpp	for (const std::size_t other : written_roots) {	for (const std::size_t other : std::vector<std::size_t>{}) {	^negative_sequence_boundaries$
 call-span-parameter-written-twice	clang/src/bridge.cpp	if (writes && std::ranges::any_of(written_span_parameters, [&](CXCursor written_parameter) {	if (false && writes && std::ranges::any_of(written_span_parameters, [&](CXCursor written_parameter) {	^negative_sequence_boundaries$
-unsafe-callee-writes-const-references	clang/src/bridge.cpp	            if (position.writable || unsafe_callee) {	            if (position.writable) {	^negative_unsafe_callees$
+unsafe-callee-writes-const-references	clang/src/bridge.cpp	        if (position.writable || unsafe_callee) {	        if (position.writable) {	^negative_unsafe_callees$
 unsafe-callee-through-calls	clang/src/bridge.cpp	node.effects = std::ranges::any_of(node.callees, [&](const std::string& called) {	node.effects = false && std::ranges::any_of(node.callees, [&](const std::string& called) {	^negative_unsafe_callees$
 unsafe-callee-from-interface	clang/src/bridge.cpp	if (current_key.empty() || imported_.contains(current_key)) {	if (current_key.empty()) {	^negative_unsafe_callees$
-unsafe-callee-temporary-post-state	clang/src/bridge.cpp	                                                           std::move(declared)});	                                                           std::move(declared)}), call->effects.pop_back();	^negative_unsafe_callees$
+unsafe-callee-temporary-post-state	clang/src/bridge.cpp	std::move(declared)});	std::move(declared)}), call->effects.pop_back();	^negative_unsafe_callees$
 call-statement-silent-temporaries	clang/src/bridge.cpp	if (clang_getCursorKind(inner) == CXCursor_CallExpr && temporaries_destroy_silently(statement)) {	if (clang_getCursorKind(inner) == CXCursor_CallExpr && (temporaries_destroy_silently(statement) || true)) {	^negative_sequence_generations$
 compile-time-constant-expression	clang/src/bridge.cpp	if (kind == CXCursor_UnaryExpr || kind == CXCursor_RequiresExpr) {	if (false && (kind == CXCursor_UnaryExpr || kind == CXCursor_RequiresExpr)) {	^e2e_safety_subset$
-static-assertion-decided-by-clang	clang/src/bridge.cpp	        if (clang_getCursorKind(declaration) == CXCursor_StaticAssert) {	        if (false && clang_getCursorKind(declaration) == CXCursor_StaticAssert) {	^e2e_safety_subset$
+static-assertion-decided-by-clang	clang/src/bridge.cpp	    if (clang_getCursorKind(declaration) == CXCursor_StaticAssert) {	    if (false && clang_getCursorKind(declaration) == CXCursor_StaticAssert) {	^e2e_safety_subset$
 unsafe-callee-const-view-refined-elements	clang/src/bridge.cpp	if (const auto& held = *state[root].sequence; !held.element.refinements.empty()) {	if (const auto& held = *state[root].sequence; false && !held.element.refinements.empty()) {	^negative_unsafe_callees$
 global-constant-read	clang/src/bridge.cpp	            clang_Cursor_hasVarDeclGlobalStorage(referenced) != 0) {	            clang_Cursor_hasVarDeclGlobalStorage(referenced) != 0 && false) {	^negative_global_constants$
 global-constant-const-only	clang/src/bridge.cpp	            if (clang_isConstQualifiedType(declared) != 0 && clang_isVolatileQualifiedType(declared) == 0) {	            if (clang_isVolatileQualifiedType(declared) == 0) {	^negative_global_constants$
@@ -182,7 +182,7 @@ integer-to-boolean-nonzero	clang/src/bridge.cpp	nonzero.node = Binary{BinaryOp::
 boolean-conversion-implicit	clang/src/bridge.cpp	if (kind == CXCursor_UnexposedExpr && boolean_pair(original, converted)) {	if (false && kind == CXCursor_UnexposedExpr && boolean_pair(original, converted)) {	^negative_boolean_conversions$
 boolean-conversion-written	clang/src/bridge.cpp	            if (destination.kind == TypeKind::Bool && source.kind == TypeKind::Bool) {	            if (false && destination.kind == TypeKind::Bool && source.kind == TypeKind::Bool) {	^negative_boolean_conversions$
 requires-expression-constant	clang/src/bridge.cpp	if (kind == CXCursor_UnaryExpr || kind == CXCursor_RequiresExpr) {	if (kind == CXCursor_UnaryExpr || false) {	^e2e_safety_subset$
-label-names-statement	clang/src/bridge.cpp	        if (kind == CXCursor_LabelStmt) {	        if (false && kind == CXCursor_LabelStmt) {	^e2e_safety_subset$
+label-names-statement	clang/src/bridge.cpp	    if (kind == CXCursor_LabelStmt) {	    if (false && kind == CXCursor_LabelStmt) {	^e2e_safety_subset$
 reference-binds-temporary	clang/src/bridge.cpp	const bool binds_temporary = reference && is_prvalue(initializer);	const bool binds_temporary = false && reference && is_prvalue(initializer);	^e2e_safety_subset$
 linkage-specification-is-namespace-scope	compiler/frontend/src/recognizer.cpp	if (brace >= 2 && tokens[brace - 1].kind == TokenKind::StringLiteral && tokens[brace - 2].is_identifier("extern")) {	if (false && brace >= 2 && tokens[brace - 1].kind == TokenKind::StringLiteral && tokens[brace - 2].is_identifier("extern")) {	^e2e_safety_subset$
 call-statement-temporaries-mutator-only	clang/src/bridge.cpp	if (clang_getCursorKind(inner) == CXCursor_CallExpr && sequence_call(inner).has_value()) {	if (clang_getCursorKind(inner) == CXCursor_CallExpr) {	^negative_sequence_generations$
@@ -211,7 +211,7 @@ range-for-unmodeled-range-refused	clang/src/bridge.cpp	return reject("the range 
 range-for-aggregate-elements-refused	clang/src/bridge.cpp	held.kind != CXType_Invalid && elements.kind != TypeKind::Int && elements.kind != TypeKind::Bool) {	false) {	^negative_range_for$
 range-for-span-parameter-reference	clang/src/bridge.cpp	if (range.reference && range.sequence && !range.region.root.has_value()) {	if (false) {	^negative_range_for$
 range-for-storage-kept	clang/src/bridge.cpp	locals[root].version == frame.head[root].version) {	true) {	^negative_range_for$|^negative_sequence_attacks$
-range-for-element-alias-carried	clang/src/bridge.cpp	        if (!range.writable) {	        if (true) {	^e2e_range_for$
+range-for-element-alias-carried	clang/src/bridge.cpp	    if (!range.writable) {	    if (true) {	^e2e_range_for$
 range-for-generated-measure	clang/src/bridge.cpp	measures.push_back(range_measure(*header.range, frame.head));	(void)frame;	^e2e_range_for$
 range-for-condition-bounds-position	clang/src/bridge.cpp	below.op = BinaryOp::Less;	below.op = BinaryOp::LessEqual;	^e2e_range_for$
 operator-parameters-after-operator	compiler/frontend/src/recognizer.cpp	return at + 2;	return name + 1;	^unit_recognizer_test$|^negative_verified_methods$
@@ -267,7 +267,7 @@ recursion-group-established-whole	compiler/automation/src/composition.cpp	} else
 totality-unmeasured-loop	compiler/obligations/src/contracts.cpp	total[index] = contract.unmeasured_loops.empty() && contract.unsafe_regions.empty();	total[index] = true;	^negative_termination$
 totality-through-callees	compiler/obligations/src/contracts.cpp	            if (total[index] &&	            if (false && total[index] &&	^negative_termination$
 lexicographic-first-stays	compiler/obligations/src/contracts.cpp	compare(kernel::PrimOp::Equal, index)	compare(kernel::PrimOp::GreaterEqual, index)	^negative_refused_declarations$|^negative_termination$
-do-loop-exit-decided	clang/src/bridge.cpp	        if (!frame.condition_last) {	        if (true) {	^negative_termination$
+do-loop-exit-decided	clang/src/bridge.cpp	    if (!frame.condition_last) {	    if (true) {	^negative_termination$
 xtu-statement-compared	compiler/obligations/src/contracts.cpp	if (!(*plan.interface_statement == recorded->entry.statement)) {	if (false && !(*plan.interface_statement == recorded->entry.statement)) {	^negative_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-imported-established	compiler/automation/src/composition.cpp	    if (function.imported.has_value()) {	    if (function.imported.has_value() && false) {	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-imported-totality	compiler/obligations/src/contracts.cpp	total[index] = contract.total;	total[index] = true;	^negative_cross_tu$|^unit_cross_unit_contracts_test$
@@ -342,14 +342,14 @@ xtu-dependency-exported	compiler/obligations/src/interface.cpp	entry.depends.pus
 xtu-dependencies-carried	compiler/obligations/src/interface.cpp	entry.depends.insert(entry.depends.end(), imported.depends.begin(), imported.depends.end());	(void)imported.depends;	^unit_cross_unit_contracts_test$
 xtu-laws-imported	compiler/obligations/src/contracts.cpp	recorded->identity,     recorded->entry.premises,	recorded->identity,     std::vector<artifact::Premise>{},	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
 member-call-writes-object	clang/src/bridge.cpp	const bool writes = (callee_receiver.has_value() && callee_receiver->writes()) ||	const bool writes = false ||	^negative_verified_methods$
-const-receiver-mutable-member	clang/src/bridge.cpp	if (constant && !leaf.mutable_member) {	if (constant && (true || !leaf.mutable_member)) {	^negative_verified_methods$
+const-receiver-mutable-member	clang/src/signature.hpp	if (constant && !leaf.mutable_member) {	if (constant && (true || !leaf.mutable_member)) {	^negative_verified_methods$
 virtual-member-refused	clang/src/bridge.cpp	if (clang_CXXMethod_isVirtual(cursor) != 0) {	if (false && clang_CXXMethod_isVirtual(cursor) != 0) {	^negative_verified_methods$
 virtual-call-refused	clang/src/bridge.cpp	if (clang_CXXMethod_isVirtual(referenced) != 0) {	if (false && clang_CXXMethod_isVirtual(referenced) != 0) {	^negative_verified_methods$
 member-refinement-kept	clang/src/bridge.cpp	converted.refinements = std::move(*declared);	(void)declared;	^negative_verified_methods$
 container-element-refinement-kept	clang/src/refinements.cpp	auto refinements = refinements_of(declared, element, *known);	auto refinements = decltype(refinements_of(declared, element, *known)){};	^negative_containers$|^negative_integration_ledger$
 reference-aggregate-witness	clang/src/bridge.cpp	if (parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	if (false && parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	^negative_verified_storage$
 unsafe-member-write-rooted	clang/src/bridge.cpp	return access.has_value() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	return access.has_value() && access->path.empty() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	^negative_unsafe_boundary$
-alias-write-charged	clang/src/bridge.cpp	            require(locals[index].type);	            (void)index;	^negative_verified_methods$
+alias-write-charged	clang/src/bridge.cpp	        require(locals[index].type);	        (void)index;	^negative_verified_methods$
 alias-write-validity-from-prior	clang/src/bridge.cpp	const bool valid = valid_versions.contains(locals[index].version);	const bool valid = true;	^negative_verified_methods$
 return-charges-unestablished	clang/src/bridge.cpp	if (!valid_versions.contains(locals[local].version) && carries_refinement(locals[local].type)) {	if (false) {	^negative_verified_methods$|^negative_cross_feature$
 call-effect-refinement-charged	compiler/obligations/src/contracts.cpp	const auto required = membership(program_, effect.declared, arguments[effect.argument]);	const auto required = membership(program_, effect.declared.erased(), arguments[effect.argument]);	^negative_verified_methods$|^negative_cross_feature$
@@ -386,8 +386,8 @@ representability-fails-outside	kernel/src/linear.cpp	return holds ? bound(**exac
 definedness-not-self-supposed	compiler/obligations/src/contracts.cpp	emit(before, Origin::DefinedBehavior, function_.qualified_name, site.operation->provenance.range,	before.events.emplace_back(*condition); emit(before, Origin::DefinedBehavior, function_.qualified_name, site.operation->provenance.range,	^negative_signed_arithmetic$
 bit-field-read-refused	clang/src/bridge.cpp	if (clang_getFieldDeclBitWidth(field) >= 0) {	if (false && clang_getFieldDeclBitWidth(field) >= 0) {	^negative_signed_arithmetic$
 pointer-call-havocs-aliases	clang/src/bridge.cpp	for (const std::size_t reached : invalidate_pointee_aliases(state, handed, invalidated)) {	for (const std::size_t reached : (false ? invalidate_pointee_aliases(state, handed, invalidated) : std::vector<std::size_t>{})) {	^negative_verified_storage$
-pointer-call-havoc-without-reference-writes	clang/src/bridge.cpp	            havoc_pointees({});	            (void)0;	^negative_verified_storage$
-pointer-call-havoc-beside-reference-writes	clang/src/bridge.cpp	        havoc_pointees(targets);	        (void)targets;	^negative_verified_storage$
+pointer-call-havoc-without-reference-writes	clang/src/bridge.cpp	        havoc_pointees({});	        (void)0;	^negative_verified_storage$
+pointer-call-havoc-beside-reference-writes	clang/src/bridge.cpp	    havoc_pointees(targets);	    (void)targets;	^negative_verified_storage$
 representability-outside-below	kernel/src/linear.cpp	finish(expression, Wide{1} - lowest(type))	finish(expression, Wide{2} - lowest(type))	^kernel_definedness_test$
 representability-outside-above	kernel/src/linear.cpp	finish(negated(expression), highest(type) + 1)	finish(negated(expression), highest(type) + 2)	^kernel_definedness_test$
 conversion-wrap-modulus	kernel/src/linear.cpp	reduced.terms.emplace(wrap, -modulus(target));	reduced.terms.emplace(wrap, -2 * modulus(target));	^kernel_definedness_test$

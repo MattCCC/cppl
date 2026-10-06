@@ -3,7 +3,7 @@
 // What the bridge reads of a statement's shape before it lowers it: the head
 // of an `if` or a `switch`, a switch's labels and `[[fallthrough]];` (C++
 // [stmt.select], [stmt.switch]). Nothing here decides what a statement means;
-// `bridge.cpp` lowers it from what this reads.
+// the body lowering (lowering.hpp) lowers it from what this reads.
 
 #include <clang-c/CXFile.h>
 #include <clang-c/Index.h>

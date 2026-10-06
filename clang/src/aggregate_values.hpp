@@ -15,7 +15,7 @@
 // Whole struct values in a verified body (TRUST.md TCB-AGGREGATE-001,
 // TCB-AGGREGATE-002): a struct the body tracks as one place per scalar leaf,
 // read whole, copied, assigned and handed to a reference parameter. The body
-// lowering in bridge.cpp calls these where such a value flows, and lends them
+// lowering (lowering.hpp) calls these where such a value flows, and lends them
 // what of its own state they need through `Lowering`.
 namespace cppl::clangbridge::detail::aggregates {
 
@@ -127,7 +127,7 @@ struct TypeLeaf {
 };
 
 // What the lowering of struct values asks of the body lowering it is part of:
-// each is that lowering's own operation (bridge.cpp, `BodyLowering`).
+// each is that lowering's own operation (lowering.hpp, `BodyLowering`).
 class Lowering {
   public:
     Lowering() = default;

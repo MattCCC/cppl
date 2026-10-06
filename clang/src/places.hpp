@@ -17,7 +17,7 @@
 #include <vector>
 
 // The places a verified body tracks, and how an access names one: the storage
-// model the Clang bridge's body lowering (bridge.cpp) shares with its lowering
+// model the Clang bridge's body lowering (lowering.hpp) shares with its lowering
 // of whole struct values (aggregate_values.cpp). The functions declared at the
 // end are the bridge's own, defined in bridge.cpp, so every unit reads a type,
 // a place and an access exactly as the body lowering does.
