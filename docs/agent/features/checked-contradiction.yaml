@@ -73,7 +73,7 @@ implementation:
     - kernel/src/check.cpp
     - kernel/src/linear.cpp
   frontend:
-    - compiler/frontend/src/recognizer.cpp
+    - compiler/frontend/src/recognizer_settle.cpp
     - compiler/frontend/include/cppl/frontend/syntax.hpp
     - compiler/frontend/src/projection_paths.cpp
     - compiler/frontend/include/cppl/frontend/projection.hpp

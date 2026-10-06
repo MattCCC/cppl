@@ -51,7 +51,7 @@ implementation:
     - clang/src/refinements.cpp
     - clang/src/types.cpp
   frontend:
-    - compiler/frontend/src/recognizer.cpp
+    - compiler/frontend/src/recognizer_laws.cpp
     - compiler/frontend/src/projection_refinements.cpp
     - compiler/frontend/include/cppl/frontend/syntax.hpp
   elaboration:

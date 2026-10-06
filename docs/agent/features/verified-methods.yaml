@@ -80,7 +80,7 @@ depends_on:
 implementation:
   frontend:
     - compiler/frontend/include/cppl/frontend/syntax.hpp
-    - compiler/frontend/src/recognizer.cpp
+    - compiler/frontend/src/recognizer_functions.cpp
     - compiler/frontend/src/projection_declarations.cpp
     - compiler/frontend/src/projector.hpp
   clang:

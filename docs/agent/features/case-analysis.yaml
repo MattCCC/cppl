@@ -86,7 +86,8 @@ implementation:
     - compiler/decomposition/src/scoped_enum.cpp
     - compiler/decomposition/src/structural.cpp
   frontend:
-    - compiler/frontend/src/recognizer.cpp
+    - compiler/frontend/src/recognizer_proofs.cpp
+    - compiler/frontend/src/recognizer_settle.cpp
     - compiler/frontend/src/projection_declarations.cpp
     - compiler/frontend/src/projection_paths.cpp
     - compiler/frontend/include/cppl/frontend/syntax.hpp

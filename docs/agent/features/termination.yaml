@@ -71,6 +71,7 @@ implementation:
   frontend:
     - compiler/frontend/include/cppl/frontend/syntax.hpp
     - compiler/frontend/src/recognizer.cpp
+    - compiler/frontend/src/recognizer_statements.cpp
     - compiler/frontend/include/cppl/frontend/projection.hpp
     - compiler/frontend/src/projection_declarations.cpp
     - compiler/frontend/src/projection_paths.cpp

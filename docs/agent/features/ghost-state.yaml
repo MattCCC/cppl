@@ -49,7 +49,7 @@ depends_on:
 implementation:
   frontend:
     - compiler/frontend/include/cppl/frontend/syntax.hpp
-    - compiler/frontend/src/recognizer.cpp
+    - compiler/frontend/src/recognizer_settle.cpp
     - compiler/frontend/src/projection.cpp
   clang:
     - clang/include/cppl/clang/ast.hpp

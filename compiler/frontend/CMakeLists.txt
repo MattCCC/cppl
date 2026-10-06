@@ -14,6 +14,13 @@ add_library(cppl_frontend STATIC
     src/projection_refinements.cpp
     src/projection_scopes.cpp
     src/recognizer.cpp
+    src/recognizer_declarators.cpp
+    src/recognizer_functions.cpp
+    src/recognizer_laws.cpp
+    src/recognizer_proofs.cpp
+    src/recognizer_scan.cpp
+    src/recognizer_settle.cpp
+    src/recognizer_statements.cpp
     src/structure.cpp
     src/words.cpp)
 

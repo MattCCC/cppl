@@ -84,7 +84,7 @@ depends_on:
 implementation:
   frontend:
     - compiler/frontend/include/cppl/frontend/syntax.hpp
-    - compiler/frontend/src/recognizer.cpp
+    - compiler/frontend/src/recognizer_settle.cpp
     - compiler/frontend/include/cppl/frontend/projection.hpp
     - compiler/frontend/src/projection_refinements.cpp
   bridge:
