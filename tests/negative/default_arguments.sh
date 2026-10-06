@@ -191,6 +191,24 @@ verified unsigned relies(unsigned x) ensures (result == x) {
 }
 int main() { return relies(3u) == 3u ? 0 : 1; }
 CPP
+# So does a Law relying on one.
+accept a_law_relying_on_a_default <<'CPP'
+pure unsigned add(unsigned x, unsigned k = 2u) { return x + k; }
+law adds_two(unsigned x) proves (add(x) == x + 2u);
+proof adds_two_holds(unsigned x) proves (adds_two(x)) {
+    refl;
+}
+int main() { return add(1u) == 3u ? 0 : 1; }
+CPP
+refuse a_law_relying_on_another_default "proof 'adds_three_holds' does not establish law 'adds_three'" <<'CPP'
+pure unsigned add(unsigned x, unsigned k = 2u) { return x + k; }
+law adds_three(unsigned x) proves (add(x) == x + 3u);
+proof adds_three_holds(unsigned x) proves (adds_three(x)) {
+    refl;
+}
+int main() { return 0; }
+CPP
+
 # A ghost initializer never runs, so the effects of a default it relies on would
 # silently not happen.
 refuse a_ghost_relying_on_a_default_with_an_effect \
