@@ -91,6 +91,7 @@ implementation:
     - compiler/frontend/include/cppl/frontend/syntax.hpp
   bridge:
     - clang/src/bridge.cpp
+    - clang/src/types.cpp
     - clang/include/cppl/clang/ast.hpp
   source:
     - compiler/source/include/cppl/source/representation.hpp

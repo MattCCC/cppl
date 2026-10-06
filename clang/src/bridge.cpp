@@ -8,7 +8,9 @@
 #include "cppl/source/storage.hpp"
 #include "places.hpp"
 #include "proof_instantiation.hpp"
+#include "refinements.hpp"
 #include "statements.hpp"
+#include "types.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -37,35 +39,16 @@
 
 namespace cppl::clangbridge {
 
-namespace {
+namespace detail {
 
-// The storage model this file shares with the lowering of whole struct values
-// (places.hpp, aggregate_values.hpp).
-using detail::kMaxExpressionDepth;
-using detail::kMaxPlaceDepth;
-using detail::kMaxTrackedLeaves;
-using detail::Local;
-using detail::Locals;
-using detail::ReferenceModel;
-using detail::ResolvedAccess;
-using detail::bridge::children_of;
-using detail::bridge::presumed_location;
-using detail::bridge::record_fields;
-using detail::bridge::record_has_base;
-using detail::bridge::strip_parens;
-using detail::bridge::take;
-namespace aggregates = detail::aggregates;
-
-// What the bridge reads of a statement's shape (statements.hpp).
-using detail::before;
-using detail::FilePosition;
-using detail::holds_switch_label;
-using detail::is_fallthrough;
-using detail::is_switch_label;
-using detail::selection_head;
-using detail::SelectionHead;
-using detail::stands_at;
-using detail::start_of;
+// What libclang reports, read the one way every unit of the bridge reads it
+// (places.hpp, cursors.cpp).
+using bridge::children_of;
+using bridge::presumed_location;
+using bridge::record_fields;
+using bridge::record_has_base;
+using bridge::strip_parens;
+using bridge::take;
 
 constexpr std::size_t kMaxReturnPaths = 128;
 // A condition's operators nest, and each `&&`/`||` places its second operand on
@@ -93,760 +76,7 @@ class ScopedString {
     CXString value_;
 };
 
-// Where a cursor stands, as a diagnostic names it.
-std::string describe_location(CXCursor at) {
-    const source::SourceLocation where = presumed_location(clang_getCursorLocation(at));
-    return where.file + ":" + std::to_string(where.line);
-}
-
-// Whether a record declares a destructor it neither defaults nor deletes: user
-// code that runs where an object's lifetime ends. An instantiation may not
-// expose its members as cursors, so the template it was instantiated from is
-// asked too.
-bool has_user_provided_destructor(CXCursor definition) {
-    const auto declares = [](CXCursor record) {
-        bool found = false;
-        clang_visitChildren(
-            record,
-            [](CXCursor child, CXCursor, CXClientData data) {
-                if (clang_getCursorKind(child) == CXCursor_Destructor && clang_CXXMethod_isDefaulted(child) == 0 &&
-                    clang_CXXMethod_isDeleted(child) == 0) {
-                    *static_cast<bool*>(data) = true;
-                    return CXChildVisit_Break;
-                }
-                return CXChildVisit_Continue;
-            },
-            &found);
-        return found;
-    };
-    if (clang_Cursor_isNull(definition) != 0) {
-        return false;
-    }
-    const CXCursor primary = clang_getSpecializedCursorTemplate(definition);
-    return declares(definition) || (clang_Cursor_isNull(primary) == 0 && declares(primary));
-}
-
-// Whether destroying an object of `record` runs code of the program's: a
-// user-provided destructor of the class, of a base, or of a member's class, at
-// any depth.
-bool destruction_runs_user_code(CXCursor record, unsigned depth = 0) {
-    const CXCursor definition = clang_getCursorDefinition(record);
-    if (clang_Cursor_isNull(definition) != 0 || depth > kMaxExpressionDepth) {
-        return true;
-    }
-    if (has_user_provided_destructor(definition)) {
-        return true;
-    }
-    std::vector<CXCursor> parts;
-    clang_visitChildren(
-        definition,
-        [](CXCursor child, CXCursor, CXClientData data) {
-            const CXCursorKind kind = clang_getCursorKind(child);
-            if (kind == CXCursor_FieldDecl || kind == CXCursor_CXXBaseSpecifier) {
-                static_cast<std::vector<CXCursor>*>(data)->push_back(child);
-            }
-            return CXChildVisit_Continue;
-        },
-        &parts);
-    return std::ranges::any_of(parts, [&](CXCursor part) {
-        CXType type = clang_getCanonicalType(clang_getCursorType(part));
-        while (type.kind == CXType_ConstantArray) {
-            type = clang_getCanonicalType(clang_getArrayElementType(type));
-        }
-        return type.kind == CXType_Record && destruction_runs_user_code(clang_getTypeDeclaration(type), depth + 1);
-    });
-}
-
-// Whether every temporary a full expression creates is destroyed without
-// running code of the program's, so that the cleanup Clang wraps the statement
-// in has no effect to model: no expression in it is of a class type whose
-// destruction runs a user-provided destructor (SPEC.md STDMODEL-023).
-bool temporaries_destroy_silently(CXCursor statement) {
-    bool silent = true;
-    clang_visitChildren(
-        statement,
-        [](CXCursor cursor, CXCursor, CXClientData data) {
-            if (clang_isExpression(clang_getCursorKind(cursor)) == 0) {
-                return CXChildVisit_Recurse;
-            }
-            const CXType type = clang_getCanonicalType(clang_getCursorType(cursor));
-            if (type.kind == CXType_Record && destruction_runs_user_code(clang_getTypeDeclaration(type))) {
-                *static_cast<bool*>(data) = false;
-                return CXChildVisit_Break;
-            }
-            return CXChildVisit_Recurse;
-        },
-        &silent);
-    return silent;
-}
-
-source::RepresentationKind library_kind(CXCursor declaration) {
-    using K = source::RepresentationKind;
-    CXCursor primary = clang_getSpecializedCursorTemplate(declaration);
-    if (clang_Cursor_isNull(primary))
-        return K::Record;
-    primary = clang_getCanonicalCursor(primary);
-    CXCursor parent = clang_getCursorSemanticParent(primary);
-    while (clang_getCursorKind(parent) == CXCursor_Namespace && clang_Cursor_isInlineNamespace(parent))
-        parent = clang_getCursorSemanticParent(parent);
-    if (clang_getCursorKind(parent) != CXCursor_Namespace || take(clang_getCursorSpelling(parent)) != "std" ||
-        clang_getCursorKind(clang_getCursorSemanticParent(parent)) != CXCursor_TranslationUnit)
-        return K::Record;
-    // This is declaration identity in the canonical standard namespace, not a
-    // spelling of a source type. Alias expansion and substitution precede it.
-    const std::string name = take(clang_getCursorSpelling(primary));
-    if (name == "variant")
-        return K::Variant;
-    if (name == "optional")
-        return K::Optional;
-    if (name == "expected")
-        return K::Expected;
-    if (name == "pair")
-        return K::Pair;
-    if (name == "tuple")
-        return K::Tuple;
-    if (name == "array")
-        return K::StdArray;
-    // The standard sequences verified code may use (RFC 0020 §1). Which
-    // specializations of them are modeled is decided with their arguments, in
-    // `sequence_refusal`.
-    if (name == "vector")
-        return K::Vector;
-    if (name == "basic_string")
-        return K::String;
-    if (name == "span")
-        return K::Span;
-    return K::Record;
-}
-
-// The width in bits of the target's `std::size_t`, which is every modeled
-// sequence's `size_type`, or 0 when the target does not report one.
-//
-// Clang reports the target's pointer width, and `size_t` has that width on every
-// target this implementation compiles for. That correspondence is not assumed
-// where it matters: each length observation checks that the type Clang gave
-// the `size()` call is exactly the modeled one, and refuses it otherwise.
-unsigned size_width(CXCursor anywhere) {
-    CXTargetInfo target = clang_getTranslationUnitTargetInfo(clang_Cursor_getTranslationUnit(anywhere));
-    if (target == nullptr) {
-        return 0;
-    }
-    const int width = clang_TargetInfo_getPointerWidth(target);
-    clang_TargetInfo_dispose(target);
-    return width == 32 || width == 64 ? static_cast<unsigned>(width) : 0U;
-}
-
-// The modeled length of a sequence: the target's `std::size_t`.
-Type length_type(CXCursor anywhere) {
-    Type length;
-    const unsigned width = size_width(anywhere);
-    if (width == 0U) {
-        return length;
-    }
-    length.kind = TypeKind::Int;
-    length.width = static_cast<std::uint16_t>(width);
-    length.is_signed = false;
-    length.spelling = "std::size_t";
-    return length;
-}
-
-// Whether `type`, canonical, is a specialization of the standard class template
-// `name` (inline namespaces are transparent, as in `library_kind`).
-bool is_standard_template(CXType type, std::string_view name) {
-    const CXCursor declaration = clang_getTypeDeclaration(clang_getCanonicalType(type));
-    CXCursor primary = clang_getSpecializedCursorTemplate(declaration);
-    if (clang_Cursor_isNull(primary) != 0) {
-        return false;
-    }
-    primary = clang_getCanonicalCursor(primary);
-    CXCursor parent = clang_getCursorSemanticParent(primary);
-    while (clang_getCursorKind(parent) == CXCursor_Namespace && clang_Cursor_isInlineNamespace(parent) != 0) {
-        parent = clang_getCursorSemanticParent(parent);
-    }
-    return clang_getCursorKind(parent) == CXCursor_Namespace && take(clang_getCursorSpelling(parent)) == "std" &&
-           clang_getCursorKind(clang_getCursorSemanticParent(parent)) == CXCursor_TranslationUnit &&
-           take(clang_getCursorSpelling(primary)) == name;
-}
-
-// Whether an element type is one a modeled sequence may hold: a built-in
-// integer or `bool`, whatever cv-qualification the view adds (RFC 0020 §1).
-// Anything else would give an element place a value no version could state.
-bool modeled_element(CXType element) {
-    switch (clang_getCanonicalType(element).kind) {
-        case CXType_Bool:
-        case CXType_Char_S:
-        case CXType_SChar:
-        case CXType_Short:
-        case CXType_Int:
-        case CXType_Long:
-        case CXType_LongLong:
-        case CXType_Char_U:
-        case CXType_UChar:
-        case CXType_UShort:
-        case CXType_UInt:
-        case CXType_ULong:
-        case CXType_ULongLong:
-            return clang_isVolatileQualifiedType(clang_getCanonicalType(element)) == 0;
-        default:
-            return false;
-    }
-}
-
-// Why a specialization of a modeled sequence is not one this implementation
-// models, if it is not (RFC 0020 §1). Each condition is what the library
-// summaries are stated for: a standard allocator, character traits of `char`,
-// a dynamic extent, and scalar elements. `std::vector<bool>` is excluded by
-// name: its `operator[]` returns a proxy object, not an element.
-std::optional<std::string> sequence_refusal(CXType canonical, CXCursor declaration, source::RepresentationKind kind) {
-    using K = source::RepresentationKind;
-    if (clang_Type_getNumTemplateArguments(canonical) < 1) {
-        return "its template arguments are not resolved";
-    }
-    const CXType element = clang_Type_getTemplateArgumentAsType(canonical, 0);
-    if (kind == K::Vector) {
-        if (clang_Type_getNumTemplateArguments(canonical) != 2 ||
-            !is_standard_template(clang_Type_getTemplateArgumentAsType(canonical, 1), "allocator")) {
-            return "a vector with an allocator other than std::allocator is not modeled";
-        }
-        const CXType allocated = clang_Type_getTemplateArgumentAsType(
-            clang_getCanonicalType(clang_Type_getTemplateArgumentAsType(canonical, 1)), 0);
-        if (clang_equalTypes(clang_getCanonicalType(allocated), clang_getCanonicalType(element)) == 0) {
-            return "a vector whose allocator allocates another type is not modeled";
-        }
-        if (clang_getCanonicalType(element).kind == CXType_Bool) {
-            return "std::vector<bool> is not modeled: its operator[] yields a proxy object rather than an element";
-        }
-    }
-    if (kind == K::String) {
-        const CXType character = clang_getCanonicalType(element);
-        if (clang_Type_getNumTemplateArguments(canonical) != 3 ||
-            (character.kind != CXType_Char_S && character.kind != CXType_Char_U) ||
-            !is_standard_template(clang_Type_getTemplateArgumentAsType(canonical, 1), "char_traits") ||
-            !is_standard_template(clang_Type_getTemplateArgumentAsType(canonical, 2), "allocator")) {
-            return "only std::string, std::basic_string<char> with the standard traits and allocator, is modeled";
-        }
-    }
-    if (kind == K::Span) {
-        // `std::dynamic_extent` is the largest value of `std::size_t`. A span
-        // of static extent states its length in its type; it is not modeled.
-        const unsigned width = size_width(declaration);
-        const unsigned long long dynamic =
-            width >= 64U ? std::numeric_limits<unsigned long long>::max() : (1ULL << width) - 1ULL;
-        if (width == 0U || clang_Type_getNumTemplateArguments(canonical) != 2 ||
-            clang_Cursor_getTemplateArgumentKind(declaration, 1) != CXTemplateArgumentKind_Integral ||
-            clang_Cursor_getTemplateArgumentUnsignedValue(declaration, 1) != dynamic) {
-            return "only a span of dynamic extent is modeled";
-        }
-    }
-    if (!modeled_element(element)) {
-        return "its element type '" + take(clang_getTypeSpelling(element)) +
-               "' is not modeled: a modeled sequence holds built-in integers or bool";
-    }
-    return std::nullopt;
-}
-
-// Why the refinements a written type names could not be read, and what kind of
-// failure that is. Where the failure is reported as a diagnostic of its own,
-// its category says which; elsewhere the message is a reason a construct is
-// not modeled.
-struct RefinementFailure {
-    Category category = Category::Internal;
-    std::string message;
-};
-
-std::expected<std::vector<Refinement>, RefinementFailure> refinements_of(
-    CXCursor declared, CXType written, const std::vector<Selection::Refinement>& known);
-CXType written_element_type(CXType written);
-
-// The same 64-bit pattern an integer literal of the underlying type carries.
-// libclang's signed accessor sign-extends from the enumeration's own width, so an
-// unsigned enumerator with its top bit set would otherwise arrive negative.
-std::int64_t enumerator_value(CXCursor enumerator, bool underlying_is_signed) {
-    if (underlying_is_signed)
-        return clang_getEnumConstantDeclValue(enumerator);
-    return static_cast<std::int64_t>(clang_getEnumConstantDeclUnsignedValue(enumerator));
-}
-
-// The refinements a record's members name, so a refined member's predicate
-// reaches the member's own modeled type (SPEC.md 17.6).
-//
-// Clang canonicalizes a member's `Positive` to `int` exactly as it does a
-// local's, so without this a declared refined member would be modeled as its
-// base type and its construction would owe nothing. Passing the known
-// refinements down is what lets the aggregate write path generate the member's
-// obligation from the member's declared type, at the one site every write
-// already uses.
-Type convert_type(CXType type, unsigned depth = 0, ReferenceModel references = ReferenceModel::Opaque,
-                  const std::vector<Selection::Refinement>* known = nullptr) {
-    CXType canonical = clang_getCanonicalType(type);
-    if (canonical.kind == CXType_LValueReference || canonical.kind == CXType_RValueReference) {
-        if (references != ReferenceModel::Referent) {
-            Type reference;
-            reference.spelling = take(clang_getTypeSpelling(canonical));
-            return reference;
-        }
-        canonical = clang_getCanonicalType(clang_getPointeeType(canonical));
-    }
-
-    Type converted;
-    converted.spelling = take(clang_getTypeSpelling(canonical));
-    if (depth > 32)
-        return converted;
-
-    // A volatile glvalue is read for its effect, not for a value that is a
-    // function of anything C++L models, so it is not a modeled type at all
-    // (AGENTS.md 11). `const` is not such a qualifier: it constrains writes,
-    // and the value read is the ordinary one.
-    if (clang_isVolatileQualifiedType(canonical) != 0) {
-        return converted;
-    }
-
-    // Layout is asked only of built-in integer types, which always have one.
-    long long size = 0;
-    switch (canonical.kind) {
-        case CXType_Void:
-            converted.kind = TypeKind::Void;
-            break;
-        case CXType_Pointer: {
-            converted.kind = TypeKind::Value;
-            converted.representation.identity = "pointer:" + converted.spelling;
-            converted.representation.name = converted.spelling;
-            converted.representation.kind = source::RepresentationKind::Pointer;
-            Type state;
-            state.kind = TypeKind::Bool;
-            state.spelling = "bool";
-            converted.projections.push_back(state);
-            break;
-        }
-        case CXType_ConstantArray:
-        case CXType_Record: {
-            using K = source::RepresentationKind;
-            const bool array = canonical.kind == CXType_ConstantArray;
-            const CXCursor declaration = clang_getTypeDeclaration(canonical);
-            const CXCursor definition = clang_getCursorDefinition(declaration);
-            converted.kind = TypeKind::Value;
-            auto& model = converted.representation;
-            model.name = converted.spelling;
-            model.identity = array ? "array:" + converted.spelling : take(clang_getCursorUSR(declaration));
-            model.kind = array ? K::Array : library_kind(declaration);
-            if (model.identity.empty()) {
-                converted.kind = TypeKind::Unsupported;
-                break;
-            }
-            // A modeled sequence is an abstract value with one observation, its
-            // length (RFC 0020 §2). Its data members are the library's private
-            // layout and are never read (TRUST.md TCB-LIB-002), and it has no
-            // structural state model, so `cases` and `decompose` refuse it.
-            if (source::is_sequence(model.kind)) {
-                if (auto refusal = sequence_refusal(canonical, declaration, model.kind)) {
-                    model.rejection = std::move(*refusal);
-                    break;
-                }
-                Type length = length_type(declaration);
-                if (length.kind != TypeKind::Int) {
-                    model.rejection = "the target does not report the width of std::size_t";
-                    break;
-                }
-                converted.projections.push_back(std::move(length));
-                break;
-            }
-            if (!array && model.kind == K::Record && clang_Cursor_isNull(definition)) {
-                model.rejection = "proof decomposition unavailable for incomplete type";
-                break;
-            }
-            const auto component = [&](CXType child, std::string name, CXCursor origin, bool accessible = true) {
-                Type resolved = convert_type(child, depth + 1, ReferenceModel::Opaque, known);
-                if (resolved.kind == TypeKind::Unsupported) {
-                    model.rejection = "component '" + name + "' has an unmodeled type '" + resolved.spelling + "'";
-                    return;
-                }
-                // A member's or element's declared refinement belongs to that
-                // storage's type, so every crossing into it owes the predicate
-                // (SPEC.md 17.6). An array element's refinement is the element
-                // type's own, which is why the origin need not be a field.
-                if (known != nullptr) {
-                    auto member_refinements = refinements_of(origin, child, *known);
-                    if (!member_refinements) {
-                        model.rejection = "component '" + name + "' has " + member_refinements.error().message;
-                        return;
-                    }
-                    resolved.refinements = std::move(*member_refinements);
-                }
-                converted.projections.push_back(std::move(resolved));
-                model.components.push_back(
-                    {std::move(name), presumed_location(clang_getCursorLocation(origin)), accessible});
-            };
-            if (array || model.kind == K::StdArray) {
-                long long count = array ? clang_getArraySize(canonical) : -1;
-                // Take the element type from the written array type, not the
-                // canonical one: canonicalizing discards the alias a refinement
-                // is named by, and the element's predicate would be lost with
-                // it (SPEC.md 17.3).
-                CXType element =
-                    array ? clang_getArrayElementType(type) : clang_Type_getTemplateArgumentAsType(canonical, 0);
-                if (array && element.kind == CXType_Invalid)
-                    element = clang_getArrayElementType(canonical);
-                if (!array && clang_Cursor_getTemplateArgumentKind(declaration, 1) == CXTemplateArgumentKind_Integral)
-                    count = clang_Cursor_getTemplateArgumentValue(declaration, 1);
-                if (count < 0 || count > 256) {
-                    model.rejection = "array extent is unavailable or exceeds the proof resource limit";
-                    break;
-                }
-                // A refinement written as `std::array`'s element type is the
-                // base type in the specialization, and no content invariant is
-                // modeled for an array: reading one as the base type would
-                // accept writes the declaration says it refuses, so it is
-                // refused instead (SPEC.md STDMODEL-020).
-                if (!array && known != nullptr) {
-                    const CXType written = written_element_type(type);
-                    auto stated =
-                        written.kind == CXType_Invalid
-                            ? std::expected<std::vector<Refinement>, RefinementFailure>{std::unexpected(
-                                  RefinementFailure{Category::UnsupportedSemantics,
-                                                    "an element type that could not be read from how the type is "
-                                                    "written"})}
-                            : refinements_of(clang_getNullCursor(), written, *known);
-                    if (!stated || !stated->empty()) {
-                        model.rejection = stated ? "its element type is written as the refinement '" +
-                                                       stated->front().name +
-                                                       "', which std::array does not state; a built-in array of "
-                                                       "that refinement has refined elements (SPEC.md STDMODEL-020)"
-                                                 : "it has " + stated.error().message;
-                        break;
-                    }
-                }
-                for (long long i = 0; i < count; ++i)
-                    component(element, std::to_string(i), declaration);
-            } else if (model.kind != K::Record) {
-                const int count = clang_Type_getNumTemplateArguments(canonical);
-                if (count < 0 || count > 64) {
-                    model.rejection = "template arguments are unresolved or exceed the proof resource limit";
-                    break;
-                }
-                if (model.kind == K::Variant || model.kind == K::Optional || model.kind == K::Expected) {
-                    Type tag;
-                    tag.kind = model.kind == K::Variant ? TypeKind::Int : TypeKind::Bool;
-                    tag.width = 64;
-                    tag.is_signed = false;
-                    tag.spelling = model.kind == K::Variant ? "unsigned long long" : "bool";
-                    converted.projections.push_back(tag);
-                }
-                for (int i = 0; i < count; ++i) {
-                    CXType argument = clang_Type_getTemplateArgumentAsType(canonical, static_cast<unsigned>(i));
-                    if (model.kind == K::Expected && i == 0 && argument.kind == CXType_Void) {
-                        Type empty;
-                        empty.kind = TypeKind::Value;
-                        empty.spelling = "void";
-                        empty.representation.identity = "unit";
-                        converted.projections.push_back(empty);
-                        model.components.push_back({"value", {}, true});
-                    } else {
-                        component(argument, model.kind == K::Pair ? (i == 0 ? "first" : "second") : std::to_string(i),
-                                  declaration);
-                    }
-                }
-            } else {
-                if (clang_getCursorKind(definition) == CXCursor_UnionDecl) {
-                    model.rejection = "a union requires an independently justified active-member model";
-                    break;
-                }
-                if (record_has_base(canonical)) {
-                    model.rejection = "base subobject decomposition requires an explicit accessible projection";
-                    break;
-                }
-                // A destructor runs where an object's lifetime ends, at a scope
-                // exit no statement names, and what it does is not modeled
-                // (SPEC.md CLASS-015).
-                if (has_user_provided_destructor(definition)) {
-                    model.rejection = "it has a user-provided destructor, which runs where an object's lifetime ends "
-                                      "and whose effects are not modeled (SPEC.md CLASS-015)";
-                    break;
-                }
-                for (const auto& field : record_fields(canonical))
-                    component(clang_getCursorType(field), take(clang_getCursorSpelling(field)), field,
-                              clang_getCXXAccessSpecifier(field) == CX_CXXPublic);
-            }
-            break;
-        }
-        case CXType_Enum: {
-            // An enumeration holds a value of its underlying type. A scoped one,
-            // or an unscoped one with a fixed underlying type, holds exactly that
-            // type's values; an unscoped one without a fixed type holds a subset
-            // of them, so reading it as the whole type asks more, never less.
-            // Its enumerators are its named states either way (SPEC.md 20.1).
-            const CXCursor declaration = clang_getTypeDeclaration(canonical);
-            const CXCursor definition = clang_getCursorDefinition(declaration);
-            const bool opaque_enumeration = clang_Cursor_isNull(definition) != 0;
-            if (opaque_enumeration)
-                break;
-            const Type underlying = convert_type(clang_getEnumDeclIntegerType(declaration));
-            // Bool-backed and wide enums remain outside this initial model.
-            if (underlying.kind != TypeKind::Int)
-                break;
-            std::vector<Enumerator> enumerators;
-            for (const CXCursor& child : children_of(definition)) {
-                if (clang_getCursorKind(child) != CXCursor_EnumConstantDecl)
-                    continue;
-                enumerators.push_back(
-                    Enumerator{take(clang_getCursorSpelling(child)), enumerator_value(child, underlying.is_signed)});
-            }
-            converted.kind = underlying.kind;
-            converted.width = underlying.width;
-            converted.is_signed = underlying.is_signed;
-            converted.representation.identity = take(clang_getCursorUSR(declaration));
-            converted.representation.name = take(clang_getTypeSpelling(canonical));
-            converted.representation.enumerators = std::move(enumerators);
-            converted.representation.kind = source::RepresentationKind::ScopedEnum;
-            break;
-        }
-        case CXType_Bool:
-            converted.kind = TypeKind::Bool;
-            break;
-
-        case CXType_Char_S:
-        case CXType_SChar:
-        case CXType_Short:
-        case CXType_Int:
-        case CXType_Long:
-        case CXType_LongLong:
-            size = clang_Type_getSizeOf(canonical);
-            if (size > 0 && size <= 8) {
-                converted.kind = TypeKind::Int;
-                converted.is_signed = true;
-                converted.width = static_cast<std::uint16_t>(size * 8);
-            }
-            break;
-
-        case CXType_Char_U:
-        case CXType_UChar:
-        case CXType_UShort:
-        case CXType_UInt:
-        case CXType_ULong:
-        case CXType_ULongLong:
-            size = clang_Type_getSizeOf(canonical);
-            if (size > 0 && size <= 8) {
-                converted.kind = TypeKind::Int;
-                converted.is_signed = false;
-                converted.width = static_cast<std::uint16_t>(size * 8);
-            }
-            break;
-
-        default:
-            break;
-    }
-
-    return converted;
-}
-
-std::string qualified_name_of(CXCursor cursor) {
-    std::vector<std::string> parts;
-    parts.push_back(take(clang_getCursorSpelling(cursor)));
-
-    CXCursor parent = clang_getCursorSemanticParent(cursor);
-    while (!clang_Cursor_isNull(parent) && clang_getCursorKind(parent) != CXCursor_TranslationUnit &&
-           !clang_isInvalid(clang_getCursorKind(parent))) {
-        std::string name = take(clang_getCursorSpelling(parent));
-        if (!name.empty()) {
-            parts.push_back(std::move(name));
-        }
-        const CXCursor next = clang_getCursorSemanticParent(parent);
-        if (clang_equalCursors(next, parent) != 0) {
-            break;
-        }
-        parent = next;
-    }
-
-    std::string qualified;
-    for (auto& part : std::views::reverse(parts)) {
-        if (!qualified.empty()) {
-            qualified += "::";
-        }
-        qualified += part;
-    }
-    return qualified;
-}
-
-Expr unsupported_expression(CXCursor cursor, std::string reason) {
-    Expr expr;
-    expr.type = convert_type(clang_getCursorType(cursor));
-    expr.location = presumed_location(clang_getCursorLocation(cursor));
-    expr.node = Unsupported{std::move(reason)};
-    return expr;
-}
-
-// The refinements a declaration's written type names, outermost first (SPEC.md
-// 17, 18).
-//
-// Clang canonicalizes `Percentage` to `int`, which is exactly right for the
-// runtime program and loses the verification-level identity, so the alias
-// declaration the type came through is what names it here. A refinement of a
-// refinement contributes every predicate that applies to the value, because each
-// alias is followed to the type it stands for.
-//
-// An indexed refinement was applied at values rather than at types, and those
-// values are not reachable through the type. They stand as the declaration's own
-// leading children, after the reference to the alias template, where Clang has
-// already evaluated them.
-std::size_t physical_offset(CXCursor cursor);
-
-std::vector<std::int64_t> refinement_arguments(CXCursor declared) {
-    std::vector<std::int64_t> arguments;
-    const CXCursor initializer = clang_Cursor_getVarDeclInitializer(declared);
-    // In a member, variable or parameter, index arguments are written in the
-    // type, before the declared name; a member's default initializer, like a
-    // variable's or a parameter's default, comes after it. (An alias declares
-    // its name before its type.)
-    unsigned name_offset = 0;
-    const CXCursorKind declared_kind = clang_getCursorKind(declared);
-    if (declared_kind == CXCursor_FieldDecl || declared_kind == CXCursor_VarDecl ||
-        declared_kind == CXCursor_ParmDecl) {
-        clang_getFileLocation(clang_getCursorLocation(declared), nullptr, nullptr, nullptr, &name_offset);
-    }
-    for (const CXCursor child : children_of(declared)) {
-        if (!clang_Cursor_isNull(initializer) && clang_equalCursors(child, initializer))
-            break;
-        unsigned child_offset = 0;
-        clang_getFileLocation(clang_getCursorLocation(child), nullptr, nullptr, nullptr, &child_offset);
-        if (name_offset != 0 && child_offset > name_offset)
-            break;
-        const auto kind = clang_getCursorKind(child);
-        if (kind == CXCursor_TemplateRef || kind == CXCursor_TypeRef || kind == CXCursor_NamespaceRef)
-            continue;
-        if (clang_isDeclaration(kind) || clang_isStatement(kind))
-            break;
-        if (CXEvalResult evaluated = clang_Cursor_Evaluate(child)) {
-            const bool integral = clang_EvalResult_getKind(evaluated) == CXEval_Int;
-            const auto value = integral ? clang_EvalResult_getAsLongLong(evaluated) : 0;
-            clang_EvalResult_dispose(evaluated);
-            if (integral) {
-                arguments.push_back(static_cast<std::int64_t>(value));
-                continue;
-            }
-        }
-        break;
-    }
-    return arguments;
-}
-
-std::expected<std::vector<Refinement>, RefinementFailure> refinements_of(
-    CXCursor declared, CXType written, const std::vector<Selection::Refinement>& known) {
-    const auto fail = [](Category category, std::string message) {
-        return std::unexpected(RefinementFailure{category, std::move(message)});
-    };
-    std::vector<Refinement> found;
-    if (known.empty())
-        return found;
-    auto arguments = refinement_arguments(declared);
-    std::vector<CXCursor> visited;
-    for (unsigned step = 0; step < kMaxExpressionDepth; ++step) {
-        CXCursor declaration = clang_getTypeDeclaration(written);
-        if (clang_getCursorKind(declaration) == CXCursor_TypeAliasTemplateDecl) {
-            const auto children = children_of(declaration);
-            const auto alias = std::ranges::find_if(
-                children, [](CXCursor child) { return clang_getCursorKind(child) == CXCursor_TypeAliasDecl; });
-            if (alias == children.end())
-                return fail(Category::Elaboration, "refinement alias template has no resolved alias declaration");
-            declaration = *alias;
-        }
-        const CXCursorKind kind = clang_getCursorKind(declaration);
-        if (kind != CXCursor_TypeAliasDecl && kind != CXCursor_TypedefDecl && kind != CXCursor_TypeAliasTemplateDecl) {
-            // A spelling this cannot follow to the declaration it names --
-            // `decltype(...)`, or the member an alias template like
-            // `std::type_identity_t` reaches -- may stand for a refinement,
-            // and reading it as its base type would drop the predicate it
-            // names (SPEC.md STDMODEL-020, FORALL-001). A substituted template
-            // parameter spells its canonical type and is followed as it.
-            const bool unnamed = clang_Cursor_isNull(declaration) != 0 || kind == CXCursor_NoDeclFound ||
-                                 kind == CXCursor_TemplateTypeParameter;
-            if (written.kind == CXType_Unexposed && unnamed &&
-                take(clang_getTypeSpelling(written)) != take(clang_getTypeSpelling(clang_getCanonicalType(written)))) {
-                return fail(Category::UnsupportedSemantics,
-                            "a type written as '" + take(clang_getTypeSpelling(written)) +
-                                "', which may name a refinement through a spelling this implementation does not "
-                                "follow; write the refinement or its base type directly");
-            }
-            return found;
-        }
-        if (std::ranges::any_of(visited, [&](CXCursor previous) { return clang_equalCursors(previous, declaration); }))
-            return fail(Category::Internal, "cyclic refinement alias metadata"); // Clang accepts no alias cycle
-        visited.push_back(declaration);
-        // The projector records the generated alias's physical identity. Source
-        // spelling and presumed #line locations cannot identify a refinement.
-        const auto entry = std::ranges::find(known, physical_offset(declaration), &Selection::Refinement::alias_offset);
-        if (entry != known.end()) {
-            if (entry->index_count != arguments.size())
-                return fail(Category::Elaboration, "refinement '" + entry->name + "' has unresolved index arguments");
-            found.push_back(Refinement{entry->name, arguments, entry->probe});
-        }
-        const CXType underlying = clang_getTypedefDeclUnderlyingType(declaration);
-        if (underlying.kind == CXType_Invalid) {
-            if (kind == CXCursor_TypeAliasTemplateDecl)
-                return fail(Category::Elaboration,
-                            "dependent refinement alias substitution is not resolved by the Clang bridge");
-            return found;
-        }
-        written = underlying;
-        // An ordinary alias may name an indexed refinement. Read that alias's
-        // resolved application, not the initializer or a previous alias's indices.
-        arguments = refinement_arguments(declaration);
-    }
-    return fail(Category::UnsupportedSemantics, "refinement alias chain exceeds the analysis limit");
-}
-
 bool same_term(const Expr& lhs, const Expr& rhs);
-
-// The element type of a modeled sequence as `written` spells it, with the
-// refinements that spelling names (SPEC.md 17.6, RFC 0020 §6).
-//
-// Clang canonicalizes `std::vector<Positive>` to `std::vector<int>`, which is
-// the runtime type and loses what verification needs, so the written type is
-// followed through its aliases to the specialization as written, whose first
-// argument keeps the alias a refinement is named by. A spelling this cannot
-// follow is refused rather than read as an unrefined element.
-// The first template argument of a specialization as `written` spells it, past
-// references, elaboration and aliases, or an invalid type when the spelling
-// cannot be followed.
-CXType written_element_type(CXType written) {
-    for (unsigned step = 0; step < kMaxExpressionDepth; ++step) {
-        if (written.kind == CXType_LValueReference || written.kind == CXType_RValueReference) {
-            written = clang_getPointeeType(written);
-            continue;
-        }
-        if (clang_Type_getNumTemplateArguments(written) >= 1) {
-            return clang_Type_getTemplateArgumentAsType(written, 0);
-        }
-        if (written.kind == CXType_Elaborated) {
-            written = clang_Type_getNamedType(written);
-            continue;
-        }
-        const CXType underlying = clang_getTypedefDeclUnderlyingType(clang_getTypeDeclaration(written));
-        if (underlying.kind == CXType_Invalid) {
-            break;
-        }
-        written = underlying;
-    }
-    return CXType{CXType_Invalid, {nullptr, nullptr}};
-}
-
-std::expected<Type, std::string> sequence_element(CXCursor declared, CXType written,
-                                                  const std::vector<Selection::Refinement>* known) {
-    const CXType element = written_element_type(written);
-    if (element.kind == CXType_Invalid) {
-        return std::unexpected("its element type could not be read from how its type is written");
-    }
-    Type converted = convert_type(element);
-    if (converted.kind != TypeKind::Int && converted.kind != TypeKind::Bool) {
-        return std::unexpected("its element type '" + converted.spelling + "' is not modeled");
-    }
-    if (known != nullptr) {
-        auto refinements = refinements_of(declared, element, *known);
-        if (!refinements) {
-            return std::unexpected("its element type has " + refinements.error().message);
-        }
-        converted.refinements = std::move(*refinements);
-    }
-    return converted;
-}
 
 // A call of a member function or constructor of a modeled sequence or of
 // `std::array`, decoded from the call Clang resolved (RFC 0020 §6).
@@ -9596,12 +8826,6 @@ void extract_body(Function& function, CXCursor cursor, const Signature& signatur
     function.library_models.assign(lowering.library_models.begin(), lowering.library_models.end());
 }
 
-std::size_t physical_offset(CXCursor cursor) {
-    unsigned offset = 0;
-    clang_getFileLocation(clang_getCursorLocation(cursor), nullptr, nullptr, nullptr, &offset);
-    return static_cast<std::size_t>(offset);
-}
-
 // The template arguments a specialization was instantiated at, as Clang
 // resolved them (SPEC.md 42).
 //
@@ -10408,55 +9632,88 @@ MemberStanding member_standing(CXCursor cursor, const std::vector<Selection::Ref
     return standing;
 }
 
-} // namespace
+} // namespace detail
 
-// The functions above that places.hpp declares for the lowering of whole struct
-// values, so it reads types, places and accesses as this file does.
+// The bridge's own functions that places.hpp declares for the lowering of
+// whole struct values, so it reads types, places and accesses as the body
+// lowering does.
 namespace detail::bridge {
 
 Type convert_type(CXType type, unsigned depth, ReferenceModel references,
                   const std::vector<Selection::Refinement>* known) {
-    return clangbridge::convert_type(type, depth, references, known);
+    return detail::convert_type(type, depth, references, known);
 }
 bool same_modeled_value(const Type& outer, const Type& inner) {
-    return clangbridge::same_modeled_value(outer, inner);
+    return detail::same_modeled_value(outer, inner);
 }
 bool same_term(const Expr& lhs, const Expr& rhs) {
-    return clangbridge::same_term(lhs, rhs);
+    return detail::same_term(lhs, rhs);
 }
 std::string qualified_name_of(CXCursor cursor) {
-    return clangbridge::qualified_name_of(cursor);
+    return detail::qualified_name_of(cursor);
 }
 Expr unsupported_expression(CXCursor cursor, std::string reason) {
-    return clangbridge::unsupported_expression(cursor, std::move(reason));
+    return detail::unsupported_expression(cursor, std::move(reason));
 }
 source::ParameterPassing passing_of(CXType written) {
-    return clangbridge::passing_of(written);
+    return detail::passing_of(written);
 }
 CXCursor designated_object(CXCursor expression) {
-    return clangbridge::designated_object(expression);
+    return detail::designated_object(expression);
 }
 std::optional<ResolvedAccess> resolve_access(CXCursor cursor) {
-    return clangbridge::resolve_access(cursor);
+    return detail::resolve_access(cursor);
 }
 std::optional<std::size_t> find_binding(const Locals& locals, CXCursor declaration, const std::vector<PlaceStep>& path,
                                         const Expr* index_term) {
-    return clangbridge::find_binding(locals, declaration, path, index_term);
+    return detail::find_binding(locals, declaration, path, index_term);
 }
 std::optional<std::string> stale_borrow(const Locals& locals, std::size_t binding) {
-    return clangbridge::stale_borrow(locals, binding);
+    return detail::stale_borrow(locals, binding);
 }
 Place place_of(const Locals& locals, std::size_t entry) {
-    return clangbridge::place_of(locals, entry);
+    return detail::place_of(locals, entry);
 }
 Expr read_place(const Locals& locals, std::size_t entry, CXCursor at) {
-    return clangbridge::read_place(locals, entry, at);
+    return detail::read_place(locals, entry, at);
 }
 Place anonymous_place(std::string spelling) {
     return BodyLowering::anonymous_place(std::move(spelling));
 }
 
 } // namespace detail::bridge
+
+// What the bridge's entry points use of its internals.
+namespace {
+using detail::collect;
+using detail::collect_specializations;
+using detail::Collector;
+using detail::convert_severity;
+using detail::convert_type;
+using detail::extract_body;
+using detail::extract_formal;
+using detail::member_standing;
+using detail::MemberStanding;
+using detail::mixes_capabilities;
+using detail::parameters_of;
+using detail::passing_of;
+using detail::physical_offset;
+using detail::qualified_name_of;
+using detail::ReceiverLeaf;
+using detail::reference_value_type;
+using detail::ReferenceModel;
+using detail::refined_template_argument;
+using detail::refined_template_argument_refusal;
+using detail::refinement_use;
+using detail::refinements_of;
+using detail::Signature;
+using detail::specialized_template;
+using detail::StatedCapability;
+using detail::template_arguments_of;
+using detail::UnsafeEffects;
+using detail::bridge::presumed_location;
+using detail::bridge::take;
+} // namespace
 
 const Function* TranslationUnit::find_by_usr(std::string_view usr) const {
     for (const Function& function : functions) {

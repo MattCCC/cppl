@@ -46,8 +46,8 @@ enum class ReferenceModel : std::uint8_t {
 // The bridge's own functions, defined in bridge.cpp and cursors.cpp, which every
 // unit lowering a body calls so it reads types, places and
 // accesses exactly as the body lowering does. They stand apart from the types
-// here, so a call in bridge.cpp to its own function of the same name never
-// finds one of these by argument-dependent lookup.
+// here, so a call in the body lowering to its own function of the same name
+// never finds one of these by argument-dependent lookup.
 namespace bridge {
 // Whether two lowered terms are the same term, as an index into a place is
 // compared.
@@ -264,7 +264,8 @@ std::vector<CXCursor> record_fields(CXType record);
 bool record_has_base(CXType record);
 CXCursor strip_parens(CXCursor cursor);
 
-// The body lowering's own (bridge.cpp), where each is documented.
+// The body lowering's own, to which bridge.cpp forwards; each is documented
+// where it is defined.
 Type convert_type(CXType type, unsigned depth = 0, ReferenceModel references = ReferenceModel::Opaque,
                   const std::vector<Selection::Refinement>* known = nullptr);
 bool same_modeled_value(const Type& outer, const Type& inner);

@@ -19,7 +19,9 @@ add_library(cppl_clang STATIC
     src/proof_instantiation.cpp
     src/proof_instantiation_cursors.cpp
     src/proof_instantiation_hazards.cpp
-    src/statements.cpp)
+    src/refinements.cpp
+    src/statements.cpp
+    src/types.cpp)
 
 target_include_directories(cppl_clang PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)

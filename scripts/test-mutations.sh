@@ -176,7 +176,7 @@ unsafe-callee-const-view-refined-elements	clang/src/bridge.cpp	if (const auto& h
 global-constant-read	clang/src/bridge.cpp	            clang_Cursor_hasVarDeclGlobalStorage(referenced) != 0) {	            clang_Cursor_hasVarDeclGlobalStorage(referenced) != 0 && false) {	^negative_global_constants$
 global-constant-const-only	clang/src/bridge.cpp	            if (clang_isConstQualifiedType(declared) != 0 && clang_isVolatileQualifiedType(declared) == 0) {	            if (clang_isVolatileQualifiedType(declared) == 0) {	^negative_global_constants$
 unscoped-enumeration-converts	clang/src/bridge.cpp	            if (kind == CXCursor_UnexposedExpr && integral(converted) && nested.kind == CXType_Enum &&	            if (false && kind == CXCursor_UnexposedExpr && integral(converted) && nested.kind == CXType_Enum &&	^negative_global_constants$
-unscoped-enumeration-modeled	clang/src/bridge.cpp	const bool opaque_enumeration = clang_Cursor_isNull(definition) != 0;	const bool opaque_enumeration = clang_EnumDecl_isScoped(declaration) == 0 || clang_Cursor_isNull(definition) != 0;	^negative_global_constants$|^negative_proof_cases$
+unscoped-enumeration-modeled	clang/src/types.cpp	const bool opaque_enumeration = clang_Cursor_isNull(definition) != 0;	const bool opaque_enumeration = clang_EnumDecl_isScoped(declaration) == 0 || clang_Cursor_isNull(definition) != 0;	^negative_global_constants$|^negative_proof_cases$
 boolean-conversion-direction	clang/src/bridge.cpp	    if (type.kind == TypeKind::Bool) {	    if (type.kind != TypeKind::Bool) {	^negative_boolean_conversions$
 integer-to-boolean-nonzero	clang/src/bridge.cpp	nonzero.node = Binary{BinaryOp::NotEqual, {std::move(operand), std::move(zero)}};	nonzero.node = Binary{BinaryOp::Equal, {std::move(operand), std::move(zero)}};	^negative_boolean_conversions$
 boolean-conversion-implicit	clang/src/bridge.cpp	if (kind == CXCursor_UnexposedExpr && boolean_pair(original, converted)) {	if (false && kind == CXCursor_UnexposedExpr && boolean_pair(original, converted)) {	^negative_boolean_conversions$
@@ -190,7 +190,7 @@ call-writable-span-havocs-pointees	clang/src/bridge.cpp	return convert_type(cano
 unsafe-reaches-viewed-container	clang/src/bridge.cpp	reach(*held->views);	(void)held;	^negative_sequence_attacks$
 unsafe-reaches-whole-object	clang/src/bridge.cpp	reach(other);	(void)other;	^negative_sequence_attacks$
 unsafe-refined-container-refused	clang/src/bridge.cpp	held.has_value() && !held->element.refinements.empty()) {	held.has_value() && false && !held->element.refinements.empty()) {	^negative_sequence_attacks$|^negative_sequence_boundaries$
-hidden-refinement-spelling-refused	clang/src/bridge.cpp	if (written.kind == CXType_Unexposed && unnamed &&	if (false && written.kind == CXType_Unexposed && unnamed &&	^negative_refinement_types$
+hidden-refinement-spelling-refused	clang/src/refinements.cpp	if (written.kind == CXType_Unexposed && unnamed &&	if (false && written.kind == CXType_Unexposed && unnamed &&	^negative_refinement_types$
 template-argument-default-refinement	clang/src/bridge.cpp	if (auto by_default = defaulted(named)) {	if (auto by_default = std::optional<RefinedTemplateArgument>{}) {	^negative_refinement_types$
 template-argument-decltype-refinement	clang/src/bridge.cpp	if (kind == CXCursor_DeclRefExpr && user_template.has_value()) {	if (false && kind == CXCursor_DeclRefExpr && user_template.has_value()) {	^negative_refinement_types$
 template-specializations-indexed	clang/src/bridge.cpp	collector.specializations.push_back(specialization);	(void)specialization;	^negative_template_identity$
@@ -218,7 +218,7 @@ operator-parameters-after-operator	compiler/frontend/src/recognizer.cpp	return a
 operator-conversion-function-refused	compiler/frontend/src/recognizer.cpp	if (operator_function && conversion_function(tokens, *name)) {	if (false && conversion_function(tokens, *name)) {	^unit_recognizer_test$
 call-element-beside-reallocatable-container	clang/src/bridge.cpp	(container.storage != owner && !may_alias(holder, state[owner]))) {	true || (container.storage != owner && !may_alias(holder, state[owner]))) {	^negative_sequence_boundaries$
 deref-symbolic-index-overlaps	clang/src/bridge.cpp	if (other.has_symbolic_step() || target.has_symbolic_step()) {	if (false && (other.has_symbolic_step() || target.has_symbolic_step())) {	^negative_memory_capabilities$
-record-user-destructor-unmodeled	clang/src/bridge.cpp	                if (has_user_provided_destructor(definition)) {	                if (false && has_user_provided_destructor(definition)) {	^negative_verified_methods$
+record-user-destructor-unmodeled	clang/src/types.cpp	                if (has_user_provided_destructor(definition)) {	                if (false && has_user_provided_destructor(definition)) {	^negative_verified_methods$
 format-keeps-directives	compiler/formatter/src/format.cpp	return spans_overlap(edit.span, source::ByteSpan{begin, end - begin});	return false && spans_overlap(edit.span, source::ByteSpan{begin, end - begin});	^formatter_test$
 lsp-meaning-option-unverified	src/lsp/src/compile_commands.cpp	if (argument.starts_with("-f") && !passed_on(argument) && !ignorable_flag(argument)) {	if (false && argument.starts_with("-f") && !passed_on(argument) && !ignorable_flag(argument)) {	^lsp_compile_commands_test$
 template-argument-refinement-use-site	clang/src/bridge.cpp	collector.refused_arguments.emplace_back(refined_template_argument_refusal(*refined), cursor);	(void)refined;	^negative_refinement_types$
@@ -234,7 +234,7 @@ container-copy-refinement	clang/src/bridge.cpp	if (auto gap = refinement_gap(roo
 container-refined-mutable-reference	clang/src/bridge.cpp	if (handed.sequence.has_value() && !handed.sequence->element.refinements.empty()) {	if (false) {	^negative_containers$
 container-element-beside-view	clang/src/bridge.cpp	if (root == owner || may_alias(state[root], state[owner])) {	if (false) {	^negative_containers$
 container-refined-result	clang/src/bridge.cpp	if (const bool refined_result = !element->refinements.empty(); refined_result) {	if (const bool refined_result = false; refined_result) {	^negative_containers$
-container-refined-std-array	clang/src/bridge.cpp	if (!stated || !stated->empty()) {	if (false) {	^negative_containers$
+container-refined-std-array	clang/src/types.cpp	if (!stated || !stated->empty()) {	if (false) {	^negative_containers$
 container-refined-span-local	clang/src/bridge.cpp	!written || !written->refinements.empty()) {	false) {	^negative_containers$
 capability-const-writable	clang/src/bridge.cpp	if (capability.kind == Capability::Kind::Writable && clang_isConstQualifiedType(element) != 0)	if (false && capability.kind == Capability::Kind::Writable && clang_isConstQualifiedType(element) != 0)	^negative_containers$
 container-pop-precondition	compiler/obligations/src/library.cpp	summary.preconditions.push_back(	(void)(	^negative_containers$
@@ -346,7 +346,7 @@ const-receiver-mutable-member	clang/src/bridge.cpp	if (constant && !leaf.mutable
 virtual-member-refused	clang/src/bridge.cpp	if (clang_CXXMethod_isVirtual(cursor) != 0) {	if (false && clang_CXXMethod_isVirtual(cursor) != 0) {	^negative_verified_methods$
 virtual-call-refused	clang/src/bridge.cpp	if (clang_CXXMethod_isVirtual(referenced) != 0) {	if (false && clang_CXXMethod_isVirtual(referenced) != 0) {	^negative_verified_methods$
 member-refinement-kept	clang/src/bridge.cpp	converted.refinements = std::move(*declared);	(void)declared;	^negative_verified_methods$
-container-element-refinement-kept	clang/src/bridge.cpp	auto refinements = refinements_of(declared, element, *known);	auto refinements = decltype(refinements_of(declared, element, *known)){};	^negative_containers$|^negative_integration_ledger$
+container-element-refinement-kept	clang/src/refinements.cpp	auto refinements = refinements_of(declared, element, *known);	auto refinements = decltype(refinements_of(declared, element, *known)){};	^negative_containers$|^negative_integration_ledger$
 reference-aggregate-witness	clang/src/bridge.cpp	if (parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	if (false && parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	^negative_verified_storage$
 unsafe-member-write-rooted	clang/src/bridge.cpp	return access.has_value() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	return access.has_value() && access->path.empty() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	^negative_unsafe_boundary$
 alias-write-charged	clang/src/bridge.cpp	            require(locals[index].type);	            (void)index;	^negative_verified_methods$

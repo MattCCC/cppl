@@ -45,6 +45,8 @@ implementation:
     # template decomposes like any other record and a base subobject stays
     # visible (record_fields, record_has_base, field_index_of).
     - clang/src/bridge.cpp
+    - clang/src/refinements.cpp
+    - clang/src/types.cpp
   frontend:
     - compiler/frontend/src/recognizer.cpp
     - compiler/frontend/src/projection.cpp
