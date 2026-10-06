@@ -55,6 +55,7 @@ implementation:
     - clang/include/cppl/clang/ast.hpp
     - clang/src/bridge.cpp
     - clang/src/ghost.cpp
+    - clang/src/lowering.cpp
   elaboration:
     - compiler/elaboration/src/elaborate.cpp
   erasure:

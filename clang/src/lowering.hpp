@@ -516,4 +516,10 @@ struct BodyLowering {
                                      unsigned depth);
 };
 
+std::size_t return_paths(const Expr& expression);
+
+void extract_body(Function& function, CXCursor cursor, const Signature& signature, const std::string& invariant_prefix,
+                  const std::vector<Selection::Refinement>& refinements, bool executable_state,
+                  const std::vector<StatedCapability>* capabilities, UnsafeEffects& unsafe_effects);
+
 } // namespace cppl::clangbridge::detail

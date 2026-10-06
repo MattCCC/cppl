@@ -142,7 +142,7 @@ call-capability-extent	compiler/obligations/src/contracts_evaluation.cpp	if (req
 memory-assumption-trusted-only	compiler/elaboration/src/elaborate_contracts.cpp	    if (!declaration.trusted) {	    if (false && !declaration.trusted) {	^negative_trusted_dependencies$
 verified-specifier-span	compiler/frontend/src/recognizer.cpp	verified.keyword = tokens[index].span;	verified.keyword = source::ByteSpan{tokens[specifiers_start(tokens, index)].span.offset, tokens[index].span.end() - tokens[specifiers_start(tokens, index)].span.offset};	^e2e_erasure_equivalence$
 unsafe-block-havoc	clang/src/unsafe.cpp	const std::vector<std::size_t> reached = unsafe_reach(state);	const std::vector<std::size_t> reached;	^negative_unsafe_boundary$
-unsafe-names-escape	clang/src/bridge.cpp	lowering.escaped.insert(named);	(void)named;	^negative_unsafe_boundary$
+unsafe-names-escape	clang/src/lowering.cpp	lowering.escaped.insert(named);	(void)named;	^negative_unsafe_boundary$
 unsafe-revokes-capabilities	clang/src/unsafe.cpp	revoked_by = where;	(void)where;	^negative_unsafe_boundary$
 capability-rechecked-on-reuse	clang/src/bridge.cpp	if (!held) {	if (false && !held) {	^negative_unsafe_boundary$|^negative_memory_capabilities$
 capability-reuse-callable-position	clang/src/bridge.cpp	granted(signature.position(static_cast<std::size_t>(at - parameters.begin())), required);	granted(static_cast<std::uint32_t>(at - parameters.begin()), required);	^e2e_memory_capabilities$
@@ -243,7 +243,7 @@ container-mutable-call-aliases	clang/src/bridge.cpp	!may_alias(state[target], st
 container-copy-refinement	clang/src/bridge.cpp	if (auto gap = refinement_gap(root, declaring[*origin])) {	if (auto gap = refinement_gap(root, declaring[*origin]); false) {	^negative_containers$
 container-refined-mutable-reference	clang/src/bridge.cpp	if (handed.sequence.has_value() && !handed.sequence->element.refinements.empty()) {	if (false) {	^negative_containers$
 container-element-beside-view	clang/src/bridge.cpp	if (root == owner || may_alias(state[root], state[owner])) {	if (false) {	^negative_containers$
-container-refined-result	clang/src/bridge.cpp	if (const bool refined_result = !element->refinements.empty(); refined_result) {	if (const bool refined_result = false; refined_result) {	^negative_containers$
+container-refined-result	clang/src/lowering.cpp	if (const bool refined_result = !element->refinements.empty(); refined_result) {	if (const bool refined_result = false; refined_result) {	^negative_containers$
 container-refined-std-array	clang/src/types.cpp	if (!stated || !stated->empty()) {	if (false) {	^negative_containers$
 container-refined-span-local	clang/src/bridge.cpp	!written || !written->refinements.empty()) {	false) {	^negative_containers$
 capability-const-writable	clang/src/bridge.cpp	if (capability.kind == Capability::Kind::Writable && clang_isConstQualifiedType(element) != 0)	if (false && capability.kind == Capability::Kind::Writable && clang_isConstQualifiedType(element) != 0)	^negative_containers$
@@ -357,11 +357,11 @@ virtual-member-refused	clang/src/signature.cpp	if (clang_CXXMethod_isVirtual(cur
 virtual-call-refused	clang/src/expressions.cpp	if (clang_CXXMethod_isVirtual(referenced) != 0) {	if (false && clang_CXXMethod_isVirtual(referenced) != 0) {	^negative_verified_methods$
 member-refinement-kept	clang/src/signature.cpp	converted.refinements = std::move(*declared);	(void)declared;	^negative_verified_methods$
 container-element-refinement-kept	clang/src/refinements.cpp	auto refinements = refinements_of(declared, element, *known);	auto refinements = decltype(refinements_of(declared, element, *known)){};	^negative_containers$|^negative_integration_ledger$
-reference-aggregate-witness	clang/src/bridge.cpp	if (parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	if (false && parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	^negative_verified_storage$
+reference-aggregate-witness	clang/src/lowering.cpp	if (parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	if (false && parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	^negative_verified_storage$
 unsafe-member-write-rooted	clang/src/unsafe.cpp	return access.has_value() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	return access.has_value() && access->path.empty() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	^negative_unsafe_boundary$
 alias-write-charged	clang/src/bridge.cpp	        require(locals[index].type);	        (void)index;	^negative_verified_methods$
 alias-write-validity-from-prior	clang/src/bridge.cpp	const bool valid = valid_versions.contains(locals[index].version);	const bool valid = true;	^negative_verified_methods$
-return-charges-unestablished	clang/src/bridge.cpp	if (!valid_versions.contains(locals[local].version) && carries_refinement(locals[local].type)) {	if (false) {	^negative_verified_methods$|^negative_cross_feature$
+return-charges-unestablished	clang/src/lowering.cpp	if (!valid_versions.contains(locals[local].version) && carries_refinement(locals[local].type)) {	if (false) {	^negative_verified_methods$|^negative_cross_feature$
 call-effect-refinement-charged	compiler/obligations/src/contracts_evaluation.cpp	const auto required = membership(program_, effect.declared, arguments[effect.argument]);	const auto required = membership(program_, effect.declared.erased(), arguments[effect.argument]);	^negative_verified_methods$|^negative_cross_feature$
 unsafe-reach-counted-valid	clang/src/unsafe.cpp	new_generation(state[index], "the unsafe block at " + at);	new_generation(state[index], "the unsafe block at " + at); valid_versions.insert(state[index].version);	^negative_verified_methods$|^negative_cross_feature$
 loop-head-counted-valid	clang/src/bridge.cpp	"the loop at " + describe_location(header.statement) + ", which may change it");	"the loop at " + describe_location(header.statement) + ", which may change it"); valid_versions.insert(frame.head[index].version);	^negative_cross_feature$
@@ -482,7 +482,7 @@ multiline_names=(forall-recursive-evidence implication-recursive-evidence
 multiline_file() {
     case "$1" in
         callee-body-linkage|call-precondition-gate) echo "compiler/automation/src/composition.cpp" ;;
-        receiver-caller-storage) echo "clang/src/bridge.cpp" ;;
+        receiver-caller-storage) echo "clang/src/lowering.cpp" ;;
         post-state-after-returned-call) echo "compiler/obligations/src/contracts_conditions.cpp" ;;
         *) echo "kernel/src/check.cpp" ;;
     esac

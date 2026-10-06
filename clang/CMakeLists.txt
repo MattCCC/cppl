@@ -17,6 +17,7 @@ add_library(cppl_clang STATIC
     src/editor.cpp
     src/expressions.cpp
     src/ghost.cpp
+    src/lowering.cpp
     src/editor_completion.cpp
     src/editor_description.cpp
     src/editor_names.cpp
