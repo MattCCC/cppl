@@ -1359,6 +1359,18 @@ FormatResult format_ranges_once(const FormatRequest& request, const std::vector<
         }
     }
 
+    // A C++L construct laid out anew would drop or move a directive written
+    // inside it, or join it to another line, and so change the program; such
+    // a construct is left exactly as written. A directive owns the line breaks
+    // around it as well as its own text.
+    std::erase_if(edits, [&](const FormatEdit& edit) {
+        return std::ranges::any_of(stream.directives(), [&](const frontend::Directive& directive) {
+            const std::size_t begin = directive.span.offset > 0 ? directive.span.offset - 1 : 0;
+            const std::size_t end = std::min(directive.span.end() + 1, request.text.size());
+            return spans_overlap(edit.span, source::ByteSpan{begin, end - begin});
+        });
+    });
+
     std::vector<FormatEdit> ordinary_edits = format_ordinary_cpp_lines(
         request.text, line_ranges, cppl_spans, request.clang_format, style_config, stem, result.diagnostics);
     edits.insert(edits.end(), std::make_move_iterator(ordinary_edits.begin()),

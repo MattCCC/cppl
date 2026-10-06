@@ -171,6 +171,31 @@ CPPL_TEST(whitespace_only_document_formats_successfully) {
     check_edits_well_formed("\n\n", result.edits);
 }
 
+// A directive inside a C++L declaration is part of the program: laying the
+// declaration out again must neither drop it nor join it to another line.
+CPPL_TEST(a_directive_inside_a_cppl_declaration_keeps_its_own_line) {
+    const std::string input = "verified unsigned clamp(unsigned x)\n"
+                              "#pragma pack(push, 1)\n"
+                              "    expects (x < 10u)\n"
+                              "#pragma pack(pop)\n"
+                              "    ensures (result == x)\n"
+                              "{\n"
+                              "    return x;\n"
+                              "}\n"
+                              "\n"
+                              "law bounded(unsigned x)\n"
+                              "#if 1\n"
+                              "    proves (x <= x)\n"
+                              "#endif\n"
+                              ";\n";
+    const std::string output = format_text(input);
+    for (const std::string directive :
+         {"\n#pragma pack(push, 1)\n", "\n#pragma pack(pop)\n", "\n#if 1\n", "\n#endif\n"}) {
+        CPPL_CHECK(output.find(directive) != std::string::npos);
+    }
+    CPPL_CHECK_EQ(count_occurrences(output, "#pragma"), 2U);
+}
+
 CPPL_TEST(format_document_is_equivalent_to_format_ranges_with_empty_range_vector) {
     const std::string input = "verified int f(int x) ensures (result == x) { return x; }\n";
 

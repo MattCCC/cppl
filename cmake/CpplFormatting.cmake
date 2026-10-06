@@ -42,10 +42,10 @@ list(
 
 # `directives/` fixtures write preprocessor directives inside C++L
 # declarations, which erasure keeps where they stand (SPEC.md ERASE-017).
-# cppl-format lays a declaration out again from its tokens and does not yet keep
-# a directive inside one, so these are held exactly as written; and the
-# hand-erased reference keeps every line where it was, which canonical blank
-# lines would not.
+# cppl-format leaves a declaration with a directive in it as written, but one
+# fixture puts a `_Pragma` macro between clauses, whose line canonical layout
+# would join to the clause before it; and the hand-erased reference keeps every
+# line where it was, which canonical blank lines would not.
 list(
     FILTER CPPL_L_FORMAT_FILES
     EXCLUDE REGEX
