@@ -201,8 +201,8 @@ unsafe-reaches-viewed-container	clang/src/unsafe.cpp	reach(*held->views);	(void)
 unsafe-reaches-whole-object	clang/src/unsafe.cpp	reach(other);	(void)other;	^negative_sequence_attacks$
 unsafe-refined-container-refused	clang/src/unsafe.cpp	held.has_value() && !held->element.refinements.empty()) {	held.has_value() && false && !held->element.refinements.empty()) {	^negative_sequence_attacks$|^negative_sequence_boundaries$
 hidden-refinement-spelling-refused	clang/src/refinements.cpp	if (written.kind == CXType_Unexposed && unnamed &&	if (false && written.kind == CXType_Unexposed && unnamed &&	^negative_refinement_types$
-template-argument-default-refinement	clang/src/bridge.cpp	if (auto by_default = defaulted(named)) {	if (auto by_default = std::optional<RefinedTemplateArgument>{}) {	^negative_refinement_types$
-template-argument-decltype-refinement	clang/src/bridge.cpp	if (kind == CXCursor_DeclRefExpr && user_template.has_value()) {	if (false && kind == CXCursor_DeclRefExpr && user_template.has_value()) {	^negative_refinement_types$
+template-argument-default-refinement	clang/src/collect.cpp	if (auto by_default = defaulted(named)) {	if (auto by_default = std::optional<RefinedTemplateArgument>{}) {	^negative_refinement_types$
+template-argument-decltype-refinement	clang/src/collect.cpp	if (kind == CXCursor_DeclRefExpr && user_template.has_value()) {	if (false && kind == CXCursor_DeclRefExpr && user_template.has_value()) {	^negative_refinement_types$
 template-specializations-indexed	clang/src/bridge.cpp	collector.specializations.push_back(specialization);	(void)specialization;	^negative_template_identity$
 template-index-resolves-specialization	clang/src/bridge.cpp	const CXCursor referenced = clang_getCursorReferenced(reference->cursor);	const CXCursor referenced = reference->referencedEntity->cursor;	^negative_template_identity$
 default-argument-evaluated-at-call	clang/src/expressions.cpp	if (is_default_argument(argument)) {	if (false && is_default_argument(argument)) {	^e2e_default_arguments$|^negative_default_arguments$
@@ -231,9 +231,9 @@ deref-symbolic-index-overlaps	clang/src/aliasing.cpp	if (other.has_symbolic_step
 record-user-destructor-unmodeled	clang/src/types.cpp	                if (has_user_provided_destructor(definition)) {	                if (false && has_user_provided_destructor(definition)) {	^negative_verified_methods$
 format-keeps-directives	compiler/formatter/src/format.cpp	return spans_overlap(edit.span, source::ByteSpan{begin, end - begin});	return false && spans_overlap(edit.span, source::ByteSpan{begin, end - begin});	^formatter_test$
 lsp-meaning-option-unverified	src/lsp/src/compile_commands.cpp	if (argument.starts_with("-f") && !passed_on(argument) && !ignorable_flag(argument)) {	if (false && argument.starts_with("-f") && !passed_on(argument) && !ignorable_flag(argument)) {	^lsp_compile_commands_test$
-template-argument-refinement-use-site	clang/src/bridge.cpp	collector.refused_arguments.emplace_back(refined_template_argument_refusal(*refined), cursor);	(void)refined;	^negative_refinement_types$
+template-argument-refinement-use-site	clang/src/collect.cpp	collector.refused_arguments.emplace_back(refined_template_argument_refusal(*refined), cursor);	(void)refined;	^negative_refinement_types$
 template-argument-refinement-verified-body	clang/src/bridge.cpp	found.refused_arguments.emplace_back(refined_template_argument_refusal(*refined), cursor);	(void)refined;	^negative_refinement_types$
-template-argument-refinement-through-alias	clang/src/bridge.cpp	if (auto hidden = refined_template_argument(named, selection, depth + 1)) {	if (auto hidden = std::optional<RefinedTemplateArgument>{}) {	^negative_refinement_types$
+template-argument-refinement-through-alias	clang/src/collect.cpp	if (auto hidden = refined_template_argument(named, selection, depth + 1)) {	if (auto hidden = std::optional<RefinedTemplateArgument>{}) {	^negative_refinement_types$
 unsafe-block-new-generation	clang/src/unsafe.cpp	new_generation(state[index], "the unsafe block at " + at);	(void)state[index];	^negative_containers$|^negative_sequence_attacks$
 container-span-capability	clang/src/formed_places.cpp	if (!region.parameter.has_value() || granted(*region.parameter, required)) {	if (true) {	^negative_containers$
 container-call-disjointness	clang/src/calls.cpp	if (other == root || may_alias(state[other], state[root])) {	if (false && (other == root || may_alias(state[other], state[root]))) {	^negative_containers$

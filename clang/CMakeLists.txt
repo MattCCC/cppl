@@ -13,23 +13,24 @@ add_library(cppl_clang STATIC
     src/bridge.cpp
     src/call_objects.cpp
     src/calls.cpp
+    src/collect.cpp
     src/control.cpp
     src/conversions.cpp
     src/cursors.cpp
     src/declarations.cpp
     src/default_arguments.cpp
     src/editor.cpp
+    src/editor_completion.cpp
+    src/editor_description.cpp
+    src/editor_names.cpp
+    src/editor_navigation.cpp
+    src/editor_structure.cpp
     src/expressions.cpp
     src/formal.cpp
     src/formed_places.cpp
     src/ghost.cpp
     src/loops.cpp
     src/lowering.cpp
-    src/editor_completion.cpp
-    src/editor_description.cpp
-    src/editor_names.cpp
-    src/editor_navigation.cpp
-    src/editor_structure.cpp
     src/path_markers.cpp
     src/proof_instantiation.cpp
     src/proof_instantiation_cursors.cpp
