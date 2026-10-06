@@ -3334,12 +3334,10 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
                 expression.type = destination;
                 return expression;
             }
+            // Clang puts the conversion a cast to or from `bool` performs in an
+            // implicit node beneath it, so a cast to `bool` reads a `bool`.
             if (destination.kind == TypeKind::Bool && source.kind == TypeKind::Bool) {
                 return build_expression(*operand, signature, locals, depth + 1);
-            }
-            if (boolean_pair(source, destination)) {
-                return boolean_conversion(build_expression(*operand, signature, locals, depth + 1), destination,
-                                          cursor);
             }
             if (integral(destination) && integral(source)) {
                 Expr expression = build_expression(*operand, signature, locals, depth + 1);
