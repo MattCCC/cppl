@@ -92,7 +92,8 @@ endfunction()
 cppl_add_unit_test(kernel_value_model_test kernel/value_model_test.cpp)
 target_link_libraries(kernel_value_model_test PRIVATE cppl_kernel)
 
-cppl_add_unit_test(kernel_check_test kernel/check_test.cpp)
+cppl_add_unit_test(kernel_check_test kernel/check_test.cpp kernel/check_test_quantifiers.cpp
+                   kernel/check_test_implication.cpp kernel/check_test_transport.cpp kernel/check_test_connectives.cpp)
 target_link_libraries(kernel_check_test PRIVATE cppl_kernel)
 
 cppl_add_unit_test(kernel_malformed_test kernel/malformed_test.cpp)
