@@ -76,6 +76,11 @@ cmake --build --preset release
 ctest --preset release
 ```
 
+Every preset generates Ninja files, and when `ccache` is installed every
+compile goes through it (`CPPL_USE_CCACHE`, on by default; a
+`CMAKE_CXX_COMPILER_LAUNCHER` given on the command line is kept). A rebuild of
+an unchanged unit is then a cache hit; ccache changes no output.
+
 ## Installing
 
 ```sh
