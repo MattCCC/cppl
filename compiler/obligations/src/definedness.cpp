@@ -465,6 +465,27 @@ std::expected<std::optional<kernel::Proposition>, Failure> definedness_of(const 
 }
 
 std::expected<kernel::Proposition, Failure> specified(const vir::Expr& condition, const TermLowerer& lower) {
+    // `A && B` and `A || B` in a specification state the conjunction and the
+    // disjunction of what their operands state, each operand specified on its
+    // own, as a contract's conditions do (SPEC.md 7.6, 7.8, EXPR-016): a
+    // specification is never evaluated, so which operand C++ would evaluate
+    // does not enter into what it says, and no operand's definedness is
+    // hidden by another's outcome (SPECEXPR-002).
+    if (const auto* binary = std::get_if<vir::Binary>(&condition.node);
+        binary != nullptr && (binary->op == vir::BinaryOp::And || binary->op == vir::BinaryOp::Or) &&
+        binary->operands.size() == 2 && condition.type.is_boolean() && binary->operands[0].type.is_boolean() &&
+        binary->operands[1].type.is_boolean()) {
+        auto left = specified(binary->operands[0], lower);
+        if (!left) {
+            return left;
+        }
+        auto right = specified(binary->operands[1], lower);
+        if (!right) {
+            return right;
+        }
+        return binary->op == vir::BinaryOp::And ? kernel::Proposition::conjunction(std::move(*left), std::move(*right))
+                                                : kernel::Proposition::disjunction(std::move(*left), std::move(*right));
+    }
     auto term = lower(condition);
     if (!term) {
         return std::unexpected(term.error());

@@ -138,9 +138,12 @@ Disjunction is `PROTOTYPE` on two further kernel rules (core/kernel 0.5.0), agai
 with no assumptions or axioms: `||` is introduced from one side and used by a
 case analysis over both, automation shapes both and the kernel checks them, and
 nothing grants `P || not P`. In a verified `if` condition, `&&`, `||` and `!`
-are elaborated into the routes they select between (SPEC.md 12.7). Value and
-invariant uses of `&&` and `||` remain unsupported, because a proposition is not
-a value (SPEC.md 7.6-7.8).
+are elaborated into the routes they select between (SPEC.md 12.7). A loop
+invariant states `&&` and `||` as a contract does, the conjunction and the
+disjunction of its operands, each specified on its own and nested to any depth
+(EXPR-016, SPECEXPR-002; `e2e/conditions.sh`, `negative/conditions.sh`). Value
+uses of `&&` and `||` remain unsupported, because a proposition is not a value
+(SPEC.md 7.6-7.8).
 Everything else is reported as unsupported and produces no obligation. See
 `docs/ARCHITECTURE.md` 95 for the implemented structure and `TRUST.md` 4 for what
 must be trusted.

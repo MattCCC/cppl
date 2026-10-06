@@ -373,14 +373,14 @@ class TermLowering {
         }
 
         if (const auto* binary = std::get_if<vir::Binary>(&expr.node)) {
-            // `&&` and `||` state a proposition, and a proposition is not a
-            // value: nothing computes one. Where a value is required - a
-            // returned expression, a condition a path is taken on - they are
-            // refused rather than encoded as a Boolean.
+            // `&&` and `||` state a proposition: an `if` condition is split into
+            // the routes they select, and a specification states connectives.
+            // Where a value is required - a loop's condition, one a body
+            // computes - they are refused rather than encoded as a Boolean.
             if (binary->op == vir::BinaryOp::And || binary->op == vir::BinaryOp::Or) {
                 return fail("'" + vir::describe(binary->op) +
                                 "' states a proposition and is not modeled as a value: this position requires a "
-                                "value, such as a condition a path is taken on or a loop invariant" +
+                                "value, such as a loop's condition or a value a body computes" +
                                 (binary->op == vir::BinaryOp::And ? ", so state each side separately" : ""),
                             location);
             }

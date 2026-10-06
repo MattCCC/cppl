@@ -537,6 +537,9 @@ cppl_add_script_test(e2e_verified_loops e2e/verified_loops.sh)
 cppl_add_script_test(e2e_switch_statements e2e/switch_statements.sh)
 # `if` with an init-statement, a condition variable or `if constexpr` (C++ [stmt.if]).
 cppl_add_script_test(e2e_if_statements e2e/if_statements.sh)
+# Conditions, logical values and invariants stating `&&` and `||` (C++
+# [expr.log.and], [expr.log.or], SPEC.md EXPR-016).
+cppl_add_script_test(e2e_conditions e2e/conditions.sh)
 # A range-based for, verified as C++ iterates it (SPEC.md LOOP-004, STMT-005).
 cppl_add_script_test(e2e_range_for e2e/range_for.sh)
 cppl_add_script_test(negative_range_for negative/range_for.sh)
@@ -592,6 +595,7 @@ cppl_add_script_test(negative_verified_locals negative/verified_locals.sh)
 cppl_add_script_test(negative_verified_loops negative/verified_loops.sh)
 cppl_add_script_test(negative_switch_statements negative/switch_statements.sh)
 cppl_add_script_test(negative_if_statements negative/if_statements.sh)
+cppl_add_script_test(negative_conditions negative/conditions.sh)
 cppl_add_script_test(negative_verified_methods negative/verified_methods.sh)
 cppl_add_script_test(negative_struct_values negative/struct_values.sh)
 

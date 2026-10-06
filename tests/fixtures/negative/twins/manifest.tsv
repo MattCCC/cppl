@@ -2,6 +2,7 @@
 # kind	fixture	refused counterpart	diagnostic, script or reason	imports	flags
 twin	case_split_as_cpp_name.cpp	negative/twins/case_split_as_cpp_name.cpp	error \[proof-failure\]: verified function 'as_cpp' does not satisfy its contract	-	-
 twin	conditional_proof.cpp	negative/twins/conditional_proof.cpp	error \[proof-failure\]: 'premise' has no matching premise to stand for	-	-
+twin	conditions.cpp	negative/twins/conditions.cpp	error \[kernel-rejection\]: loop invariant 'countdown loop at line [0-9]+ invariant 1' does not hold on entry	-	-
 twin	contextual_omission_words.cpp	negative/twins/contextual_omission_words.cpp	error \[kernel-rejection\]: proof 'named_like_the_words_holds' does not establish law 'named_like_the_	-	-
 twin	contradiction_as_a_cpp_name.cpp	negative/twins/contradiction_as_a_cpp_name.cpp	error \[proof-failure\]: verified function 'keeps' does not satisfy its contract	-	-
 twin	contradiction_named_by_a_header.cpp	negative/twins/contradiction_named_by_a_header.cpp	error \[proof-failure\]: verified function 'keeps' does not satisfy its contract	-	-

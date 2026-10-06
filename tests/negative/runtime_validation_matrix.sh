@@ -104,7 +104,7 @@ CPP
 
 # --- Where a validation's fact holds and where it does not: its failure path, a route a disjunction or a failed conjunction takes, a later write, call, unsafe block, alias or loop, another value or refinement (RUNTIMECHECK-007, RUNTIMECHECK-011 to RUNTIMECHECK-013)
 begin paths
-refused neg_loop_condition_and "'&&' states a proposition and is not modeled as a value: this position requires a value, such as a condition a path is taken on or a loop invariant, so state each side separately" <<'CPP'
+refused neg_loop_condition_and "'&&' states a proposition and is not modeled as a value: this position requires a value, such as a loop's condition or a value a body computes, so state each side separately" <<'CPP'
 verified int neg_loop_condition_and(int raw)
     ensures (result > 0)
 {

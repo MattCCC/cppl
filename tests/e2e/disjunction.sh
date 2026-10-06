@@ -111,9 +111,11 @@ verified unsigned wrong(unsigned x) ensures (result == 0u) {
     return 0u;
 }
 CPP
+# A loop invariant states its disjunction as a specification does, so it holds
+# on entry only where one of its sides does.
 reject in_an_invariant <<'CPP'
 verified unsigned wrong(unsigned x) ensures (result == x) {
-    while (x != x) invariant (x == x || x != x) { }
+    while (x != x) invariant (x == 0u || x == 1u) { }
     return x;
 }
 CPP
@@ -125,6 +127,6 @@ CPP
 grep -q 'kernel-rejection' "$run/excluded_middle.log"
 grep -q 'kernel-rejection' "$run/side_from_a_premise.log"
 grep -q 'kernel-rejection' "$run/one_case_fails.log"
-grep -q 'not modeled as a value' "$run/in_an_invariant.log"
+grep -q 'does not hold on entry' "$run/in_an_invariant.log"
 grep -q 'nested or malformed formal syntax' "$run/in_an_argument.log"
 grep -q 'no proof or assumed premise' "$run/written_failure.log"
