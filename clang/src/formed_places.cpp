@@ -548,12 +548,17 @@ bool BodyLowering::materialize_derefs(CXCursor cursor, Locals& state, unsigned d
                 // The array is tracked when the declaration its access is
                 // rooted in is: a local's or a parameter's, or for a member of
                 // the implicit object, its class. What a pointer designates is
-                // a dereference place, formed under a capability, never here.
+                // a dereference place, formed under a capability, never here,
+                // and one selected at a term forms no such place.
                 const auto access = resolve_access(cursor);
-                const bool tracked =
-                    access && !access->dereferenced && std::ranges::any_of(state, [&](const Local& entry) {
-                        return clang_equalCursors(entry.declaration, access->declaration) != 0;
-                    });
+                if (access && access->dereferenced && !access->symbolic_indices.empty()) {
+                    rejection = "an element of a std::array that a pointer designates, selected at a term, is not "
+                                "modeled; read it through a member function of the object, or at a constant index";
+                    return false;
+                }
+                const bool tracked = access && std::ranges::any_of(state, [&](const Local& entry) {
+                                         return clang_equalCursors(entry.declaration, access->declaration) != 0;
+                                     });
                 if (tracked && !access->symbolic_indices.empty() && !resolve_symbolic_element(state, *access)) {
                     return false;
                 }

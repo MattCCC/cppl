@@ -147,7 +147,7 @@ CPP
 # What a pointer designates is reached only as the dereference it is: an
 # element of its member array is never formed as storage of this body, which
 # the call through the pointer would leave holding the value read before it.
-refused std_array_member_through_pointer "no formal meaning" <<'CPP'
+refused std_array_member_through_pointer "a std::array that a pointer designates, selected at a term, is not modeled" <<'CPP'
 #include <array>
 #include <cstddef>
 struct Stack {

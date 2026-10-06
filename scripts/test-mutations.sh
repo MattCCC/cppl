@@ -475,11 +475,11 @@ reference-object-post-state	clang/src/lowering.cpp	} else if (designated.has_val
 reference-object-refined-whole	clang/src/lowering.cpp	aggregates::structural(parameter.type) && !refines_an_object(parameter.type)) {	aggregates::structural(parameter.type)) {	^negative_member_storage$
 receiver-std-array-refined-element	clang/src/signature.cpp	if (!stated || !stated->empty()) {	if (false) {	^negative_member_storage$
 value-init-zero	clang/src/value_initialization.cpp	zero.node = IntLiteral{0};	zero.node = IntLiteral{1};	^negative_member_storage$
-value-init-default-member-initializer	clang/src/value_initialization.cpp	(clang_Cursor_isBitField(*next.field) != 0 || has_default_member_initializer(*next.field))) {	(clang_Cursor_isBitField(*next.field) != 0)) {	^negative_member_storage$
-value-init-constructor	clang/src/value_initialization.cpp	if (record && declares_constructor(canonical)) {	if (false) {	^negative_member_storage$
-value-init-designated	clang/src/value_initialization.cpp	if (designated(elements[member])) {	if (false) {	^negative_member_storage$
+value-init-default-member-initializer	clang/src/value_initialization.cpp	(clang_Cursor_isBitField(*next.field) != 0 || has_default_member_initializer(*next.field))) {	(clang_Cursor_isBitField(*next.field) != 0 || (false && has_default_member_initializer(*next.field)))) {	^negative_member_storage$
+value-init-constructor	clang/src/value_initialization.cpp	if (record && declares_constructor(canonical)) {	if (false && record && declares_constructor(canonical)) {	^negative_member_storage$
+value-init-designated	clang/src/value_initialization.cpp	if (designated(elements[member])) {	if (false && designated(elements[member])) {	^negative_member_storage$
 value-init-scalar-braces	clang/src/value_initialization.cpp	clang_getCursorKind(elements[member]) == CXCursor_InitListExpr) {	false) {	^negative_member_storage$
-std-array-element-not-through-pointer	clang/src/formed_places.cpp	access && !access->dereferenced && std::ranges::any_of(state, [&](const Local& entry) {	access && std::ranges::any_of(state, [&](const Local& entry) {	^negative_member_storage$
+std-array-element-not-through-pointer	clang/src/formed_places.cpp	if (access && access->dereferenced && !access->symbolic_indices.empty()) {	if (false) {	^negative_member_storage$
 MUTATIONS
 )
 
