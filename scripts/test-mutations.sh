@@ -565,7 +565,7 @@ fi
 # names, where a failure would exit only the subshell and be lost.
 known=$(all_names)
 for name in ${only+"${only[@]}"}; do
-    if ! printf '%s\n' "$known" | grep -qx -- "$name"; then
+    if ! grep -qx -- "$name" <<< "$known"; then
         echo "no such mutation: $name" >&2
         exit 2
     fi
@@ -584,19 +584,19 @@ field() {
 }
 
 spec_file() {
-    if field "$1" 2 | grep -q .; then field "$1" 2; else multiline_file "$1"; fi
+    if grep -q . <<< "$(field "$1" 2)"; then field "$1" 2; else multiline_file "$1"; fi
 }
 
 spec_tests() {
-    if field "$1" 5 | grep -q .; then field "$1" 5; else multiline_tests "$1"; fi
+    if grep -q . <<< "$(field "$1" 5)"; then field "$1" 5; else multiline_tests "$1"; fi
 }
 
 spec_before() {
-    if field "$1" 3 | grep -q .; then field "$1" 3; else multiline_before "$1"; fi
+    if grep -q . <<< "$(field "$1" 3)"; then field "$1" 3; else multiline_before "$1"; fi
 }
 
 spec_after() {
-    if field "$1" 4 | grep -q .; then field "$1" 4; else multiline_after "$1"; fi
+    if grep -q . <<< "$(field "$1" 4)"; then field "$1" 4; else multiline_after "$1"; fi
 }
 
 # Substitutes the single occurrence of "$2" with "$3" in the file "$1", writing
