@@ -83,6 +83,7 @@ implementation:
   clang:
     - clang/include/cppl/clang/ast.hpp
     - clang/src/access.cpp
+    - clang/src/aliasing.cpp
     - clang/src/bridge.cpp
     - clang/src/formed_places.cpp
     - clang/src/lowering.cpp

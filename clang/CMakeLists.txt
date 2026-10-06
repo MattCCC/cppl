@@ -9,6 +9,7 @@ add_library(cppl_clang STATIC
     src/access.cpp
     src/aggregate_effects.cpp
     src/aggregate_values.cpp
+    src/aliasing.cpp
     src/bridge.cpp
     src/call_objects.cpp
     src/conversions.cpp
