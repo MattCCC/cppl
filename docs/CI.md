@@ -285,11 +285,8 @@ commit and only by an RFC and a new version.
 `.h`, `.cc`, `.cxx`, `.hxx`, `.ipp`, `.inl`, `.tpp`, tests and fixtures
 included) to at most 1000 lines, and names each file over the limit with its
 count (AGENTS.md 36). Build trees, `tmp/`, version control and tool state, and
-installed dependencies are not counted. `cmake/ci/oversized.txt` is a
-transitional list of files that other work was changing when the limit was
-introduced: each may stay at the line count recorded for it and no more, and
-leaves the list once split. The list is to end empty and be deleted with the
-code that reads it. `ci_filelength_fixtures` (`tests/ci/file_length.cmake`)
+installed dependencies are not counted, and no file is exempt.
+`ci_filelength_fixtures` (`tests/ci/file_length.cmake`)
 runs the check over trees built to show what it refuses and what it must not
 count.
 

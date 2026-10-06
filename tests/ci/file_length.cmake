@@ -5,8 +5,8 @@
 #
 # The repository itself only shows that today's files pass. These trees show
 # what the check refuses: a file one line over the limit, under each C++
-# extension and at any depth, with or without a final newline; and what the
-# transitional list allows and refuses. They also show what it must not count:
+# extension and at any depth, with or without a final newline. They also show
+# what it must not count:
 # a file at the limit, a file that is not C++, and the directories that hold no
 # source, while a tree that itself lives under such a directory is still
 # checked.
@@ -44,14 +44,11 @@ function(fresh out_var)
     file(MAKE_DIRECTORY "${run}/tree-${next}")
 endfunction()
 
-# Runs the check over `root`, with the list `oversized` when one is named, and
-# expects it to pass, or to fail naming each of `expected`.
+# Runs the check over `root`, and expects it to pass, or to fail naming each of
+# `expected`.
 function(expect what root outcome)
-    cmake_parse_arguments(PARSE_ARGV 3 arg "" "OVERSIZED" "MENTIONS")
+    cmake_parse_arguments(PARSE_ARGV 3 arg "" "" "MENTIONS")
     set(arguments "-DCPPL_FILELENGTH_ROOT=${root}")
-    if(arg_OVERSIZED)
-        list(APPEND arguments "-DCPPL_FILELENGTH_OVERSIZED=${arg_OVERSIZED}")
-    endif()
     execute_process(
         COMMAND "${CMAKE_COMMAND}" ${arguments} -P "${CHECK}"
         RESULT_VARIABLE result
@@ -108,44 +105,6 @@ expect("files deep in the tree and at its top" "${tree}" FAIL
 set(nested "${run}/build/tmp/checkout")
 lines("${nested}/src/over.cpp" 1001)
 expect("a tree under build/tmp" "${nested}" FAIL MENTIONS "src/over.cpp: 1001 lines")
-
-# The transitional list: a listed file may stay at its recorded count, and no
-# more; once at or below the limit it must leave the list; the list names only
-# files that exist, each once, in its one form.
-fresh(tree)
-lines("${tree}/listed.cpp" 1500)
-set(list "${run}/oversized-${trees}.txt")
-file(WRITE "${list}" "# a comment\n\nlisted.cpp 1500\n")
-expect("a listed file at its recorded count" "${tree}" PASS OVERSIZED "${list}")
-lines("${tree}/listed.cpp" 1400)
-expect("a listed file below its recorded count" "${tree}" PASS OVERSIZED "${list}")
-lines("${tree}/listed.cpp" 1501)
-expect("a listed file grown" "${tree}" FAIL OVERSIZED "${list}"
-       MENTIONS "listed.cpp: 1501 lines, grown beyond the 1500")
-lines("${tree}/listed.cpp" 1000)
-expect("a listed file at the limit" "${tree}" FAIL OVERSIZED "${list}"
-       MENTIONS "listed.cpp: 1000 lines, within the limit now")
-lines("${tree}/listed.cpp" 1500)
-lines("${tree}/unlisted.cpp" 1001)
-expect("an unlisted file beside a listed one" "${tree}" FAIL OVERSIZED "${list}"
-       MENTIONS "unlisted.cpp: 1001 lines")
-expect("a tree named without its list" "${tree}" FAIL MENTIONS "listed.cpp: 1500 lines")
-
-fresh(tree)
-lines("${tree}/listed.cpp" 1500)
-set(list "${run}/oversized-${trees}.txt")
-file(WRITE "${list}" "listed.cpp 1500\ngone.cpp 2000\n")
-expect("a listed file that does not exist" "${tree}" FAIL OVERSIZED "${list}"
-       MENTIONS "gone.cpp is listed in oversized.txt but does not exist")
-file(WRITE "${list}" "listed.cpp 1500\nlisted.cpp 1500\n")
-expect("a file listed twice" "${tree}" FAIL OVERSIZED "${list}" MENTIONS "lists listed.cpp twice")
-file(WRITE "${list}" "listed.cpp\n")
-expect("an entry without a count" "${tree}" FAIL OVERSIZED "${list}"
-       MENTIONS "`listed.cpp` is not `<path> <line count>`")
-lines("${tree}/notes.md" 1500)
-file(WRITE "${list}" "listed.cpp 1500\nnotes.md 1500\n")
-expect("a listed file that is not C++" "${tree}" FAIL OVERSIZED "${list}"
-       MENTIONS "notes.md is listed in oversized.txt but is not a C++ file this check counts")
 
 if(failures)
     message(FATAL_ERROR "The file-length check decided wrongly:\n${failures}")

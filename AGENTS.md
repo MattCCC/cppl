@@ -1199,8 +1199,7 @@ before a change would take it over the limit, never by an arbitrary cut:
   `detail` namespace; everything else stays local to the one file that uses it.
 - Code moves verbatim. A split is never the occasion for a semantic change.
 - `ci_filelength` (`cmake/ci/CheckFileLength.cmake`) enforces the limit in every
-  test run. `cmake/ci/oversized.txt` lists files over it whose split is still
-  pending; it only shrinks, and nothing is ever added to it.
+  test run, and no file is exempt from it.
 
 Every translation unit and every header directly includes the header that
 declares each name it uses. A header compiles from its own includes alone and
