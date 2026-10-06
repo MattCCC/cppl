@@ -1487,6 +1487,18 @@ std::size_t declarator_parameters(const std::vector<Token>& tokens, std::size_t 
     return open;
 }
 
+// Whether the operator-function-id at `name` names a conversion function: a
+// type follows `operator`, rather than an operator symbol, `new`, `delete`,
+// `co_await` or a literal operator's `""`.
+bool conversion_function(const std::vector<Token>& tokens, std::size_t name) {
+    if (name + 1 >= tokens.size()) {
+        return false;
+    }
+    const Token& next = tokens[name + 1];
+    return next.kind != TokenKind::Punctuator && next.kind != TokenKind::StringLiteral && !next.is_identifier("new") &&
+           !next.is_identifier("delete") && !next.is_identifier("co_await");
+}
+
 // The name a declarator at `name` declares, as diagnostics spell it: the
 // identifier, or an operator function's whole operator-function-id,
 // `operator()`, `operator[]`, `operator+`.
@@ -1945,9 +1957,7 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
     const bool operator_function = tokens[*name].is_identifier("operator");
     // A conversion function names a type where an operator function names its
     // operator, and states no return type of its own for `result` to have.
-    if (operator_function && *name + 1 < tokens.size() && tokens[*name + 1].kind != TokenKind::Punctuator &&
-        !tokens[*name + 1].is_identifier("new") && !tokens[*name + 1].is_identifier("delete") &&
-        !tokens[*name + 1].is_identifier("co_await") && tokens[*name + 1].kind != TokenKind::StringLiteral) {
+    if (operator_function && conversion_function(tokens, *name)) {
         report(engine, stream, tokens[*name], diagnostics::Category::UnsupportedSemantics,
                "a verified conversion function is not modeled",
                "a conversion function states no return type before its name, so a contract would have no "
