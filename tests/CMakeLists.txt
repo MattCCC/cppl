@@ -7,6 +7,7 @@
 #   integration   the driver, arguments, headers, reproducibility
 #   e2e           source in, verified native executable out
 #   architecture  dependency direction
+#   ci            the repository checks (cmake/ci) over trees built for them
 
 # The harness, and the parallel loop exhaustive cases share (support/include).
 add_library(cppl_testing STATIC support/src/test.cpp support/src/parallel.cpp)
@@ -685,10 +686,10 @@ add_subdirectory(fuzz)
 
 # The repository checks are CMake scripts, so they run under CTest like
 # anything else. Registering them here means a plain `ctest` catches a
-# committed host path, a broken preset convention or a local CI run that no
-# longer runs what the workflow runs, rather than that
-# depending on someone remembering to run `make ci-checks` (AGENTS.md 40).
-foreach(check IN ITEMS HostPaths PresetLayout WorkflowSteps FrozenDocuments)
+# committed host path, a broken preset convention, a local CI run that no
+# longer runs what the workflow runs or a C++ file over 1000 lines, rather than
+# that depending on someone remembering to run `make ci-checks` (AGENTS.md 40).
+foreach(check IN ITEMS HostPaths PresetLayout WorkflowSteps FrozenDocuments FileLength)
     string(TOLOWER "ci_${check}" check_test)
 
     add_test(NAME ${check_test}
@@ -699,6 +700,18 @@ foreach(check IN ITEMS HostPaths PresetLayout WorkflowSteps FrozenDocuments)
         LABELS "ci;repository"
         TIMEOUT ${CPPL_TEST_TIMEOUT})
 endforeach()
+
+# The repository passing the file-length check shows only that today's files
+# pass. Trees built for it show what it refuses and what it must not count
+# (AGENTS.md 36).
+add_test(NAME ci_filelength_fixtures
+         COMMAND ${CPPL_BOUNDED_PREFIX} "${CMAKE_COMMAND}"
+                 "-DCHECK=${CMAKE_SOURCE_DIR}/cmake/ci/CheckFileLength.cmake"
+                 "-DWORK=${CPPL_TEST_WORK}"
+                 -P "${CMAKE_CURRENT_SOURCE_DIR}/ci/file_length.cmake")
+set_tests_properties(ci_filelength_fixtures PROPERTIES
+    LABELS "ci;repository"
+    TIMEOUT ${CPPL_TEST_TIMEOUT})
 
 # The editors' shared TextMate grammar decides what is colored as C++L. Its
 # regression cases pin the contextual-word boundary (GRAMMAR.md 1): a grammar

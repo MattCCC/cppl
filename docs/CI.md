@@ -261,12 +261,13 @@ records it. CI presets therefore refuse to inherit these variables
 Developer presets are unaffected; exporting `CXXFLAGS` to try something is
 legitimate.
 
-Three checks run without configuring anything, and each is also a CTest test (`ci_hostpaths`, `ci_presetlayout`, `ci_frozendocuments`):
+Four checks run without configuring anything, and each is also a CTest test (`ci_hostpaths`, `ci_presetlayout`, `ci_frozendocuments`, `ci_filelength`); `make ci-checks` runs all four:
 
 ```sh
 cmake -P cmake/ci/CheckHostPaths.cmake        # committed machine-specific paths
 cmake -P cmake/ci/CheckPresetLayout.cmake     # preset conventions
 cmake -P cmake/ci/CheckFrozenDocuments.cmake  # a release's frozen documents
+cmake -P cmake/ci/CheckFileLength.cmake       # no C++ file over 1000 lines
 ```
 
 `CheckHostPaths` does not ban absolute paths. It requires that a toolchain
@@ -279,6 +280,18 @@ version `CMakeLists.txt` names and have the SHA-256 `docs/STATUS.md` records
 for it, and `docs/STATUS.md` must say both are frozen. A change to a frozen
 document is therefore a change to its recorded digest too, made in the same
 commit and only by an RFC and a new version.
+
+`CheckFileLength` holds every C++ source and header in the tree (`.cpp`, `.hpp`,
+`.h`, `.cc`, `.cxx`, `.hxx`, `.ipp`, `.inl`, `.tpp`, tests and fixtures
+included) to at most 1000 lines, and names each file over the limit with its
+count (AGENTS.md 36). Build trees, `tmp/`, version control and tool state, and
+installed dependencies are not counted. `cmake/ci/oversized.txt` is a
+transitional list of files that other work was changing when the limit was
+introduced: each may stay at the line count recorded for it and no more, and
+leaves the list once split. The list is to end empty and be deleted with the
+code that reads it. `ci_filelength_fixtures` (`tests/ci/file_length.cmake`)
+runs the check over trees built to show what it refuses and what it must not
+count.
 
 ---
 

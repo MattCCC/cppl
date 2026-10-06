@@ -97,7 +97,7 @@ help:
 		'  ci-asan           AddressSanitizer CI profile, natively' \
 		'  ci-ubsan          UndefinedBehaviorSanitizer CI profile, natively' \
 		'  ci-fuzz           Fuzzing CI profile (libFuzzer, ASan, UBSan), natively' \
-		'  ci-checks         Host-path, preset-layout and frozen-document checks (no build)' \
+		'  ci-checks         Host-path, preset-layout, frozen-document and file-length checks (no build)' \
 		'  ci-clean          Remove every CI build tree' \
 		'' \
 		'Quality:' \
@@ -258,11 +258,12 @@ else
 CI_NATIVE_PRESET ?= ci-linux-clang
 endif
 
-## ci-checks: Repository checks that need no build (host paths, preset layout, frozen documents)
+## ci-checks: Repository checks that need no build (host paths, preset layout, frozen documents, file length)
 ci-checks:
 	$(CMAKE) -P cmake/ci/CheckHostPaths.cmake
 	$(CMAKE) -P cmake/ci/CheckPresetLayout.cmake
 	$(CMAKE) -P cmake/ci/CheckFrozenDocuments.cmake
+	$(CMAKE) -P cmake/ci/CheckFileLength.cmake
 
 ## ci-native: Clean native CI profile for this host
 ci-native:
