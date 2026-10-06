@@ -63,9 +63,14 @@ refuse() {
 
 contract_false="verified function '[a-z_]+' does not satisfy its contract"
 
+# The host's predefined macros, read whole: a grep that stops at its first
+# match would leave the driver writing to a closed pipe, and under pipefail a
+# driver killed that way would decide the host's case.
+host_macros=$("$CLANG" -x c++ -E -dM - < /dev/null)
+
 # Which fixture holds on the host, where `unsigned long` is 64 bits wide on
 # LP64 systems and 32 bits on LLP64 ones.
-if "$CLANG" -x c++ -E -dM - < /dev/null | grep -q '^#define __SIZEOF_LONG__ 8$'; then
+if grep -q '^#define __SIZEOF_LONG__ 8$' <<< "$host_macros"; then
     host_true=widened
     host_false=wrapped
 else
@@ -99,7 +104,7 @@ grep -q '^target i686-unknown-linux-gnu$' prefix_wrapped.cppli ||
 # libclang, which runs as a `clang` of its own, would not. The file gives plain
 # `char` the signedness the host does not give it, so the fixture that holds of
 # the host's `char` is false of the object compiled with the file.
-if "$CLANG" -x c++ -E -dM - < /dev/null | grep -q '^#define __CHAR_UNSIGNED__ '; then
+if grep -q '^#define __CHAR_UNSIGNED__ ' <<< "$host_macros"; then
     host_char=plain_char_nonnegative
     other_char_fixture=plain_char
     other_char=-fsigned-char
@@ -113,7 +118,8 @@ accept char_other_flag "$CLANG" "$TARGET/$other_char_fixture.cpp" "$other_char"
 mkdir "$run/config"
 printf -- '%s\n' "$other_char" > "$run/config/clang++.cfg"
 configured=(--config-user-dir="$run/config")
-"$CLANG" "${configured[@]}" --version | grep -q "^Configuration file: .*clang++.cfg" ||
+configured_version=$("$CLANG" "${configured[@]}" --version)
+grep -q "^Configuration file: .*clang++.cfg" <<< "$configured_version" ||
     fail "the driver does not read clang++.cfg from its user configuration directory, so this test shows nothing"
 
 accept char_host "$CLANG" "$TARGET/$host_char.cpp"
@@ -125,7 +131,8 @@ refuse char_configured "$CLANG" "$contract_false" "$TARGET/$host_char.cpp" "${co
 # says.
 mkdir "$run/libclang-config"
 printf -- '%s\n' "$other_char" > "$run/libclang-config/clang.cfg"
-if "$CLANG" --config-user-dir="$run/libclang-config" --version | grep -q "^Configuration file:"; then
+unconfigured_version=$("$CLANG" --config-user-dir="$run/libclang-config" --version)
+if grep -q "^Configuration file:" <<< "$unconfigured_version"; then
     fail "the driver reads clang.cfg as well, so this case shows nothing"
 fi
 accept char_unconfigured "$CLANG" "$TARGET/$host_char.cpp" --config-user-dir="$run/libclang-config"
