@@ -33,7 +33,10 @@ namespace cppl::obligations {
 // passes, returns and copies whole struct values, supposing of a value assembled
 // from its members only that its members hold those values, so a contract it
 // records may rest on that correspondence, which no earlier version stated
-// (TRUST.md TCB-AGGREGATE-001).
+// (TRUST.md TCB-AGGREGATE-001); and it refuses a call to a function whose unsafe
+// code may write what it is handed anywhere but in a position of its own, where
+// version 5 passed over that call's writes, so a contract version 5 recorded
+// through one may rest on an argument kept that was not (TCB-UNSAFE-004).
 inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-6";
 
 // A contract another translation unit proved, offered to this one by the
