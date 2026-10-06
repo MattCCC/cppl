@@ -81,6 +81,7 @@ implementation:
     - compiler/erasure/src/erase.cpp
   bridge:
     - clang/src/bridge.cpp
+    - clang/src/path_markers.cpp
     - clang/include/cppl/clang/ast.hpp
   elaboration:
     - compiler/elaboration/src/elaborate.cpp

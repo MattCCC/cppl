@@ -27,6 +27,7 @@ add_library(cppl_clang STATIC
     src/editor_names.cpp
     src/editor_navigation.cpp
     src/editor_structure.cpp
+    src/path_markers.cpp
     src/proof_instantiation.cpp
     src/proof_instantiation_cursors.cpp
     src/proof_instantiation_hazards.cpp
