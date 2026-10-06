@@ -283,7 +283,8 @@ set(CPPL_TEST_WORK "${CMAKE_CURRENT_BINARY_DIR}/work")
 # compiler/formatter: the one canonical-formatting engine shared by cppl-lsp
 # and the cppl-format CLI. Exercised directly against inline C++L snippets
 # and, for the idempotency property, against the real fixture corpus above.
-cppl_add_unit_test(formatter_test unit/formatter_test.cpp)
+cppl_add_unit_test(formatter_test unit/formatter_test.cpp unit/formatter_test_clauses.cpp unit/formatter_test_proofs.cpp
+                   unit/formatter_test_ranges.cpp unit/formatter_test_style.cpp)
 target_link_libraries(formatter_test PRIVATE cppl_formatter)
 target_compile_definitions(formatter_test PRIVATE
     CPPL_TEST_FIXTURES_DIR="${CPPL_TEST_FIXTURES}")

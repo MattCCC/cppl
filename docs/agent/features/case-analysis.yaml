@@ -184,7 +184,7 @@ tests:
     - tests/unit/recognizer_test.cpp
     - tests/unit/projection_test.cpp
     - tests/unit/contracts_test.cpp
-    - tests/unit/formatter_test.cpp
+    - tests/unit/formatter_test_proofs.cpp
     - tests/unit/lsp_decomposition_view_test.cpp
     - tests/unit/lsp_semantic_tokens_test.cpp
   end_to_end:

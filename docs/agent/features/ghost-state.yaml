@@ -106,7 +106,8 @@ tests:
   unit:
     - tests/unit/recognizer_test.cpp
     - tests/unit/lsp_semantic_tokens_test.cpp
-    - tests/unit/formatter_test.cpp
+    - tests/unit/formatter_test_clauses.cpp
+    - tests/unit/formatter_test_proofs.cpp
   end_to_end:
     - tests/e2e/ghost_state.sh
     - tests/e2e/erasure_equivalence.sh

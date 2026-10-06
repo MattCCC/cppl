@@ -135,7 +135,7 @@ tests:
     - tests/unit/recognizer_test.cpp
     - tests/unit/lsp_semantic_tokens_test.cpp
     - tests/unit/lsp_completion_test.cpp
-    - tests/unit/formatter_test.cpp
+    - tests/unit/formatter_test_clauses.cpp
   end_to_end:
     - tests/e2e/unsafe_boundary.sh
     - tests/e2e/erasure_equivalence.sh
