@@ -320,12 +320,13 @@ ProbeParameters without_default_arguments(const TokenStream& stream, const sourc
     bool in_default = false;
     unsigned depth = 0;  // (), [], {} open within the list
     unsigned angles = 0; // `<` a default leaves open outside every bracket
-    for (const Token& token : stream.tokens()) {
+    const std::vector<Token>& tokens = stream.tokens();
+    for (auto at =
+             std::ranges::lower_bound(tokens, span.offset, {}, [](const Token& token) { return token.span.offset; });
+         at != tokens.end(); ++at) {
+        const Token& token = *at;
         if (token.kind == TokenKind::EndOfFile || token.span.offset >= span.end()) {
             break;
-        }
-        if (token.span.offset < span.offset) {
-            continue;
         }
         if (token.is_punctuator("(") || token.is_punctuator("[") || token.is_punctuator("{")) {
             ++depth;
