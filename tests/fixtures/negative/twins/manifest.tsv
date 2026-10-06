@@ -92,6 +92,8 @@ covered	target/widened.cpp	target/wrapped.cpp	negative/analysis_target.sh	-	-
 covered	target/wrapped.cpp	target/widened.cpp	negative/analysis_target.sh	-	-
 covered	target/plain_char.cpp	target/plain_char_nonnegative.cpp	negative/analysis_target.sh	-	-
 covered	target/plain_char_nonnegative.cpp	target/plain_char.cpp	negative/analysis_target.sh	-	-
+covered	target/signed_char_program.cpp	target/unsigned_char_program.cpp	negative/analysis_options.sh	-	-
+covered	target/unsigned_char_program.cpp	target/signed_char_program.cpp	negative/analysis_options.sh	-	-
 covered	structural_cases.cpp	negative/cases_on_product.cpp	negative/case_providers.sh	-	-
 covered	trust_closure.cpp	negative/memory_law_untrusted.cpp	negative/trusted_dependencies.sh	-	-
 covered	untracked_members.cpp	negative/member_numbering_gap.cpp	negative/verified_storage.sh	-	-

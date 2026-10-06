@@ -1,5 +1,6 @@
 #include "target.hpp"
 
+#include "cppl/driver/options.hpp"
 #include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
 
@@ -123,11 +124,24 @@ std::expected<CompileTarget, std::string> compile_target(const std::string& clan
 }
 
 std::vector<std::string> analysis_arguments(const std::vector<std::string>& arguments, const CompileTarget& target) {
-    std::vector<std::string> given = arguments;
+    // A configuration file the arguments name is read as the driver found it,
+    // below, and not looked for again: libclang, which runs as a `clang` of its
+    // own, does not search the driver's directory for a name without one, and
+    // would read another file of that name, or none. Each option is left out
+    // with its value, so no other option takes it (SPEC.md ARITH-014).
+    std::vector<std::string> given;
+    for (std::size_t index = 0; index < arguments.size();) {
+        const std::size_t end = std::min(arguments.size(), index + 1 + separate_values(arguments[index]));
+        const bool names_configuration = arguments[index] == "--config" || arguments[index].starts_with("--config=");
+        if (!names_configuration) {
+            for (std::size_t kept = index; kept < end; ++kept) {
+                given.push_back(arguments[kept]);
+            }
+        }
+        index = end;
+    }
     // The configuration files the driver read, and none the analysis would
-    // find by defaults of its own: a configuration file may add any option. A
-    // file the arguments name is read twice, which repeats its options and
-    // changes none of them.
+    // find by defaults of its own: a configuration file may add any option.
     given.emplace_back("--no-default-config");
     for (const std::string& file : target.configuration_files) {
         given.push_back("--config=" + file);

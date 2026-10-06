@@ -121,6 +121,7 @@ implementation:
     - compiler/driver/src/pipeline.cpp
     - compiler/driver/src/driver.cpp
     - compiler/driver/src/target.cpp
+    - compiler/driver/src/options.cpp
 
 interactions:
   - guards, `?:` arms and the short-circuit routes of `&&` and `||`
@@ -141,6 +142,7 @@ tests:
   negative:
     - tests/negative/signed_arithmetic.sh
     - tests/negative/analysis_target.sh
+    - tests/negative/analysis_options.sh
     - tests/fixtures/negative/arith_int32_max_plus_one.cpp
     - tests/fixtures/negative/arith_int32_min_minus_one.cpp
     - tests/fixtures/negative/arith_int64_max_plus_one.cpp
@@ -191,6 +193,7 @@ tests:
   unit:
     - tests/unit/definedness_arithmetic_test.cpp
     - tests/unit/arithmetic_test.cpp
+    - tests/unit/driver_options_test.cpp
   property:
     - tests/property/arithmetic_oracle.cpp
     - tests/e2e/arithmetic_properties.sh

@@ -192,6 +192,11 @@ target_link_libraries(unit_trust_report_test PRIVATE cppl_driver cppl_lsp)
 cppl_add_unit_test(unit_dependencies_test unit/dependencies_test.cpp)
 target_link_libraries(unit_dependencies_test PRIVATE cppl_driver)
 
+# Which argument of a command line is an option's value, as Clang's driver
+# reads it.
+cppl_add_unit_test(unit_driver_options_test unit/driver_options_test.cpp)
+target_link_libraries(unit_driver_options_test PRIVATE cppl_driver)
+
 cppl_add_unit_test(unit_contracts_test unit/contracts_test.cpp)
 target_link_libraries(unit_contracts_test PRIVATE cppl_automation)
 # Composition's search budget carries its own contract, so the test states it
@@ -490,6 +495,9 @@ cppl_add_script_test(negative_signed_arithmetic negative/signed_arithmetic.sh)
 # A unit is verified for the target its program is compiled for, whatever
 # selects it: an option, the driver's name or a configuration file.
 cppl_add_script_test(negative_analysis_target negative/analysis_target.sh)
+# A unit is verified under exactly the options its program is compiled with,
+# however the command line spells them.
+cppl_add_script_test(negative_analysis_options negative/analysis_options.sh)
 
 # The verifier's decision on each operation against an oracle built from the
 # host compiler's own arithmetic (RFC 0019). The oracle shares nothing with the

@@ -13,53 +13,203 @@ namespace cppl::driver {
 
 namespace {
 
-// Options whose value is a separate argument. Their value must never be
-// mistaken for an input file.
-constexpr auto kValueOptions = std::to_array<std::string_view>({"-o",
-                                                                "-I",
-                                                                "-isystem",
-                                                                "-iquote",
-                                                                "-idirafter",
-                                                                "-include",
-                                                                "-imacros",
-                                                                "-F",
-                                                                "-framework",
-                                                                "-L",
-                                                                "-l",
-                                                                "-D",
-                                                                "-U",
-                                                                "-x",
-                                                                "-Xclang",
-                                                                "-Xlinker",
-                                                                "-Xpreprocessor",
-                                                                "-Xassembler",
-                                                                "-MF",
-                                                                "-MT",
-                                                                "-MQ",
-                                                                "-MJ",
-                                                                "-target",
-                                                                "-arch",
-                                                                "-isysroot",
-                                                                "--sysroot",
-                                                                "--std",
-                                                                "-include-pch",
-                                                                "-iprefix",
-                                                                "-iwithprefix",
-                                                                "-iwithprefixbefore",
-                                                                "-isystem-after",
-                                                                "-cxx-isystem",
-                                                                "-iframework",
-                                                                "-iwithsysroot",
-                                                                "-iframeworkwithsysroot",
-                                                                "-ivfsoverlay",
-                                                                "-mllvm",
-                                                                "-mthread-model",
-                                                                "-B",
-                                                                "-z",
-                                                                "-T",
-                                                                "-u",
-                                                                "-e",
-                                                                "--param"});
+// Every option the driver of Clang 22 (`clang`, `clang++`) reads with its value
+// in the argument after it, as its option table states: each `Separate`
+// option, and each `JoinedOrSeparate` one written with nothing joined to it,
+// in every spelling the driver accepts. Such a value is never an input, and
+// never an option of its own: left out where its option stays, it would leave
+// the option to take the next argument as its value instead, so that `-o x.o`
+// or an option the analysis needs is read as something else in one command
+// and not in another (SPEC.md ARITH-014).
+constexpr auto kValueOptions = std::to_array<std::string_view>({
+    "-A",
+    "-B",
+    "-D",
+    "-F",
+    "-G",
+    "-I",
+    "-L",
+    "-MF",
+    "-MJ",
+    "-MQ",
+    "-MT",
+    "-T",
+    "-U",
+    "-V",
+    "-Xanalyzer",
+    "-Xarch_device",
+    "-Xarch_host",
+    "-Xassembler",
+    "-Xclang",
+    "-Xclangas",
+    "-Xcuda-fatbinary",
+    "-Xcuda-ptxas",
+    "-Xlinker",
+    "-Xmicrosoft-visualc-tools-root",
+    "-Xmicrosoft-visualc-tools-version",
+    "-Xmicrosoft-windows-sdk-root",
+    "-Xmicrosoft-windows-sdk-version",
+    "-Xmicrosoft-windows-sys-root",
+    "-Xopenmp-target",
+    "-Xpreprocessor",
+    "-Zlinker-input",
+    "-alias_list",
+    "-allowable_client",
+    "-arch",
+    "-arch_only",
+    "-b",
+    "-bundle_loader",
+    "-ccc-gcc-name",
+    "-ccc-install-dir",
+    "-client_name",
+    "-compatibility_version",
+    "-current_version",
+    "-cxx-isystem",
+    "-darwin-target-variant",
+    "-darwin-target-variant-triple",
+    "-dependency-dot",
+    "-dependency-file",
+    "-dsym-dir",
+    "-dumpdir",
+    "-dylib_file",
+    "-dylinker_install_name",
+    "-e",
+    "-exported_symbols_list",
+    "-fdebug-compilation-dir",
+    "-fexperimental-openacc-macro-override",
+    "-filelist",
+    "-fmodule-implementation-of",
+    "-fmodules-user-build-path",
+    "-fnew-alignment",
+    "-force_load",
+    "-framework",
+    "-ftrapv-handler",
+    "-gen-cdb-fragment-path",
+    "-hlsl-entry",
+    "-iapinotes-modules",
+    "-idirafter",
+    "-iframework",
+    "-iframeworkwithsysroot",
+    "-image_base",
+    "-imacros",
+    "-imultilib",
+    "-include",
+    "-include-pch",
+    "-init",
+    "-install_name",
+    "-interface-stub-version=",
+    "-iprefix",
+    "-iquote",
+    "-isysroot",
+    "-isystem",
+    "-isystem-after",
+    "-ivfsoverlay",
+    "-iwithprefix",
+    "-iwithprefixbefore",
+    "-iwithsysroot",
+    "-l",
+    "-lazy_framework",
+    "-lazy_library",
+    "-meabi",
+    "-mllvm",
+    "-mmlir",
+    "-module-dependency-dir",
+    "-mthread-model",
+    "-multiply_defined",
+    "-multiply_defined_unused",
+    "-o",
+    "-object-file-name",
+    "-pagezero_size",
+    "-read_only_relocs",
+    "-reexport_framework",
+    "-reexport_library",
+    "-resource-dir",
+    "-rpath",
+    "-seg1addr",
+    "-seg_addr_table",
+    "-seg_addr_table_filename",
+    "-segs_read_only_addr",
+    "-segs_read_write_addr",
+    "-serialize-diagnostics",
+    "-specs",
+    "-stdlib++-isystem",
+    "-sub_library",
+    "-sub_umbrella",
+    "-target",
+    "-u",
+    "-umbrella",
+    "-undefined",
+    "-unexported_symbols_list",
+    "-validator-version",
+    "-vfsoverlay",
+    "-weak_framework",
+    "-weak_library",
+    "-weak_reference_mismatches",
+    "-working-directory",
+    "-x",
+    "-z",
+    "--CLASSPATH",
+    "--analyzer-output",
+    "--assert",
+    "--bootclasspath",
+    "--classpath",
+    "--config",
+    "--define-macro",
+    "--dyld-prefix",
+    "--encoding",
+    "--extdirs",
+    "--for-linker",
+    "--force-link",
+    "--imacros",
+    "--include",
+    "--include-directory",
+    "--include-directory-after",
+    "--include-prefix",
+    "--include-with-prefix",
+    "--include-with-prefix-after",
+    "--include-with-prefix-before",
+    "--language",
+    "--library-directory",
+    "--mhwdiv",
+    "--no-system-header-prefix",
+    "--output",
+    "--output-class-directory",
+    "--param",
+    "--prefix",
+    "--print-file-name",
+    "--print-prog-name",
+    "--resource",
+    "--rtlib",
+    "--serialize-diagnostics",
+    "--specs",
+    "--std",
+    "--stdlib",
+    "--sysroot",
+    "--system-header-prefix",
+    "--undefine-macro",
+    "--vfsoverlay",
+});
+
+// The options that read more than one argument after them (`MultiArg`), with
+// how many each reads.
+struct MultipleValues {
+    std::string_view option;
+    std::size_t values;
+};
+constexpr auto kMultipleValueOptions = std::to_array<MultipleValues>({
+    {"-sectalign", 3},
+    {"-sectcreate", 3},
+    {"-sectobjectsymbols", 2},
+    {"-segaddr", 2},
+    {"-segcreate", 3},
+    {"-segprot", 3},
+    {"-sectorder", 3},
+});
+
+// The options that name what they apply to joined to them and read the
+// argument after them as well (`JoinedAndSeparate`): `-Xarch_arm64 -O2`.
+constexpr auto kJoinedAndSeparatePrefixes =
+    std::to_array<std::string_view>({"-Xarch_", "-Xopenmp-target=", "-Xoffload-linker"});
 
 // The language standard one argument selects with its value joined, as Clang
 // accepts it: `-std=c++20` or `--std=c++20`.
@@ -105,6 +255,21 @@ bool is_header_path(std::string_view path) {
            has_extension(path, ".hxx");
 }
 
+std::size_t separate_values(std::string_view argument) {
+    if (std::ranges::find(kValueOptions, argument) != kValueOptions.end()) {
+        return 1;
+    }
+    if (const auto multiple = std::ranges::find(kMultipleValueOptions, argument, &MultipleValues::option);
+        multiple != kMultipleValueOptions.end()) {
+        return multiple->values;
+    }
+    if (std::ranges::any_of(kJoinedAndSeparatePrefixes,
+                            [argument](std::string_view prefix) { return argument.starts_with(prefix); })) {
+        return 1;
+    }
+    return 0;
+}
+
 std::string selected_standard(const std::vector<std::string>& arguments) {
     std::string standard;
     for (std::size_t index = 0; index < arguments.size(); ++index) {
@@ -117,8 +282,8 @@ std::string selected_standard(const std::vector<std::string>& arguments) {
             continue;
         }
         // Another option's value is never read as an option of its own.
-        if (std::ranges::find(kValueOptions, argument) != kValueOptions.end()) {
-            ++index;
+        if (const std::size_t values = separate_values(argument); values != 0) {
+            index += values;
             continue;
         }
         if (std::optional<std::string> joined = joined_standard(argument)) {
@@ -132,7 +297,8 @@ Options parse(int argc, const char* const* argv) {
     Options options;
     options.clang = CPPL_DEFAULT_CLANG;
 
-    bool skip_value = false;
+    // How many of the arguments still to come are values of the last option.
+    std::size_t values_left = 0;
     for (int index = 1; index < argc; ++index) {
         const std::string argument = argv[index];
 
@@ -177,19 +343,19 @@ Options parse(int argc, const char* const* argv) {
         }
 
         options.arguments.push_back(argument);
+        options.option_value.push_back(values_left != 0);
 
-        if (skip_value) {
-            skip_value = false;
-            if (options.arguments[options.arguments.size() - 2] == "-o") {
+        if (values_left != 0) {
+            --values_left;
+            const std::size_t before = options.arguments.size() - 2;
+            if (options.arguments[before] == "-o" && !options.option_value[before]) {
                 options.output = argument;
             }
             continue;
         }
 
         if (argument.starts_with("-")) {
-            if (std::ranges::find(kValueOptions, argument) != kValueOptions.end()) {
-                skip_value = true;
-            }
+            values_left = separate_values(argument);
             if (std::ranges::find(kPassthroughOptions, argument) != kPassthroughOptions.end()) {
                 options.passthrough = true;
             }

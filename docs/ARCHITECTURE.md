@@ -3200,6 +3200,12 @@ triple libclang reports is compared with the triple the driver's compile job
 runs with; a unit for which they differ is refused (`compiler/driver/src/target.cpp`,
 `TRUST.md` TCB-CLANG-006).
 
+Each command handed on is the build's own, with its inputs and outputs taken
+out or the unit replaced, and it is cut only between one option with all its
+values and the next. Which arguments are an option's values is read from Clang
+22's option table (`driver::separate_values`), so no option takes another
+argument as its value in the analysis and not in the compile.
+
 ---
 
 # 81. Ordinary C++ fast path

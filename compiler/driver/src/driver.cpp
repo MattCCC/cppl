@@ -75,12 +75,33 @@ std::optional<std::string> read_file(const std::filesystem::path& path) {
     return buffer.str();
 }
 
+// Whether the argument at `index` is the value of the option before it, as
+// Clang's driver reads the command line (Options::option_value).
+bool option_value(const Options& options, std::size_t index) {
+    return index < options.option_value.size() && options.option_value[index];
+}
+
+// How many arguments the option at `index` spans with its values.
+std::size_t option_span(const Options& options, std::size_t index) {
+    std::size_t end = index + 1;
+    while (end < options.arguments.size() && option_value(options, end)) {
+        ++end;
+    }
+    return end - index;
+}
+
 // The user's command line with the parts that select output and inputs removed,
 // so the same configuration can drive preprocessing and semantic analysis.
 // Every input goes, whatever it is: another source, an object or a library is
 // no part of how one unit reads, and preprocessing it beside the unit would ask
 // for an output each. Everything that affects C++ meaning is kept
 // (ARCHITECTURE.md 80).
+//
+// An option goes with every value it has and none it does not, and a value is
+// never taken for an option or an input: `-Xclang -c` keeps its `-c`, and
+// `--include-directory dir` keeps its `dir`. Either cut otherwise would leave
+// an option to take the next argument as its value here and not in the command
+// the program is compiled with (SPEC.md ARITH-014).
 std::vector<std::string> base_arguments(const Options& options) {
     std::vector<bool> is_input(options.arguments.size(), false);
     for (const std::size_t index : options.positional) {
@@ -90,21 +111,16 @@ std::vector<std::string> base_arguments(const Options& options) {
     }
 
     std::vector<std::string> arguments;
-    bool skip_value = false;
-    for (std::size_t index = 0; index < options.arguments.size(); ++index) {
+    for (std::size_t index = 0; index < options.arguments.size();) {
         const std::string& argument = options.arguments[index];
-        if (skip_value) {
-            skip_value = false;
-            continue;
+        const std::size_t span = option_span(options, index);
+        const bool removed = argument == "-o" || argument == "-c" || argument == "-S" || is_input[index];
+        if (!removed) {
+            for (std::size_t kept = index; kept < index + span; ++kept) {
+                arguments.push_back(options.arguments[kept]);
+            }
         }
-        if (argument == "-o") {
-            skip_value = true;
-            continue;
-        }
-        if (argument == "-c" || argument == "-S" || is_input[index]) {
-            continue;
-        }
-        arguments.push_back(argument);
+        index += span;
     }
     return arguments;
 }
@@ -226,9 +242,11 @@ std::vector<std::string> compile_arguments(const Options& options,
     arguments.reserve(options.arguments.size());
     for (std::size_t index = 0; index < options.arguments.size(); ++index) {
         if (!replacements.empty() && !preprocessing) {
-            if (const std::size_t spanned = preprocessing_only(options.arguments, index, options.compile_only);
-                spanned != 0) {
-                index += spanned - 1;
+            // An option's value stays with its option, whatever it says, and an
+            // option left out takes its values with it (SPEC.md ARITH-014).
+            if (!option_value(options, index) &&
+                preprocessing_only(options.arguments, index, options.compile_only) != 0) {
+                index += option_span(options, index) - 1;
                 continue;
             }
         }

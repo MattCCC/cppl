@@ -48,9 +48,10 @@ struct CompileTarget {
 [[nodiscard]] std::expected<CompileTarget, std::string> compile_target(const std::string& clang,
                                                                        const std::vector<std::string>& arguments);
 
-// `arguments` as the analysis is to be given them: followed by an instruction
-// to read no configuration file by default, the configuration files the driver
-// reads, and the driver's target triple.
+// `arguments` as the analysis is to be given them: without the configuration
+// files they name, and followed by an instruction to read no configuration
+// file by default, the configuration files the driver reads, as it found them,
+// and the driver's target triple.
 [[nodiscard]] std::vector<std::string> analysis_arguments(const std::vector<std::string>& arguments,
                                                           const CompileTarget& target);
 

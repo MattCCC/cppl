@@ -1689,6 +1689,14 @@ source:
 - an output Clang names after its input when no `-o` names it, such as the
   object of `-c`, is named after the source.
 
+Which arguments are an option's values is read as Clang's driver reads them,
+from Clang 22's option table: `--config file`, `--include-directory dir`,
+`-sectcreate segment section file` and every other option that takes its value
+in the arguments after it. A value is never taken for an input, even where it
+names a file, nor for an option, even where it reads as one (`-Xclang -c`), and
+an option left out of a command takes its values with it. A configuration file
+named by `--config` is read by the analysis where the driver found it.
+
 ---
 
 # 65. Argument ordering

@@ -20,6 +20,10 @@ struct Input {
 // linker arguments (ARCHITECTURE.md 80).
 struct Options {
     std::vector<std::string> arguments;
+    // Whether each argument is a value of the option before it, as Clang's
+    // driver reads the command line (`separate_values`): never an input and
+    // never an option of its own, and never parted from its option.
+    std::vector<bool> option_value;
     std::vector<Input> inputs;
     // The position in `arguments` of every input, whatever it is -- a source
     // C++L reads, another source, an object, a library -- in order: each
@@ -52,6 +56,16 @@ struct Options {
 
 [[nodiscard]] bool is_source_path(std::string_view path);
 [[nodiscard]] bool is_header_path(std::string_view path);
+
+// How many of the arguments after `argument` Clang's driver reads as its
+// values when `argument` stands where an option may: 1 for `-o` or
+// `--include-directory`, 3 for `-sectcreate`, 0 for a flag, an option with its
+// value joined (`-Ifoo`, `--config=x`) or an input. Taken from the option table
+// of Clang 22, whose libclang makes the analysis and refuses an option it does
+// not know. Every argument list C++L hands on is cut only between one option
+// with its values and the next, so no option takes another's argument as its
+// value in one command and not in another (SPEC.md ARITH-014).
+[[nodiscard]] std::size_t separate_values(std::string_view argument);
 
 // The C++ standard `arguments` select, as Clang reads them: the value of the
 // last `-std=`, `--std=` or `--std`, the one Clang obeys, or empty when none

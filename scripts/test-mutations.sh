@@ -332,6 +332,14 @@ driver-search-options-unread-without-link	compiler/driver/src/driver.cpp	if (sep
 driver-dependency-file-named	compiler/driver/src/driver.cpp	if (!named_file) {	if (false) {	^integration_driver_inputs$
 driver-dependency-target-named	compiler/driver/src/driver.cpp	if (!named_target) {	if (false) {	^integration_driver_inputs$
 driver-runtime-named-after-source	compiler/driver/src/pipeline.cpp	request.scratch / (std::filesystem::path(request.stem).stem().string() + ".ii");	request.scratch / (request.stem + ".runtime.ii");	^integration_driver_inputs$
+driver-separate-value-options	compiler/driver/src/options.cpp	if (std::ranges::find(kValueOptions, argument) != kValueOptions.end()) {	if (false && std::ranges::find(kValueOptions, argument) != kValueOptions.end()) {	^negative_analysis_options$|^unit_driver_options_test$
+driver-config-value-option	compiler/driver/src/options.cpp	"--config",	"--config-unlisted",	^negative_analysis_options$|^unit_driver_options_test$
+driver-multiple-value-options	compiler/driver/src/options.cpp	return multiple->values;	return 1;	^negative_analysis_options$|^unit_driver_options_test$
+driver-joined-and-separate-options	compiler/driver/src/options.cpp	if (std::ranges::any_of(kJoinedAndSeparatePrefixes,	if (false && std::ranges::any_of(kJoinedAndSeparatePrefixes,	^negative_analysis_options$|^unit_driver_options_test$
+driver-option-values-recorded	compiler/driver/src/options.cpp	options.option_value.push_back(values_left != 0);	options.option_value.push_back(false);	^negative_analysis_options$|^unit_driver_options_test$
+driver-option-kept-with-values	compiler/driver/src/driver.cpp	const std::size_t span = option_span(options, index);	const std::size_t span = 1;	^negative_analysis_options$
+driver-runtime-option-kept-with-values	compiler/driver/src/driver.cpp	if (!option_value(options, index) &&	if (true &&	^negative_analysis_options$
+analysis-configuration-found-once	compiler/driver/src/target.cpp	if (!names_configuration) {	if (true || !names_configuration) {	^negative_analysis_options$
 lsp-machine-options-kept	src/lsp/src/compile_commands.cpp	one_of(argument, kSwitches) || machine_option(argument) ||	one_of(argument, kSwitches) || (false && machine_option(argument)) ||	^lsp_compile_commands_test$|^lsp_interfaces_test$
 lsp-architecture-kept	src/lsp/src/compile_commands.cpp	({"-target", "-arch", "-mthread-model", "--std"});	({"-target", "-mthread-model", "--std"});	^lsp_compile_commands_test$
 lsp-unpassed-frontend-options	src/lsp/src/compile_commands.cpp	if (argument == "-Xclang" || argument.starts_with("-Xarch_")) {	if (false && (argument == "-Xclang" || argument.starts_with("-Xarch_"))) {	^lsp_compile_commands_test$|^lsp_interfaces_test$
