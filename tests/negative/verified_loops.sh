@@ -80,7 +80,7 @@ reject decreases_twice 'one .decreases. clause' \
 # condition: at n == 0, `i < n` does not hold.
 reject do_while_entry 'does not hold on entry' \
     "$count do invariant (i < n) { ++i; } while (i < n); return n; }"
-reject range_for 'range-based for loops are not modeled' \
+reject range_for 'is not a name: a range-based for is modeled over a vector, a string or a span this body names' \
     'verified unsigned f(unsigned n) ensures (result == n) { for (char c : "ab") { } return n; }'
 # SPEC: LOOP-001
 # A `for` without a condition is left only by a `break` or a `return`, each of

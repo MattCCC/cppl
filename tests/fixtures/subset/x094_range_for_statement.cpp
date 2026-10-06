@@ -1,6 +1,6 @@
 // SPEC: CONSTRUCT-094
-// RFC 0022: the refused twin of subset/x094_range_for_statement.cpp (range-for statement), the same program
-// with one thing changed, so the construct is shown modeled rather than passed over.
+// RFC 0022, the V1 verified subset: a verified body may use this construct, range-for statement,
+// and it is modeled. Its refused twin is negative/subset/x094_range_for_statement.cpp.
 
 verified unsigned probe(const unsigned (&values)[3])
     ensures (result <= 9u)
@@ -9,7 +9,7 @@ verified unsigned probe(const unsigned (&values)[3])
     for (unsigned value : values)
         invariant (best <= 9u)
     {
-        if (value <= 10u && value > best) {
+        if (value <= 9u && value > best) {
             best = value;
         }
     }

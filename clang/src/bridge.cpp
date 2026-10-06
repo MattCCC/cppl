@@ -3860,6 +3860,49 @@ std::optional<ForParts> for_parts(CXCursor statement) {
     return parts;
 }
 
+// Whether a range-based `for` states an initialization statement before its
+// loop variable, `for (init; x : range)`: a `;` in its header outside every
+// nested bracket. libclang exposes no cursor for that statement, so it is
+// found in the tokens, and a header that cannot be read there -- one a macro
+// writes, above all -- counts as stating one.
+bool range_for_initializes(CXCursor statement) {
+    CXTranslationUnit unit = clang_Cursor_getTranslationUnit(statement);
+    CXToken* tokens = nullptr;
+    unsigned count = 0;
+    clang_tokenize(unit, clang_getCursorExtent(statement), &tokens, &count);
+    struct Release {
+        CXTranslationUnit unit;
+        CXToken* tokens;
+        unsigned count;
+        ~Release() {
+            if (tokens != nullptr) {
+                clang_disposeTokens(unit, tokens, count);
+            }
+        }
+    } release{unit, tokens, count};
+    if (count < 2 || take(clang_getTokenSpelling(unit, tokens[0])) != "for" ||
+        take(clang_getTokenSpelling(unit, tokens[1])) != "(") {
+        return true;
+    }
+    int nesting = 0;
+    for (unsigned index = 1; index < count; ++index) {
+        if (clang_getTokenKind(tokens[index]) != CXToken_Punctuation) {
+            continue;
+        }
+        const std::string spelling = take(clang_getTokenSpelling(unit, tokens[index]));
+        if (spelling == "(" || spelling == "[" || spelling == "{") {
+            ++nesting;
+        } else if (spelling == ")" || spelling == "]" || spelling == "}") {
+            if (--nesting == 0) {
+                return false;
+            }
+        } else if (spelling == ";" && nesting == 1) {
+            return true;
+        }
+    }
+    return true;
+}
+
 // Marks each local in `locals` that the statement or expression writes by
 // assignment, compound assignment, increment or decrement. Any other way of
 // writing a local is refused when the body is lowered, and a local this misses
@@ -4853,6 +4896,36 @@ struct SwitchHeader;
 struct SwitchFrame;
 struct IfHeader;
 
+// A range-based `for` being lowered: what the loop machinery advances in place
+// of a written condition and increment (SPEC.md LOOP-004, STMT-005).
+//
+// C++ iterates the range from its beginning to its end, both taken once before
+// the first iteration ([stmt.ranged]). Over a range this implementation models
+// -- a vector, a string or a span this body names, or an array local -- that is
+// one element per position from 0 to the length, in order, so the iteration is
+// lowered as a position this body names nowhere: 0 before the loop, below the
+// length at every head that runs an iteration, one more at each iteration's end.
+struct RangeIteration {
+    CXCursor statement = clang_getNullCursor();
+    CXCursor variable = clang_getNullCursor(); // the loop variable's declaration
+    std::string range;                         // how the range is written, for diagnostics
+    std::size_t position = 0;                  // the hidden position's entry in the locals
+    Type position_type;
+    // A vector, a string or a span, whose elements a region names; otherwise an
+    // array local, tracked as one place per element.
+    bool sequence = false;
+    ElementRegion region;
+    CXCursor array = clang_getNullCursor();
+    std::int64_t extent = 0;
+    Type element;       // with the refinements the element type names
+    Type variable_type; // the loop variable's, or its referent's, with its refinements
+    bool reference = false;
+    bool writable = false; // a reference to non-const
+    // The sequence roots whose storage generation the iteration stands on: the
+    // container the elements belong to, and a span ranged over.
+    std::vector<std::size_t> watched;
+};
+
 struct Continuation {
     const Continuation* outer = nullptr;
     const std::vector<CXCursor>* statements = nullptr;
@@ -4890,6 +4963,8 @@ struct LoopHeader {
     // A `do` loop: the body runs first, and the condition decides at the end
     // of each iteration whether another begins (SPEC.md LOOP-003).
     bool condition_last = false;
+    // A range-based `for`, iterated in place of a condition and an increment.
+    const RangeIteration* range = nullptr;
 };
 
 // A loop whose body is being lowered.
@@ -4903,6 +4978,7 @@ struct LoopFrame {
     std::size_t frames_outside = 0; // the enclosing loops, for a `break` into what follows
     CXCursor condition = clang_getNullCursor();
     bool condition_last = false;
+    const RangeIteration* range = nullptr;
 };
 
 // A `switch` about to dispatch on its condition (C++ [stmt.switch]).
@@ -5413,8 +5489,17 @@ struct BodyLowering {
         // The index term is read before anything is formed, so an existing place
         // is recognized by the value its index has here rather than by the path
         // alone, which records only that some step was symbolic.
-        Expr selected = build_expression(access.symbolic_indices.front(), signature, state, 0);
-        if (const auto existing = find_symbolic(state, declaration, access.path, selected); existing.has_value()) {
+        return symbolic_element_at(state, declaration, access.path,
+                                   build_expression(access.symbolic_indices.front(), signature, state, 0),
+                                   access.receiver);
+    }
+
+    // The element place of the array `declaration` holds at `path`, whose last
+    // step is symbolic, selected by the index term `selected`: one this path
+    // formed already at that term, or a new one owing `selected < extent`.
+    std::optional<std::size_t> symbolic_element_at(Locals& state, CXCursor declaration,
+                                                   const std::vector<PlaceStep>& path, Expr selected, bool receiver) {
+        if (const auto existing = find_symbolic(state, declaration, path, selected); existing.has_value()) {
             return existing;
         }
         // An array local is tracked as one entry per element, so the extent is
@@ -5424,7 +5509,7 @@ struct BodyLowering {
         //
         // The prefix is the path up to the symbolic step; the elements of the
         // array being indexed are the entries sharing it with one more step.
-        std::vector<PlaceStep> prefix(access.path.begin(), access.path.end() - 1);
+        std::vector<PlaceStep> prefix(path.begin(), path.end() - 1);
         std::uint32_t extent = 0;
         const Type* element = nullptr;
         for (const Local& candidate : state) {
@@ -5459,8 +5544,8 @@ struct BodyLowering {
         entry.declaration = declaration;
         entry.version = next_version++;
         entry.type = *element;
-        entry.path = access.path;
-        entry.spelling = access.receiver ? "this->?[?]" : take(clang_getCursorSpelling(declaration)) + "[?]";
+        entry.path = path;
+        entry.spelling = receiver ? "this->?[?]" : take(clang_getCursorSpelling(declaration)) + "[?]";
         entry.symbolic = true;
         entry.index_value.push_back(std::move(selected));
         // An element of caller storage -- the implicit object's, above all -- is
@@ -5518,18 +5603,8 @@ struct BodyLowering {
             return reject(region.error());
         }
         library_models.insert(call->family);
-        if (region->parameter.has_value() && !granted(*region->parameter, required)) {
-            const std::string spelled = take(clang_getCursorSpelling(region->declaration));
-            const std::string kind = required == Capability::Kind::Writable ? "writable(" : "readable(";
-            return reject(std::string(required == Capability::Kind::Writable ? "writing an element of '"
-                                                                             : "reading an element of '") +
-                          spelled + "' requires '" + kind + spelled + ")', " +
-                          (revoked_by.has_value()
-                               ? "which no longer holds after the unsafe block at " + revoked_by->file + ":" +
-                                     std::to_string(revoked_by->line) +
-                                     ": what that block did to the storage was not checked"
-                               : "which was not established: a span does not make the storage it views valid (SPEC.md "
-                                 "STDMODEL-016)"));
+        if (!element_capability(*region, required)) {
+            return std::nullopt;
         }
         const auto access = resolve_access(strip_parens(cursor));
         Expr length = region_length(*region, state, cursor);
@@ -5537,21 +5612,53 @@ struct BodyLowering {
         if (!index) {
             return reject("this subscript's index could not be resolved");
         }
-        if (const auto existing = find_element(state, *region, access->path, *index)) {
+        return sequence_element_at(
+            state, *region, access->path, std::move(*index), std::move(length),
+            take(clang_getCursorSpelling(clang_getCursorReferenced(strip_parens(call->object)))) + "[...]");
+    }
+
+    // Whether an element of `region` may be reached as `required` asks: a span
+    // parameter's elements are caller storage, reached only under the
+    // capability the contract states, which an unsafe block revokes. Refuses,
+    // naming the capability, where it may not.
+    bool element_capability(const ElementRegion& region, Capability::Kind required) {
+        if (!region.parameter.has_value() || granted(*region.parameter, required)) {
+            return true;
+        }
+        const std::string spelled = take(clang_getCursorSpelling(region.declaration));
+        const std::string kind = required == Capability::Kind::Writable ? "writable(" : "readable(";
+        reject(std::string(required == Capability::Kind::Writable ? "writing an element of '"
+                                                                  : "reading an element of '") +
+               spelled + "' requires '" + kind + spelled + ")', " +
+               (revoked_by.has_value()
+                    ? "which no longer holds after the unsafe block at " + revoked_by->file + ":" +
+                          std::to_string(revoked_by->line) + ": what that block did to the storage was not checked"
+                    : "which was not established: a span does not make the storage it views valid (SPEC.md "
+                      "STDMODEL-016)"));
+        return false;
+    }
+
+    // The element place of `region` at `path` whose index is the term `index`,
+    // bounded by `length`: one this path formed already at the current
+    // generation, or a new one formed there, owing `index < length`.
+    std::optional<std::size_t> sequence_element_at(Locals& state, const ElementRegion& region,
+                                                   const std::vector<PlaceStep>& path, Expr index, Expr length,
+                                                   std::string spelling) {
+        if (const auto existing = find_element(state, region, path, index)) {
             return existing;
         }
         Local entry;
-        entry.declaration = region->declaration;
+        entry.declaration = region.declaration;
         entry.version = next_version++;
-        entry.type = region->element;
-        entry.path = access->path;
-        entry.spelling = take(clang_getCursorSpelling(clang_getCursorReferenced(strip_parens(call->object)))) + "[...]";
-        entry.external = region->external;
+        entry.type = region.element;
+        entry.path = path;
+        entry.spelling = std::move(spelling);
+        entry.external = region.external;
         entry.symbolic = true;
-        entry.index_value.push_back(std::move(*index));
+        entry.index_value.push_back(std::move(index));
         entry.extent.push_back(std::move(length));
-        if (region->root.has_value()) {
-            entry.formed_at = Local::Generation{*region->root, state[*region->root].version};
+        if (region.root.has_value()) {
+            entry.formed_at = Local::Generation{*region.root, state[*region.root].version};
         }
         state.push_back(std::move(entry));
         return state.size() - 1;
@@ -6932,7 +7039,7 @@ struct BodyLowering {
             return lower_statement(parts[0], next, locals, depth);
         }
         if (kind == CXCursor_CXXForRangeStmt) {
-            return reject("range-based for loops are not modeled");
+            return lower_range_for(statement, next, locals, depth);
         }
         return reject(unmodeled_statement(statement_name(kind)));
     }
@@ -6957,6 +7064,350 @@ struct BodyLowering {
         Continuation entered;
         entered.header = &header;
         return lower_statement(*parts->initialization, entered, locals, depth);
+    }
+
+    // A range-based `for` over a range this implementation models (SPEC.md
+    // LOOP-001, LOOP-004, STMT-005, STDMODEL-019): a vector, a string or a span
+    // this body names directly, or an array local. Anything else is refused
+    // naming what it is.
+    //
+    // The range is a name, so evaluating it once before the loop has no effect,
+    // and its length then is its length at every head: an iteration that may
+    // replace the range's storage and goes on iterating is refused where it
+    // would go on (`advance_range`), since C++ leaves that undefined. The
+    // iteration itself is the one loop lowering with a position this body
+    // names nowhere in place of a written condition and increment.
+    std::optional<Expr> lower_range_for(CXCursor statement, const Continuation& next, const Locals& locals,
+                                        unsigned depth) {
+        const std::vector<CXCursor> parts = children_of(statement);
+        if (parts.size() != 3 || clang_isExpression(clang_getCursorKind(parts[1])) == 0) {
+            return reject("the parts of this range-based for could not be resolved");
+        }
+        if (clang_getCursorKind(parts[0]) != CXCursor_VarDecl) {
+            return reject("a range-based for whose loop variable is a structured binding is not modeled");
+        }
+        if (range_for_initializes(statement)) {
+            return reject("a range-based for with an initialization statement before its loop variable is not "
+                          "modeled");
+        }
+        RangeIteration range;
+        range.statement = statement;
+        range.variable = parts[0];
+        const std::string where = describe_location(statement);
+        const std::string variable = take(clang_getCursorSpelling(range.variable));
+
+        const CXCursor named = strip_parens(parts[1]);
+        if (clang_getCursorKind(named) != CXCursor_DeclRefExpr) {
+            return reject("the range of the range-based for at " + where +
+                          " is not a name: a range-based for is modeled over a vector, a string or a span this body "
+                          "names, or an array local (SPEC.md STDMODEL-019)");
+        }
+        const CXCursor declaration = clang_getCursorReferenced(named);
+        range.range = take(clang_getCursorSpelling(declaration));
+        const Type ranged = convert_type(clang_getCursorType(named));
+        const source::RepresentationKind family = ranged.representation.kind;
+        if (source::is_sequence(family)) {
+            auto region = element_region(named, locals, signature);
+            if (!region) {
+                return reject(region.error());
+            }
+            range.sequence = true;
+            range.region = *region;
+            range.element = region->element;
+            range.position_type = region_length(*region, locals, statement).type;
+            if (region->root.has_value()) {
+                range.watched.push_back(*region->root);
+            }
+            if (region->accessed.has_value() && region->accessed != region->root) {
+                range.watched.push_back(*region->accessed);
+            }
+        } else if (family == source::RepresentationKind::Array || family == source::RepresentationKind::StdArray) {
+            // An array's elements are the places a subscript of it forms, as
+            // `a[i]` forms them (`symbolic_element_at`): an array local is
+            // tracked as one place per element, which gives its extent and its
+            // element type as Clang resolved them, and a built-in array a
+            // parameter designates has the extent of its declared type. A local
+            // reference to an array is another name for storage the places are
+            // keyed by, so it is not ranged over.
+            if (clang_getCursorKind(declaration) == CXCursor_VarDecl &&
+                passing_of(clang_getCursorType(declaration)) != source::ParameterPassing::Value) {
+                return reject("the range of the range-based for at " + where + " is '" + range.range +
+                              "', a reference to an array; a range-based for is modeled over the array itself");
+            }
+            const Type* element = nullptr;
+            for (const Local& candidate : locals) {
+                if (clang_equalCursors(candidate.declaration, declaration) == 0 || candidate.symbolic ||
+                    candidate.referent.has_value() || candidate.path.size() != 1 ||
+                    candidate.path.front().kind != PlaceStep::Kind::Element) {
+                    continue;
+                }
+                range.extent = std::max<std::int64_t>(range.extent, candidate.path.front().index + 1);
+                element = &candidate.type;
+            }
+            const Type declared = element == nullptr ? declared_place_type(declaration, {}, locals) : Type{};
+            if (element == nullptr && declared.representation.kind == source::RepresentationKind::Array &&
+                !declared.projections.empty()) {
+                range.extent = static_cast<std::int64_t>(declared.projections.size());
+                element = &declared.projections.front();
+            }
+            if (element == nullptr) {
+                return reject("array '" + range.range + "', the range of the range-based for at " + where +
+                              ", is not storage of this body whose elements a subscript forms places of");
+            }
+            range.array = declaration;
+            range.element = *element;
+            range.position_type.kind = TypeKind::Int;
+            range.position_type.width = 64;
+            range.position_type.is_signed = false;
+            range.position_type.spelling = "std::size_t";
+        } else {
+            return reject("the range of the range-based for at " + where + " is '" + range.range + "' of type '" +
+                          ranged.spelling +
+                          "', which is not a vector, a string, a span or an array this implementation models "
+                          "(SPEC.md STDMODEL-019)");
+        }
+        if (range.element.kind != TypeKind::Int && range.element.kind != TypeKind::Bool) {
+            return reject("the elements of '" + range.range + "' are '" + range.element.spelling +
+                          "', which a range-based for does not bind: an integer, enumeration or Boolean element is "
+                          "modeled");
+        }
+        if (range.position_type.kind != TypeKind::Int) {
+            return reject("the length of '" + range.range + "' is not modeled");
+        }
+
+        // The loop variable: a value initialized from the element, or a
+        // reference bound to it (SPEC.md STMT-005).
+        const CXType written = clang_getCursorType(range.variable);
+        const CXType canonical = clang_getCanonicalType(written);
+        range.reference = canonical.kind == CXType_LValueReference || canonical.kind == CXType_RValueReference;
+        range.writable = range.reference && clang_isConstQualifiedType(clang_getPointeeType(canonical)) == 0;
+        const CXType value_type = range.reference ? reference_value_type(written) : written;
+        Type type = convert_type(value_type, 0, ReferenceModel::Opaque, refinements);
+        if (type.kind != TypeKind::Int && type.kind != TypeKind::Bool) {
+            return reject("loop variable '" + variable + "' has type '" + type.spelling + "', which is not modeled");
+        }
+        if (refinements != nullptr) {
+            auto resolved = refinements_of(range.variable, value_type, *refinements);
+            if (!resolved) {
+                return reject(resolved.error().message);
+            }
+            type.refinements = std::move(*resolved);
+        }
+        range.variable_type = std::move(type);
+        if (range.reference && !same_modeled_value(range.variable_type, range.element)) {
+            return reject("reference binding changes the modeled value type");
+        }
+        // An element of a span parameter is reached only under a capability an
+        // unsafe block can revoke, which a reference could outlive.
+        if (range.reference && range.sequence && !range.region.root.has_value()) {
+            return reject("loop variable '" + variable + "' binds an element of span parameter '" + range.range +
+                          "'; a reference is bound only to an element of a container this body tracks");
+        }
+
+        Locals state = locals;
+        Local position;
+        position.declaration = statement;
+        position.version = next_version++;
+        position.type = range.position_type;
+        position.spelling = "the position of the range-based for at " + where;
+        const std::uint32_t start = position.version;
+        state.push_back(std::move(position));
+        range.position = state.size() - 1;
+
+        LoopHeader header{statement, clang_getNullCursor(), parts[2], std::nullopt, &next};
+        header.range = &range;
+        std::optional<Expr> loop = lower_loop(header, state, depth);
+        if (!loop) {
+            return std::nullopt;
+        }
+        Expr zero;
+        zero.type = range.position_type;
+        zero.location = presumed_location(clang_getCursorLocation(statement));
+        zero.node = IntLiteral{0};
+        return bind(start, place_of(state, range.position), std::move(zero), std::move(*loop), statement,
+                    range.position_type);
+    }
+
+    // The length a range-based for runs its position up to, read where `locals`
+    // stand: the range's own, or an array's extent.
+    Expr range_length(const RangeIteration& range, const Locals& locals) const {
+        if (range.sequence) {
+            return region_length(range.region, locals, range.statement);
+        }
+        Expr extent;
+        extent.type = range.position_type;
+        extent.location = presumed_location(clang_getCursorLocation(range.statement));
+        extent.node = IntLiteral{range.extent};
+        return extent;
+    }
+
+    // Whether another iteration of a range-based for runs: its position is
+    // below the range's length.
+    Expr range_condition(const RangeIteration& range, const Locals& locals) const {
+        Binary below;
+        below.op = BinaryOp::Less;
+        below.operands.push_back(read_place(locals, range.position, range.statement));
+        below.operands.push_back(range_length(range, locals));
+        Expr condition;
+        condition.type.kind = TypeKind::Bool;
+        condition.type.spelling = "bool";
+        condition.location = presumed_location(clang_getCursorLocation(range.statement));
+        condition.node = std::move(below);
+        return condition;
+    }
+
+    // The measure of a range-based for written without one: the positions
+    // left. It is checked as any loop measure is, never assumed (SPEC.md
+    // TERMINATION-004, LOOP-006).
+    Expr range_measure(const RangeIteration& range, const Locals& locals) const {
+        Binary left;
+        left.op = BinaryOp::Sub;
+        left.operands.push_back(range_length(range, locals));
+        left.operands.push_back(read_place(locals, range.position, range.statement));
+        Expr measure;
+        measure.type = range.position_type;
+        measure.location = presumed_location(clang_getCursorLocation(range.statement));
+        measure.node = std::move(left);
+        return measure;
+    }
+
+    // The entries an iteration of a range-based for writes beyond what its
+    // body writes by name: its position, and, through a loop variable bound to
+    // an element by mutable reference, whatever may be that element.
+    void mark_range_writes(const RangeIteration& range, const Locals& locals, std::vector<bool>& written) const {
+        written[range.position] = true;
+        if (!range.writable) {
+            return;
+        }
+        Local element;
+        element.declaration = range.sequence ? range.region.declaration : range.array;
+        element.path = {PlaceStep{PlaceStep::Kind::SymbolicElement, 0, 0}};
+        element.external =
+            range.sequence ? range.region.external : std::ranges::any_of(locals, [&](const Local& candidate) {
+                return candidate.external && clang_equalCursors(candidate.declaration, range.array) != 0;
+            });
+        element.symbolic = true;
+        element.type = range.element;
+        for (std::size_t index = 0; index < locals.size(); ++index) {
+            if (!locals[index].referent.has_value() && may_alias(element, locals[index])) {
+                written[index] = true;
+            }
+        }
+    }
+
+    // One iteration of a range-based for from its head: the element at the
+    // position, formed where it owes its bound, the loop variable initialized
+    // from it or bound to it, then the body (SPEC.md STMT-005).
+    std::optional<Expr> lower_range_iteration(const RangeIteration& range, const Continuation& body, const Locals& head,
+                                              unsigned depth) {
+        std::vector<Local> enclosing;
+        enclosing.swap(formed_derefs);
+        std::optional<Expr> lowered = initialize_range_variable(range, body, head, depth);
+        if (lowered) {
+            lowered = bind_formed_derefs(std::move(*lowered), range.statement);
+        }
+        formed_derefs = std::move(enclosing);
+        return lowered;
+    }
+
+    std::optional<Expr> initialize_range_variable(const RangeIteration& range, const Continuation& body,
+                                                  const Locals& head, unsigned depth) {
+        Locals state = head;
+        const std::size_t before = state.size();
+        Expr index = read_place(state, range.position, range.statement);
+        const std::vector<PlaceStep> path{PlaceStep{PlaceStep::Kind::SymbolicElement, 0, 0}};
+        std::optional<std::size_t> element;
+        if (range.sequence) {
+            if (!element_capability(range.region,
+                                    range.writable ? Capability::Kind::Writable : Capability::Kind::Readable)) {
+                return std::nullopt;
+            }
+            library_models.insert(range.region.family);
+            element = sequence_element_at(state, range.region, path, std::move(index), range_length(range, state),
+                                          range.range + "[...]");
+        } else {
+            element = symbolic_element_at(state, range.array, path, std::move(index), false);
+        }
+        if (!element) {
+            return std::nullopt;
+        }
+        for (std::size_t formed = before; formed < state.size(); ++formed) {
+            formed_derefs.push_back(state[formed]);
+        }
+        const std::string name = take(clang_getCursorSpelling(range.variable));
+        Expr value = read_place(state, *element, range.variable);
+        const std::uint32_t version = next_version++;
+        if (range.reference) {
+            Local binding{.declaration = range.variable,
+                          .version = version,
+                          .type = range.variable_type,
+                          .referent = *element,
+                          .spelling = name};
+            binding.borrows = state[*element].formed_at;
+            state.push_back(std::move(binding));
+        } else {
+            if (!same_modeled_value(range.variable_type, value.type)) {
+                if (!integral(range.variable_type) || !integral(value.type)) {
+                    return reject("initializing loop variable '" + name + "' of type '" + range.variable_type.spelling +
+                                  "' from an element of type '" + value.type.spelling +
+                                  "' is a conversion that is not modeled");
+                }
+                value = integral_conversion(std::move(value), range.variable_type, range.variable, false);
+            }
+            state.push_back(Local{
+                .declaration = range.variable, .version = version, .type = range.variable_type, .spelling = name});
+        }
+        std::optional<Expr> rest = lower_statements(body, state, depth + 1);
+        if (!rest) {
+            return std::nullopt;
+        }
+        return bind(version, place_of(state, state.size() - 1), std::move(value), std::move(*rest), range.variable,
+                    range.variable_type);
+    }
+
+    // The end of an iteration of a range-based for: the storage it iterates
+    // must be the storage it began with, and the position moves on by one.
+    //
+    // C++ took the range's beginning and end before the first iteration, so
+    // once the range's storage may have been replaced, going on iterating is
+    // undefined ([stmt.ranged], STDMODEL-015). A path that leaves the loop after
+    // replacing it, by a `break` or a `return`, never comes here.
+    std::optional<Expr> advance_range(const LoopFrame& frame, const Locals& locals, unsigned depth) {
+        const RangeIteration& range = *frame.range;
+        for (const std::size_t root : range.watched) {
+            if (root >= locals.size() || root >= frame.head.size() ||
+                locals[root].version == frame.head[root].version) {
+                continue;
+            }
+            const std::string why =
+                locals[root].sequence.has_value() ? locals[root].sequence->invalidated : std::string();
+            return reject("the range-based for at " + describe_location(range.statement) + " goes on iterating '" +
+                          range.range + "' after " +
+                          (why.empty() ? std::string("something that may replace its storage") : why) +
+                          "; once the storage a range-based for iterates may have been replaced, C++ leaves the rest "
+                          "of the iteration undefined (SPEC.md STDMODEL-015, STDMODEL-019)");
+        }
+        Locals advanced = locals;
+        Expr one;
+        one.type = range.position_type;
+        one.location = presumed_location(clang_getCursorLocation(range.statement));
+        one.node = IntLiteral{1};
+        Binary sum;
+        sum.op = BinaryOp::Add;
+        sum.operands.push_back(read_place(locals, range.position, range.statement));
+        sum.operands.push_back(std::move(one));
+        Expr next;
+        next.type = range.position_type;
+        next.location = presumed_location(clang_getCursorLocation(range.statement));
+        next.node = std::move(sum);
+        const std::uint32_t version = next_version++;
+        advanced[range.position].version = version;
+        std::optional<Expr> rest = end_iteration(frame, true, advanced, depth + 1);
+        if (!rest) {
+            return std::nullopt;
+        }
+        return bind(version, place_of(advanced, range.position), std::move(next), std::move(*rest), range.statement,
+                    range.position_type);
     }
 
     // The places an unsafe block could have written: a pointee, the storage a
@@ -7378,7 +7829,11 @@ struct BodyLowering {
         frame.frames_outside = frames.size();
         frame.condition = header.condition;
         frame.condition_last = header.condition_last;
+        frame.range = header.range;
         std::vector<bool> written(locals.size(), false);
+        if (header.range != nullptr) {
+            mark_range_writes(*header.range, locals, written);
+        }
         if (clang_Cursor_isNull(header.condition) == 0) {
             mark_writes(header.condition, locals, written);
         }
@@ -7426,6 +7881,15 @@ struct BodyLowering {
             if (clang_Cursor_isNull(initializer) != 0) {
                 return reject("a loop invariant was not resolved");
             }
+            // A range-based for's invariant holds at the head, before the loop
+            // variable is initialized for the iteration (SPEC.md LOOP-004).
+            if (header.range != nullptr &&
+                named_declarations(initializer).contains(clang_hashCursor(header.range->variable))) {
+                return reject("an invariant of the range-based for at " + describe_location(header.statement) +
+                              " names its loop variable '" + take(clang_getCursorSpelling(header.range->variable)) +
+                              "', which it holds before: the invariant holds at each iteration's head, before the "
+                              "loop variable is initialized (SPEC.md LOOP-004)");
+            }
             Expr invariant = build_expression(initializer, signature, frame.head, 0);
             if (!std::holds_alternative<Unsupported>(invariant.node) && invariant.type.kind != TypeKind::Bool) {
                 return reject("a loop invariant must be a condition");
@@ -7449,12 +7913,20 @@ struct BodyLowering {
             measures.push_back(std::move(value));
             consumed_invariants.push_back(take(clang_getCursorSpelling(marker)));
         }
+        // A range-based for written without a measure states the one C++ gives
+        // it: the positions left (SPEC.md TERMINATION-004).
+        if (header.range != nullptr && measures.empty()) {
+            measures.push_back(range_measure(*header.range, frame.head));
+        }
 
         frames.push_back(&frame);
         const std::vector<CXCursor> rest(statements.begin() + static_cast<std::ptrdiff_t>(first), statements.end());
         Continuation iteration;
         iteration.iteration = &frame;
-        std::optional<Expr> once = lower_statements(Continuation{&iteration, &rest, 0}, frame.head, depth + 1);
+        std::optional<Expr> once =
+            header.range != nullptr
+                ? lower_range_iteration(*header.range, Continuation{&iteration, &rest, 0}, frame.head, depth + 1)
+                : lower_statements(Continuation{&iteration, &rest, 0}, frame.head, depth + 1);
         frames.pop_back();
         if (!once) {
             revoked_by = enclosing_revocation;
@@ -7469,14 +7941,15 @@ struct BodyLowering {
         // decides at each iteration's end; a `for` without a condition always
         // runs it, and is left only by a `break` or a `return` (SPEC.md
         // LOOP-001). Otherwise the condition decides before each iteration.
-        if (header.condition_last || clang_Cursor_isNull(header.condition) != 0) {
+        if (header.condition_last || (clang_Cursor_isNull(header.condition) != 0 && header.range == nullptr)) {
             revoked_by = enclosing_revocation;
             if (return_paths(*once) > kMaxReturnPaths) {
                 return reject("more than " + std::to_string(kMaxReturnPaths) + " return paths are not modeled");
             }
             head = std::move(*once);
         } else {
-            Expr condition = build_expression(header.condition, signature, frame.head, 0);
+            Expr condition = header.range != nullptr ? range_condition(*header.range, frame.head)
+                                                     : build_expression(header.condition, signature, frame.head, 0);
             std::optional<Expr> after = lower_statements(*header.exit, frame.head, depth + 1);
             revoked_by = enclosing_revocation;
             if (!after) {
@@ -7518,6 +7991,9 @@ struct BodyLowering {
     // what the loop carries missed a write.
     std::optional<Expr> end_iteration(const LoopFrame& frame, bool after_increment, const Locals& locals,
                                       unsigned depth) {
+        if (frame.range != nullptr && !after_increment) {
+            return advance_range(frame, locals, depth);
+        }
         if (frame.increment && !after_increment) {
             Continuation incremented;
             incremented.iteration = &frame;

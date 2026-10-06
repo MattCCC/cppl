@@ -1273,13 +1273,12 @@ verified unsigned n_u8string()
 }
 
 CPP
-refused n_range_for "range-based for loops are not modeled" <<'CPP'
+refused n_range_for "is not a name: a range-based for is modeled over a vector, a string or a span this body names, or an array local" <<'CPP'
 verified unsigned n_range_for()
     ensures (result == result)
 {
-    std::vector<unsigned> v{1u};
     unsigned t = 0u;
-    for (unsigned x : v) {
+    for (unsigned x : std::vector<unsigned>{1u}) {
         t = x;
     }
     return t;

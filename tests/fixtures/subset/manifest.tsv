@@ -93,7 +93,7 @@ CONSTRUCT-090	if constexpr	verified	x090_if_constexpr.cpp	error \[proof-failure\
 CONSTRUCT-091	switch statement	verified	x091_switch_statement.cpp	error \[proof-failure\]: return path 'probe path [0-9]+' does not satisfy its contract
 CONSTRUCT-092	while statement	verified	x092_while_statement.cpp	error \[kernel-rejection\]: loop invariant 'probe loop at line [0-9]+ invariant [0-9]+' does not hold on entry
 CONSTRUCT-093	classic for statement	verified	x093_classic_for_statement.cpp	error \[kernel-rejection\]: loop invariant 'probe loop at line [0-9]+ invariant [0-9]+' is not preserved by an iteration
-CONSTRUCT-094	range-for statement	refused	x094_range_for_statement.cpp	range-based for loops are not modeled
+CONSTRUCT-094	range-for statement	verified	x094_range_for_statement.cpp	error \[kernel-rejection\]: loop invariant 'probe loop at line [0-9]+ invariant [0-9]+' is not preserved by an iteration
 CONSTRUCT-095	do-while statement	verified	x095_do_while_statement.cpp	error \[kernel-rejection\]: loop invariant 'probe loop at line [0-9]+ invariant [0-9]+' does not hold on entry
 CONSTRUCT-096	break statement	verified	x096_break_statement.cpp	error \[kernel-rejection\]: return path 'probe path [0-9]+' does not satisfy its contract
 CONSTRUCT-097	continue statement	verified	x097_continue_statement.cpp	error \[kernel-rejection\]: loop measure 'probe loop at line [0-9]+ measure' is not shown to decrease on every iterat

@@ -1,7 +1,8 @@
-// SPEC: STDMODEL-019
-// A range-based `for` over a sequence walks it through iterators, which are not
-// modeled. Accepted twin: `last_by_index` in sequence_attacks.cpp, the same walk
-// by index.
+// SPEC: STDMODEL-015, STDMODEL-019, STMT-005
+// A range-based `for` takes its range's beginning and end once, before the
+// first iteration, so an iteration that may reallocate the range and goes on
+// iterating reads storage that may no longer exist. Accepted twin: `sum_vector`
+// in range_for.cpp, the same walk with nothing replacing the storage.
 #include <cstddef>
 #include <vector>
 
@@ -12,6 +13,7 @@ verified unsigned last_through_range()
     unsigned last = 0u;
     for (unsigned x : v) {
         last = x;
+        v.push_back(x);
     }
     return last;
 }

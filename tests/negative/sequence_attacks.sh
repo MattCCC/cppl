@@ -78,7 +78,7 @@ refuse sequence_attack_moved_from_element "law 'moved_from_element element index
 # --- What the model leaves out is refused, not approximated (STDMODEL-019) --
 refuse sequence_attack_resize "'std::vector::resize' is not a modeled operation of std::vector (SPEC.md STDMODEL-019)"
 refuse sequence_attack_iterator "local 'it' has type"
-refuse sequence_attack_range_for "range-based for loops are not modeled"
+refuse sequence_attack_range_for "goes on iterating 'v' after 'std::vector::push_back'"
 
 # --- The same attacks across translation units (TUBOUND-004, STDMODEL-023) --
 "$CPPL" -std=c++20 -I "$UNITS" -c "$UNITS/storage.cpp" -o "$run/storage.o" \
