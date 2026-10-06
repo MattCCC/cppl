@@ -2738,9 +2738,10 @@ verified unsigned placement_ref_after_fill_call()
 
 CPP
 # A call statement that copies a container into a by-value parameter stands
-# inside the node destroying that temporary, and only a container mutator is
-# modeled there (STDMODEL-023). The accepted twins bind the call's result.
-refused placement_copy_call_statement "a call statement whose arguments are temporaries destroyed at the statement's end is modeled only for a container mutator" <<'CPP'
+# inside the node destroying that temporary, whose destructor is the library's
+# own code, and only a container mutator is modeled there (STDMODEL-023). The
+# accepted twins bind the call's result.
+refused placement_copy_call_statement "a call statement creates a temporary whose destruction at the statement's end runs a user-provided destructor" <<'CPP'
 verified unsigned placement_copy_call_statement()
     ensures (result == 1u)
 {
@@ -2751,7 +2752,7 @@ verified unsigned placement_copy_call_statement()
 }
 
 CPP
-refused placement_copy_call_statement_span "a call statement whose arguments are temporaries destroyed at the statement's end is modeled only for a container mutator" <<'CPP'
+refused placement_copy_call_statement_span "a call statement creates a temporary whose destruction at the statement's end runs a user-provided destructor" <<'CPP'
 verified unsigned placement_copy_call_statement_span()
     ensures (result == 1u)
 {

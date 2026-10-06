@@ -6815,8 +6815,9 @@ A mutator is modeled only as a statement of its own. Every other member of a mod
 refused. A sequence handed to a verified call by value is copied into the parameter under the
 copy summary and is unchanged by the call; one handed by `const` reference is unchanged by it.
 Such a call is modeled where its result initializes a local or is returned. A call made as a
-statement of its own whose arguments are temporaries destroyed at the statement's end is refused
-unless it is a mutator of a modeled sequence.
+statement of its own is modeled when no temporary it creates runs a user-provided destructor at
+the statement's end, a scalar temporary bound to a `const` reference parameter included; one
+whose temporary does is refused unless it is a mutator of a modeled sequence.
 
 [STDMODEL-014] A span local views a whole `vector` or `string` the body tracks, is formed only
 by the initializer of its declaration, and is never assigned, formed from another span, passed by

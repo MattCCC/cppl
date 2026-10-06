@@ -1764,6 +1764,14 @@ reached through what it uses, and each category is split into
 are listed as unused. A dependency the report cannot attribute is an internal
 error, not an omission.
 
+A call to a function whose unsafe code may write what it is handed -- one that
+holds an unsafe block, calls such a function, or is recorded by an imported
+interface as resting on one -- is modeled as writing every reference, pointer
+and view it hands over, whatever their constness: the callee's contract
+describes each at the value the call leaves there, temporaries included, so no
+caller keeps a fact about a `const` argument that `const_cast` in the block
+could break (`TRUST.md` TCB-UNSAFE-004, `negative_unsafe_callees`).
+
 A runtime path claim is the one way a trusted premise enters a verified body, so
 a contract rests on a trusted law only through one, in its own body or in a
 function it calls. A recursion group is closed the same way, to a fixed point

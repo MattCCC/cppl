@@ -65,6 +65,11 @@ struct Selection {
     // standing before it has completed already, so the restatement completes
     // nothing the program run does not. A declaration completes none of them.
     std::vector<std::string> defined_clause_probes;
+
+    // The functions of other units, by Clang's USR, whose recorded contracts
+    // rest on an unsafe block. A call to one is modeled as writing every
+    // reference, pointer and view it hands over (TRUST.md TCB-UNSAFE-004).
+    std::vector<std::string> unsafe_symbols;
 };
 
 struct ParseRequest {

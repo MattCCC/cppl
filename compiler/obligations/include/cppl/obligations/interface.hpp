@@ -26,8 +26,11 @@ namespace cppl::obligations {
 // RUNTIMECHECK-010, RUNTIMECHECK-011). Version 4 quantifies a binder or a
 // parameter of a refinement type over that refinement's values only, so a
 // contract stating such a quantifier states less than it did (SPEC.md
-// FORALL-001).
-inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-4";
+// FORALL-001). Version 5 models a call to a function whose unsafe code may
+// write what it is handed as writing every reference, pointer and view it
+// hands over, so a contract proven through one under version 4 may rest on a
+// `const` argument kept that was not (TRUST.md TCB-UNSAFE-004).
+inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-5";
 
 // A contract another translation unit proved, offered to this one by the
 // verification interface that recorded it (SPEC.md TUBOUND-003).

@@ -170,6 +170,60 @@ bool has_user_provided_destructor(CXCursor definition) {
     return declares(definition) || (clang_Cursor_isNull(primary) == 0 && declares(primary));
 }
 
+// Whether destroying an object of `record` runs code of the program's: a
+// user-provided destructor of the class, of a base, or of a member's class, at
+// any depth.
+bool destruction_runs_user_code(CXCursor record, unsigned depth = 0) {
+    const CXCursor definition = clang_getCursorDefinition(record);
+    if (clang_Cursor_isNull(definition) != 0 || depth > kMaxExpressionDepth) {
+        return true;
+    }
+    if (has_user_provided_destructor(definition)) {
+        return true;
+    }
+    std::vector<CXCursor> parts;
+    clang_visitChildren(
+        definition,
+        [](CXCursor child, CXCursor, CXClientData data) {
+            const CXCursorKind kind = clang_getCursorKind(child);
+            if (kind == CXCursor_FieldDecl || kind == CXCursor_CXXBaseSpecifier) {
+                static_cast<std::vector<CXCursor>*>(data)->push_back(child);
+            }
+            return CXChildVisit_Continue;
+        },
+        &parts);
+    return std::ranges::any_of(parts, [&](CXCursor part) {
+        CXType type = clang_getCanonicalType(clang_getCursorType(part));
+        while (type.kind == CXType_ConstantArray) {
+            type = clang_getCanonicalType(clang_getArrayElementType(type));
+        }
+        return type.kind == CXType_Record && destruction_runs_user_code(clang_getTypeDeclaration(type), depth + 1);
+    });
+}
+
+// Whether every temporary a full expression creates is destroyed without
+// running code of the program's, so that the cleanup Clang wraps the statement
+// in has no effect to model: no expression in it is of a class type whose
+// destruction runs a user-provided destructor (SPEC.md STDMODEL-023).
+bool temporaries_destroy_silently(CXCursor statement) {
+    bool silent = true;
+    clang_visitChildren(
+        statement,
+        [](CXCursor cursor, CXCursor, CXClientData data) {
+            if (clang_isExpression(clang_getCursorKind(cursor)) == 0) {
+                return CXChildVisit_Recurse;
+            }
+            const CXType type = clang_getCanonicalType(clang_getCursorType(cursor));
+            if (type.kind == CXType_Record && destruction_runs_user_code(clang_getTypeDeclaration(type))) {
+                *static_cast<bool*>(data) = false;
+                return CXChildVisit_Break;
+            }
+            return CXChildVisit_Recurse;
+        },
+        &silent);
+    return silent;
+}
+
 source::RepresentationKind library_kind(CXCursor declaration) {
     using K = source::RepresentationKind;
     CXCursor primary = clang_getSpecializedCursorTemplate(declaration);
@@ -1186,6 +1240,14 @@ bool may_write_through(CXType written) {
            clang_isConstQualifiedType(clang_Type_getTemplateArgumentAsType(canonical, 0)) == 0U;
 }
 
+// Whether a parameter passed by value designates caller storage, whatever the
+// constness of what it designates: a pointer, or a span.
+bool designates_storage(CXType written) {
+    const auto canonical = clang_getCanonicalType(written);
+    return canonical.kind == CXType_Pointer ||
+           convert_type(canonical).representation.kind == source::RepresentationKind::Span;
+}
+
 // Whether an element place of a sequence is still the place its subscript
 // names: formed at the generation of its sequence that is current (RFC 0020
 // §4). One formed earlier is never matched again, so an access after the
@@ -2060,6 +2122,68 @@ bool casts_to_rvalue_reference(CXCursor expression) {
     }
     clang_disposeTokens(unit, tokens, count);
     return rvalue;
+}
+
+// Whether `expression` forms a new value rather than naming storage, so that a
+// reference parameter bound to it binds a temporary no one names after the
+// call. Only a form that never designates existing storage counts; any other is
+// taken to name storage, so nothing that does is mistaken for a temporary.
+bool is_prvalue(CXCursor expression) {
+    expression = strip_parens(expression);
+    switch (clang_getCursorKind(expression)) {
+        case CXCursor_IntegerLiteral:
+        case CXCursor_CharacterLiteral:
+        case CXCursor_FloatingLiteral:
+        case CXCursor_CXXBoolLiteralExpr:
+        case CXCursor_CXXNullPtrLiteralExpr:
+            return true;
+        case CXCursor_BinaryOperator:
+            switch (clang_getCursorBinaryOperatorKind(expression)) {
+                case CXBinaryOperator_Assign:
+                case CXBinaryOperator_MulAssign:
+                case CXBinaryOperator_DivAssign:
+                case CXBinaryOperator_RemAssign:
+                case CXBinaryOperator_AddAssign:
+                case CXBinaryOperator_SubAssign:
+                case CXBinaryOperator_ShlAssign:
+                case CXBinaryOperator_ShrAssign:
+                case CXBinaryOperator_AndAssign:
+                case CXBinaryOperator_XorAssign:
+                case CXBinaryOperator_OrAssign:
+                case CXBinaryOperator_Comma:
+                case CXBinaryOperator_PtrMemD:
+                case CXBinaryOperator_PtrMemI:
+                case CXBinaryOperator_Invalid:
+                    return false;
+                default:
+                    return true;
+            }
+        case CXCursor_UnaryOperator:
+            switch (clang_getCursorUnaryOperatorKind(expression)) {
+                case CXUnaryOperator_Deref:
+                case CXUnaryOperator_PreInc:
+                case CXUnaryOperator_PreDec:
+                case CXUnaryOperator_Real:
+                case CXUnaryOperator_Imag:
+                case CXUnaryOperator_Extension:
+                case CXUnaryOperator_Coawait:
+                case CXUnaryOperator_Invalid:
+                    return false;
+                default:
+                    return true;
+            }
+        case CXCursor_CallExpr: {
+            const CXCursor function = clang_getCursorReferenced(expression);
+            if (clang_Cursor_isNull(function) != 0) {
+                return false;
+            }
+            const CXTypeKind returned = clang_getCanonicalType(clang_getCursorResultType(function)).kind;
+            return returned != CXType_LValueReference && returned != CXType_RValueReference &&
+                   returned != CXType_Invalid;
+        }
+        default:
+            return false;
+    }
 }
 
 // The object an expression that names an object as an rvalue designates:
@@ -3850,6 +3974,120 @@ std::vector<CXCursor> unsafe_blocks_in(CXCursor root, const std::string& prefix,
     return found;
 }
 
+// The functions a definition calls, by Clang's resolution of each call in it.
+// A call Clang leaves overloaded names every candidate.
+std::vector<CXCursor> called_functions(CXCursor definition) {
+    std::vector<CXCursor> called;
+    clang_visitChildren(
+        definition,
+        [](CXCursor cursor, CXCursor, CXClientData data) {
+            if (clang_getCursorKind(cursor) != CXCursor_CallExpr) {
+                return CXChildVisit_Recurse;
+            }
+            auto& found = *static_cast<std::vector<CXCursor>*>(data);
+            const CXCursor referenced = clang_getCursorReferenced(cursor);
+            if (clang_getCursorKind(referenced) == CXCursor_OverloadedDeclRef) {
+                for (unsigned index = 0; index < clang_getNumOverloadedDecls(referenced); ++index) {
+                    found.push_back(clang_getOverloadedDecl(referenced, index));
+                }
+            } else if (clang_Cursor_isNull(referenced) == 0) {
+                found.push_back(referenced);
+            }
+            return CXChildVisit_Recurse;
+        },
+        &called);
+    return called;
+}
+
+// Which functions may write, through an unsafe block, storage they were handed
+// through a `const` access path or a view of `const` elements: one whose body
+// holds an unsafe block, or that calls such a function, to a fixed point over
+// the calls this unit defines, and one of another unit whose verification
+// interface records its contract resting on an unsafe block. A caller models a
+// call to one as writing every reference, pointer and view it hands over: an
+// unsafe block is not trusted to respect the signature of the function that
+// holds it (TRUST.md TCB-UNSAFE-004).
+class UnsafeEffects {
+  public:
+    UnsafeEffects(std::string prefix, const std::vector<std::string>& imported)
+        : prefix_(std::move(prefix)),
+          imported_(imported.begin(), imported.end()) {}
+
+    [[nodiscard]] bool of(CXCursor callee) {
+        const std::string key = key_of(callee);
+        if (const auto known = known_.find(key); known != known_.end()) {
+            return known->second;
+        }
+        struct Node {
+            bool effects = false;
+            std::vector<std::string> callees;
+        };
+        std::map<std::string, Node> nodes;
+        std::vector<CXCursor> pending{callee};
+        while (!pending.empty()) {
+            const CXCursor current = pending.back();
+            pending.pop_back();
+            const std::string current_key = key_of(current);
+            if (nodes.contains(current_key) || known_.contains(current_key)) {
+                continue;
+            }
+            Node& node = nodes[current_key];
+            // A function Clang gives no identity cannot be told apart from one
+            // that holds an unsafe block.
+            if (current_key.empty() || imported_.contains(current_key)) {
+                node.effects = true;
+                continue;
+            }
+            const CXCursor definition = clang_getCursorDefinition(current);
+            // No C++L construct, an unsafe block included, stands in a system
+            // header, and a function this unit does not define is known only by
+            // the interface that records it.
+            if (prefix_.empty() || clang_Cursor_isNull(definition) != 0 ||
+                clang_Location_isInSystemHeader(clang_getCursorLocation(definition)) != 0) {
+                continue;
+            }
+            if (!unsafe_blocks_in(definition, prefix_).empty()) {
+                node.effects = true;
+                continue;
+            }
+            for (const CXCursor called : called_functions(definition)) {
+                node.callees.push_back(key_of(called));
+                pending.push_back(called);
+            }
+        }
+        for (bool grew = true; grew;) {
+            grew = false;
+            for (auto& entry : nodes) {
+                Node& node = entry.second;
+                if (node.effects) {
+                    continue;
+                }
+                node.effects = std::ranges::any_of(node.callees, [&](const std::string& called) {
+                    if (const auto found = nodes.find(called); found != nodes.end()) {
+                        return found->second.effects;
+                    }
+                    const auto known = known_.find(called);
+                    return known != known_.end() && known->second;
+                });
+                grew = grew || node.effects;
+            }
+        }
+        for (const auto& entry : nodes) {
+            known_.emplace(entry.first, entry.second.effects);
+        }
+        return known_.at(key);
+    }
+
+  private:
+    static std::string key_of(CXCursor function) {
+        return take(clang_getCursorUSR(clang_getCanonicalCursor(function)));
+    }
+
+    std::string prefix_;
+    std::unordered_set<std::string> imported_;
+    std::unordered_map<std::string, bool> known_;
+};
+
 // The variables and parameters a subtree names, by Clang's resolution.
 std::unordered_set<unsigned> named_declarations(CXCursor root) {
     std::unordered_set<unsigned> named;
@@ -4282,6 +4520,9 @@ struct BodyLowering {
     // body carries: loop clauses, contradiction blocks, instantiation markers.
     std::string invariant_prefix;
     const std::vector<Selection::Refinement>* refinements = nullptr;
+    // Which callees may write through a `const` access path they are handed,
+    // through an unsafe block (TRUST.md TCB-UNSAFE-004).
+    UnsafeEffects* unsafe_effects = nullptr;
     std::uint32_t next_version = 0;
     std::uint32_t next_loop = 0;
     std::vector<const LoopFrame*> frames;
@@ -5336,12 +5577,14 @@ struct BodyLowering {
     // in a refined container, so that is refused.
     std::optional<std::string> view_arguments(CXCursor call, const std::vector<CXCursor>& formals, Locals& state,
                                               std::vector<std::size_t>& invalidated,
-                                              std::vector<std::size_t>& written_roots) {
-        // The containers the callee receives by mutable reference, and so may
-        // reallocate.
+                                              std::vector<std::size_t>& written_roots, bool unsafe_callee) {
+        // The containers the callee receives by mutable reference, or by any
+        // reference when its unsafe code may write through one, and so may
+        // reallocate (TRUST.md TCB-UNSAFE-004).
         std::vector<std::size_t> reallocatable;
         for (std::size_t index = 0; index < formals.size(); ++index) {
-            if (!source::may_write(passing_of(clang_getCursorType(formals[index])))) {
+            const source::ParameterPassing passing = passing_of(clang_getCursorType(formals[index]));
+            if (!source::may_write(passing) && !(unsafe_callee && source::aliases_storage(passing))) {
                 continue;
             }
             if (const auto root = owning_root(clang_Cursor_getArgument(call, static_cast<unsigned>(index)), state)) {
@@ -5379,6 +5622,31 @@ struct BodyLowering {
                                "the callee can replace (SPEC.md STDMODEL-016)";
                     }
                 }
+                if (!writes && unsafe_callee) {
+                    // A view of `const` elements whose callee's unsafe code may
+                    // write through it: every element place of the container is
+                    // unknown after the call, as one a written view reaches, and
+                    // a content invariant could not be kept.
+                    if (!state[root].sequence->element.refinements.empty()) {
+                        return "the elements of '" + state[root].spelling + "' are handed to '" +
+                               qualified_name_of(clang_getCursorReferenced(call)) +
+                               "', whose unsafe code may write them, and nothing obliges it to write values "
+                               "satisfying '" +
+                               state[root].sequence->element.refinements.front().name + "' (TRUST.md TCB-UNSAFE-004)";
+                    }
+                    for (std::size_t other = 0; other < state.size(); ++other) {
+                        if (state[other].referent.has_value() || !state[other].formed_at.has_value() ||
+                            state[other].formed_at->root != root) {
+                            continue;
+                        }
+                        state[other].version = next_version++;
+                        invalidated.push_back(other);
+                        for (const std::size_t aliased : invalidate_aliases(other, state)) {
+                            invalidated.push_back(aliased);
+                        }
+                    }
+                    continue;
+                }
                 if (!writes) {
                     continue;
                 }
@@ -5411,8 +5679,8 @@ struct BodyLowering {
                         invalidated.push_back(aliased);
                     }
                 }
-            } else if (handed->span_parameter.has_value() && writes) {
-                if (std::ranges::any_of(written_span_parameters, [&](CXCursor written_parameter) {
+            } else if (handed->span_parameter.has_value() && (writes || unsafe_callee)) {
+                if (writes && std::ranges::any_of(written_span_parameters, [&](CXCursor written_parameter) {
                         return clang_equalCursors(written_parameter, *handed->span_parameter) != 0;
                     })) {
                     return "span parameter '" + take(clang_getCursorSpelling(*handed->span_parameter)) +
@@ -5420,7 +5688,9 @@ struct BodyLowering {
                            "' twice as a view the callee may write; one storage written through two arguments of "
                            "one call has no single post-state (SPEC.md STDMODEL-017)";
                 }
-                written_span_parameters.push_back(*handed->span_parameter);
+                if (writes) {
+                    written_span_parameters.push_back(*handed->span_parameter);
+                }
                 for (std::size_t other = 0; other < state.size(); ++other) {
                     if (state[other].referent.has_value() ||
                         clang_equalCursors(state[other].declaration, *handed->span_parameter) == 0 ||
@@ -5464,12 +5734,18 @@ struct BodyLowering {
             return value;
         const auto callee = clang_getCursorReferenced(cursor);
         const auto params = parameters_of(callee);
+        // A callee whose unsafe code may write what it is handed through a
+        // `const` access path writes, as far as this body can tell, every
+        // reference, pointer and view it is handed, and its contract describes
+        // each at the value it leaves there (TRUST.md TCB-UNSAFE-004).
+        const bool unsafe_callee =
+            !call->library.has_value() && unsafe_effects != nullptr && unsafe_effects->of(callee);
         // The containers whose elements the callee may write through a view or
         // a data pointer it is handed.
         std::vector<std::size_t> written_roots;
         if (!call->library.has_value()) {
             if (std::optional<std::string> refused =
-                    view_arguments(cursor, params, state, invalidated, written_roots)) {
+                    view_arguments(cursor, params, state, invalidated, written_roots, unsafe_callee)) {
                 return reject(std::move(*refused));
             }
         }
@@ -5486,9 +5762,10 @@ struct BodyLowering {
         // one -- is unknown after the call, exactly as after a write through
         // `*p` in this body (VERIFIED-039). Places this call hands the callee by
         // reference take its effects instead, so they are left to that.
-        const bool writes_through_pointer = std::ranges::any_of(params, [](CXCursor parameter) {
+        const bool writes_through_pointer = std::ranges::any_of(params, [&](CXCursor parameter) {
             const CXType declared = clang_getCursorType(parameter);
-            return !source::aliases_storage(passing_of(declared)) && may_write_through(declared);
+            return !source::aliases_storage(passing_of(declared)) &&
+                   (may_write_through(declared) || (unsafe_callee && designates_storage(declared)));
         });
         const auto havoc_pointees = [&](const std::vector<std::size_t>& handed) {
             if (!writes_through_pointer) {
@@ -5518,7 +5795,7 @@ struct BodyLowering {
                             std::ranges::any_of(params, [](CXCursor parameter) {
                                 return source::may_write(passing_of(clang_getCursorType(parameter)));
                             });
-        if (!writes) {
+        if (!writes && !unsafe_callee) {
             havoc_pointees({});
             return value;
         }
@@ -5560,9 +5837,35 @@ struct BodyLowering {
             const source::ParameterPassing passing = passing_of(clang_getCursorType(params[index]));
             if (!source::aliases_storage(passing))
                 continue;
-            const auto target = written_local(clang_Cursor_getArgument(cursor, static_cast<unsigned>(index)), state);
-            if (!target)
-                return std::nullopt;
+            const CXCursor argument = clang_Cursor_getArgument(cursor, static_cast<unsigned>(index));
+            std::optional<std::size_t> target;
+            if (source::may_write(passing)) {
+                target = written_local(argument, state);
+                if (!target)
+                    return std::nullopt;
+            } else {
+                // A reference the callee only reads: the caller storage it
+                // designates, or none for a temporary, which no one names after
+                // the call.
+                const std::optional<std::optional<std::size_t>> read =
+                    read_reference(argument, state, callee, unsafe_callee);
+                if (!read)
+                    return std::nullopt;
+                if (!read->has_value()) {
+                    if (unsafe_callee) {
+                        // The callee's contract describes the temporary at the
+                        // value its unsafe code leaves there, which nothing
+                        // states.
+                        const CXType referee =
+                            clang_getPointeeType(clang_getCanonicalType(clang_getCursorType(params[index])));
+                        Type declared = convert_type(clang_getCanonicalType(clang_getUnqualifiedType(referee)));
+                        call->effects.push_back(CallEffect{offset + static_cast<std::uint32_t>(index), next_version++,
+                                                           std::move(declared)});
+                    }
+                    continue;
+                }
+                target = *read;
+            }
             const auto storage = state[*target].referent.value_or(*target);
             // A span local handed on by mutable reference could be made to view
             // other storage than the one its generation is followed for.
@@ -5575,12 +5878,13 @@ struct BodyLowering {
                 Position{offset + static_cast<std::uint32_t>(index), storage, source::may_write(passing)});
         }
         for (const Position& position : positions) {
-            if (!position.writable) {
+            if (!position.writable && !unsafe_callee) {
                 continue;
             }
             const Local& handed = state[position.storage];
             // A refined element type is a content invariant of the local's
-            // storage, and a callee holding the container by mutable reference
+            // storage, and a callee holding the container by mutable reference,
+            // or by any reference with unsafe code that may write through it,
             // may leave any value in any element (SPEC.md STDMODEL-020).
             if (handed.sequence.has_value() && !handed.sequence->element.refinements.empty()) {
                 return reject("'" + handed.spelling + "' is passed to '" + qualified_name_of(callee) +
@@ -5592,7 +5896,7 @@ struct BodyLowering {
             }
             // The same element reached through a reference and through a view
             // or data pointer of its container would have two post-states.
-            if (handed.formed_at.has_value()) {
+            if (position.writable && handed.formed_at.has_value()) {
                 const std::size_t owner = handed.formed_at->root;
                 for (const std::size_t root : written_roots) {
                     if (root == owner || may_alias(state[root], state[owner])) {
@@ -5619,7 +5923,7 @@ struct BodyLowering {
             const std::size_t owner = handed.formed_at->root;
             for (const Position& container : positions) {
                 const Local& holder = state[container.storage];
-                if (!container.writable || holder.formed_at.has_value() ||
+                if (!(container.writable || unsafe_callee) || holder.formed_at.has_value() ||
                     (container.storage != owner && !may_alias(holder, state[owner]))) {
                     continue;
                 }
@@ -5639,7 +5943,7 @@ struct BodyLowering {
         std::vector<std::size_t> targets;
         std::vector<std::size_t> written_storage;
         for (const Position& position : positions) {
-            if (position.writable) {
+            if (position.writable || unsafe_callee) {
                 written_storage.push_back(position.storage);
             }
         }
@@ -5647,7 +5951,7 @@ struct BodyLowering {
         // same place, or one the common alias model does not keep apart from a
         // written one (SPEC.md CLASS-011, VERIFIED-031).
         const auto reached_by_a_write = [&](std::size_t storage) {
-            return through_pointer || std::ranges::any_of(written_storage, [&](std::size_t written) {
+            return unsafe_callee || through_pointer || std::ranges::any_of(written_storage, [&](std::size_t written) {
                        return written == storage || may_alias(state[written], state[storage]);
                    });
         };
@@ -5688,7 +5992,8 @@ struct BodyLowering {
         // else the object holds -- an element formed at a term, a member the
         // callee does not track -- is unknown after the call rather than kept
         // (SPEC.md CLASS-011).
-        if (object.has_value() && callee_receiver.has_value() && (callee_receiver->writes() || through_pointer)) {
+        if (object.has_value() && callee_receiver.has_value() &&
+            (callee_receiver->writes() || through_pointer || unsafe_callee)) {
             for (std::size_t other = 0; other < state.size(); ++other) {
                 const Local& entry = state[other];
                 if (entry.referent || entry.is_deref() != object->through_pointer ||
@@ -6044,9 +6349,14 @@ struct BodyLowering {
             if (clang_getCursorKind(inner) == CXCursor_CallExpr && sequence_call(inner).has_value()) {
                 return lower_call(inner, next, locals, depth);
             }
+            // A call whose temporaries are destroyed without running any code
+            // of the program's is the call it holds: the cleanup has no effect.
+            if (clang_getCursorKind(inner) == CXCursor_CallExpr && temporaries_destroy_silently(statement)) {
+                return lower_call(inner, next, locals, depth);
+            }
             if (clang_getCursorKind(inner) == CXCursor_CallExpr) {
-                return reject("a call statement whose arguments are temporaries destroyed at the statement's end is "
-                              "modeled only for a container mutator (SPEC.md STDMODEL-023)");
+                return reject("a call statement creates a temporary whose destruction at the statement's end runs a "
+                              "user-provided destructor, which is not modeled (SPEC.md STDMODEL-023)");
             }
         }
         if (kind == CXCursor_NullStmt)
@@ -7571,6 +7881,37 @@ struct BodyLowering {
     // resolves through the one access resolver, so a write reaches exactly the
     // place written and leaves every place disjoint from it alone (SPEC.md
     // 12.10). Only storage this body tracks is ever written.
+    // The caller storage a reference parameter the callee only reads designates:
+    // the place this body tracks there, or none for a temporary, which no one
+    // names after the call. A callee with unsafe code may write that storage
+    // through the reference (TRUST.md TCB-UNSAFE-004), so an object this body
+    // reads only as one value, whose post-state no member-by-member effect can
+    // state, is refused there.
+    std::optional<std::optional<std::size_t>> read_reference(CXCursor argument, Locals& locals, CXCursor callee,
+                                                             bool unsafe_callee) {
+        if (is_prvalue(argument)) {
+            return std::optional<std::size_t>{};
+        }
+        if (unsafe_callee) {
+            if (const auto access = resolve_access(strip_parens(argument)); access && !access->dereferenced) {
+                const std::optional<std::size_t> whole = find_local(locals, access->declaration);
+                if (whole.has_value() && locals[locals[*whole].referent.value_or(*whole)].read_only) {
+                    return reject("'" + take(clang_getCursorSpelling(access->declaration)) +
+                                  "' designates an object this body reads as one value, and it is handed by "
+                                  "reference to '" +
+                                  qualified_name_of(callee) +
+                                  "', whose unsafe code may write it; its post-state is not stated member by member "
+                                  "(TRUST.md TCB-UNSAFE-004)");
+                }
+            }
+        }
+        const std::optional<std::size_t> local = written_local(argument, locals);
+        if (!local) {
+            return std::nullopt;
+        }
+        return std::optional<std::optional<std::size_t>>{local};
+    }
+
     std::optional<std::size_t> written_local(CXCursor target, Locals& locals) {
         target = strip_parens(target);
         // An element of a vector, a string or a span is written through its
@@ -7855,7 +8196,7 @@ struct BodyLowering {
 
 void extract_body(Function& function, CXCursor cursor, const Signature& signature, const std::string& invariant_prefix,
                   const std::vector<Selection::Refinement>& refinements, bool executable_state,
-                  const std::vector<StatedCapability>* capabilities) {
+                  const std::vector<StatedCapability>* capabilities, UnsafeEffects& unsafe_effects) {
     const std::vector<CXCursor>& parameters = signature.parameters;
     const std::vector<CXCursor> members = children_of(cursor);
 
@@ -7878,6 +8219,7 @@ void extract_body(Function& function, CXCursor cursor, const Signature& signatur
                           .result_type = function.result,
                           .invariant_prefix = invariant_prefix,
                           .refinements = &refinements,
+                          .unsafe_effects = &unsafe_effects,
                           .executable_state = executable_state,
                           .capabilities = capabilities};
     lowering.completion_location = presumed_location(clang_getRangeEnd(clang_getCursorExtent(members[body_index])));
@@ -9316,6 +9658,7 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
     // Keyed by the analysis offset of the verified function the clause belongs
     // to, so a body may rely only on its own contract.
     std::unordered_map<std::size_t, std::vector<StatedCapability>> stated_capabilities;
+    UnsafeEffects unsafe_effects(request.selection.specification_prefix, request.selection.unsafe_symbols);
     for (const auto& probe : request.selection.proposition_probes) {
         if (probe.shape.kind != source::ProjectionKind::Readable &&
             probe.shape.kind != source::ProjectionKind::Writable &&
@@ -9491,7 +9834,7 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
                          request.selection.specification_prefix.empty() ? std::string()
                                                                         : request.selection.specification_prefix,
                          request.selection.refinements, executable,
-                         stated == stated_capabilities.end() ? nullptr : &stated->second);
+                         stated == stated_capabilities.end() ? nullptr : &stated->second, unsafe_effects);
         }
         result.functions.push_back(std::move(function));
     }

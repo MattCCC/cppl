@@ -272,6 +272,13 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
     parse_request.arguments.emplace_back("-x");
     parse_request.arguments.emplace_back("c++-cpp-output");
     parse_request.arguments.emplace_back("-w");
+    if (request.imports != nullptr) {
+        for (const obligations::ImportedEntry& imported : request.imports->entries) {
+            if (!imported.entry.unsafe.empty()) {
+                parse_request.selection.unsafe_symbols.push_back(imported.entry.symbol);
+            }
+        }
+    }
 
     const std::expected<analysis::Result, std::string> analyzed =
         analysis::analyze(stream, syntax, projection_options, parse_request);
