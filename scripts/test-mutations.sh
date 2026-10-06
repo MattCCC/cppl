@@ -446,6 +446,7 @@ struct-copy-user-code	clang/src/bridge.cpp	if ((copy || move) && clang_CXXMethod
 struct-copy-member-user-code	clang/src/bridge.cpp	if (std::optional<std::string> inner = user_provided_copy(clang_getCursorType(field), copying, depth + 1)) {	if (std::optional<std::string> inner = (false ? user_provided_copy(clang_getCursorType(field), copying, depth + 1) : std::nullopt)) {	^negative_struct_values$
 struct-copy-constructor-kind	clang/src/bridge.cpp	if ((!copy && !move) || clang_Cursor_getNumArguments(construction) != 1) {	if (false && ((!copy && !move) || clang_Cursor_getNumArguments(construction) != 1)) {	^negative_struct_values$
 unsafe-callee-call-sequenced	clang/src/bridge.cpp	if (!sequenced_call && writes_unsafely(signature.unsafe_effects, referenced)) {	if (false && !sequenced_call && writes_unsafely(signature.unsafe_effects, referenced)) {	^negative_unsafe_callees$
+unsafe-callee-default-argument-sequenced	clang/src/bridge.cpp	{}, std::nullopt, signature.clause, signature.refinements, signature.unsafe_effects};	{}, std::nullopt, signature.clause, signature.refinements, nullptr};	^negative_unsafe_callees$
 MUTATIONS
 )
 

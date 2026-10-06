@@ -240,6 +240,17 @@ verified unsigned claims_five() ensures (result == 5u) {
 }
 CPP
 
+# A default argument is evaluated inside the call that relies on it, so a call
+# it makes is no statement of its own either.
+refuse call_in_a_default_argument <<CPP "'peek' $nested"
+$peek
+verified unsigned take(unsigned v = peek(3u)) ensures (result == v) { return v; }
+verified unsigned relies() ensures (result == 3u) {
+    unsigned r = take();
+    return r;
+}
+CPP
+
 # What the caller learns from the callee's contract at the post-state holds.
 accept result_from_the_post_state "9" <<CPP
 #include <cstdio>
