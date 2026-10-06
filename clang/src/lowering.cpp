@@ -1,6 +1,7 @@
 #include "lowering.hpp"
 
 #include "access.hpp"
+#include "aggregate_values.hpp"
 #include "conversions.hpp"
 #include "cppl/clang/ast.hpp"
 #include "cppl/clang/bridge.hpp"

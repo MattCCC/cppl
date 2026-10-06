@@ -7,6 +7,7 @@
 #include "types.hpp"
 
 #include <algorithm>
+#include <clang-c/CXSourceLocation.h>
 #include <clang-c/Index.h>
 #include <cstddef>
 #include <cstdint>
@@ -162,9 +163,12 @@ std::optional<std::string> BodyLowering::value_initialized(CXCursor list, const 
             std::vector<PlaceStep> path = at;
             path.push_back(PlaceStep{record ? PlaceStep::Kind::Field : PlaceStep::Kind::Element,
                                      static_cast<std::uint32_t>(at_member)});
-            const std::string& name = model.representation.components[at_member].name;
+            std::string member_spelling = spelled;
+            member_spelling += record ? "." : "[";
+            member_spelling += model.representation.components[at_member].name;
+            member_spelling += record ? "" : "]";
             pending.push_back(Pending{(*members)[at_member], &model.projections[at_member], std::move(path),
-                                      record ? spelled + "." + name : spelled + "[" + name + "]",
+                                      std::move(member_spelling),
                                       record ? std::optional<CXCursor>{fields[at_member]} : std::nullopt});
         }
         return std::nullopt;
