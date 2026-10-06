@@ -134,7 +134,7 @@ so a construct the specification adds is refused until it is classified.
 | CONSTRUCT-049 | conditional operator | verified | -- |
 | CONSTRUCT-050 | assignment | verified | -- |
 | CONSTRUCT-051 | compound assignment | verified | -- |
-| CONSTRUCT-052 | comma operator | refused | operator ',' is not modeled |
+| CONSTRUCT-052 | comma operator | refused | the comma operator inside an expression is not modeled |
 | CONSTRUCT-053 | member access dot | verified | -- |
 | CONSTRUCT-054 | member access arrow | verified | -- |
 | CONSTRUCT-055 | built-in subscript | verified | -- |
@@ -173,7 +173,7 @@ so a construct the specification adds is refused until it is classified.
 | CONSTRUCT-088 | declaration statement | verified | -- |
 | CONSTRUCT-089 | if statement | verified | -- |
 | CONSTRUCT-090 | if constexpr | verified | -- |
-| CONSTRUCT-091 | switch statement | refused | only if/else, while and for loops, blocks, local declarations, assignments, and  |
+| CONSTRUCT-091 | switch statement | verified | -- |
 | CONSTRUCT-092 | while statement | verified | -- |
 | CONSTRUCT-093 | classic for statement | verified | -- |
 | CONSTRUCT-094 | range-for statement | refused | range-based for loops are not modeled |

@@ -243,6 +243,24 @@ them, and every path that continues to another iteration owes a strictly
 smaller one, compared component by component in the machine's non-wrapping
 order (`SPEC.md` 22.3, 22.5, LOOP-006). Range-based `for` is rejected.
 
+A `switch` is verified with C++'s semantics (C++ [stmt.switch]). Its condition,
+a call in it with its effects included, is evaluated once and bound to one
+value, which each case value Clang evaluated is compared with in the order the
+labels appear; the first that equals it, or else `default:`, or else what
+follows the switch, is where control enters the body, which then runs to its
+end through every later label, so fall-through is a path like any other. A
+`break` leaves the innermost loop or switch enclosing it, and a `continue` in a
+switch continues the loop around it. A condition variable is a local the
+condition initializes, and `[[fallthrough]];` is an empty statement. Refused by
+name: a `case` or `default` label anywhere but directly in its switch's body
+(Duff's device), a statement before the first label, a GNU case range, and an
+init-statement, which libclang does not expose and which would otherwise be
+dropped; an `if` with an init-statement is refused for the same reason, since
+libclang lists the init where the condition otherwise stands. A comma operator
+as a statement, `a = 1, b = 2;`, or as a `for` increment, `++i, --j`, runs its
+operands in order as statements of their own; one inside another expression is
+refused by name (`e2e/switch_statements.sh`, `negative/switch_statements.sh`).
+
 A verified function may state `decreases (...)` over its parameters, one
 measure or a lexicographic list, to ask that it terminate (TERMINATION-004).
 Recursion is verified only that way: functions that call each other, directly
@@ -1733,13 +1751,13 @@ same as C++ unsigned arithmetic.
 The constructs a verified body may use are listed, one row for each construct
 of `SPEC.md` Annex X, in `tests/fixtures/subset/manifest.tsv`, and
 `e2e_safety_subset` checks every row on every run (RFC 0022). Of the 151
-constructs, 88 are verified: each has a fixture that is proven with nothing
+constructs, 89 are verified: each has a fixture that is proven with nothing
 unresolved and runs, and a refused twin, the same program with one thing
 changed, that shows the construct is modeled rather than passed over. The other
-63 are refused wherever a verified body uses them, each with the diagnostic its
+62 are refused wherever a verified body uses them, each with the diagnostic its
 row pins, and never written to an object: among them floating point, pointers
 other than parameters read under `readable`, shifts and bitwise operators,
-`switch`, range-based `for`, `goto`, exceptions, dynamic allocation, lambdas,
+a comma inside an expression, range-based `for`, `goto`, exceptions, dynamic allocation, lambdas,
 virtual dispatch and virtual functions, casts between class types, unions,
 bit-fields, static and thread-local storage, globals, verified constructors and
 destructors, coroutines, variadic verified templates and modules. The manifest
@@ -2922,7 +2940,7 @@ and `negative_trusted_dependencies`, and the `unsafe-*` mutation entries.
 
 `IMPLEMENTED` for the explicit subset: RFC 0022 and
 [Verified C++ subset status](#verified-c-subset-status). All 151 constructs of
-Annex X are classified: 88 are verified, each with a refused twin, and 63 are
+Annex X are classified: 89 are verified, each with a refused twin, and 62 are
 refused, each with its diagnostic.
 
 Evidence:
