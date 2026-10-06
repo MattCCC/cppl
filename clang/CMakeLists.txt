@@ -20,6 +20,7 @@ add_library(cppl_clang STATIC
     src/default_arguments.cpp
     src/editor.cpp
     src/expressions.cpp
+    src/formal.cpp
     src/formed_places.cpp
     src/ghost.cpp
     src/loops.cpp

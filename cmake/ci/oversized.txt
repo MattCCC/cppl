@@ -9,4 +9,4 @@
 # CheckFileLength.cmake that reads it are deleted.
 #
 # <path> <line count when listed>
-clang/src/bridge.cpp 1416
+clang/src/bridge.cpp 1037

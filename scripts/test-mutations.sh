@@ -246,7 +246,7 @@ container-element-beside-view	clang/src/calls.cpp	if (root == owner || may_alias
 container-refined-result	clang/src/lowering.cpp	if (const bool refined_result = !element->refinements.empty(); refined_result) {	if (const bool refined_result = false; refined_result) {	^negative_containers$
 container-refined-std-array	clang/src/types.cpp	if (!stated || !stated->empty()) {	if (false) {	^negative_containers$
 container-refined-span-local	clang/src/sequence_statements.cpp	!written || !written->refinements.empty()) {	false) {	^negative_containers$
-capability-const-writable	clang/src/bridge.cpp	if (capability.kind == Capability::Kind::Writable && clang_isConstQualifiedType(element) != 0)	if (false && capability.kind == Capability::Kind::Writable && clang_isConstQualifiedType(element) != 0)	^negative_containers$
+capability-const-writable	clang/src/formal.cpp	if (capability.kind == Capability::Kind::Writable && clang_isConstQualifiedType(element) != 0)	if (false && capability.kind == Capability::Kind::Writable && clang_isConstQualifiedType(element) != 0)	^negative_containers$
 container-pop-precondition	compiler/obligations/src/library.cpp	summary.preconditions.push_back(	(void)(	^negative_containers$
 validation-fact-conditional	compiler/obligations/src/contracts_evaluation.cpp	kernel::Proposition::implication(kernel::predicate(result, true), std::move(holds)),	std::move(holds),	^negative_runtime_validation$
 validation-fact-polarity	compiler/obligations/src/contracts_evaluation.cpp	kernel::Proposition::implication(kernel::predicate(result, true), std::move(holds)),	kernel::Proposition::implication(kernel::predicate(result, false), std::move(holds)),	^negative_runtime_validation$|^e2e_runtime_validation$
@@ -410,8 +410,8 @@ unsigned-remainder-within-dividend	kernel/src/linear.cpp	return constrain(*withi
 remainder-sign-of-nonnegative-dividend	kernel/src/linear.cpp	either(*dividend, 1, negated(remainder), 0)	either(*dividend, 1, negated(remainder), 1)	^kernel_definedness_test$
 refined-binder-membership	compiler/obligations/src/generate_propositions.cpp	body = suppose_membership(program, quantified->binders, std::move(*body), location);	(void)0;	^negative_quantified_propositions$|^unit_quantified_propositions_test$
 refined-parameter-membership	compiler/obligations/src/generate_propositions.cpp	auto ranged = suppose_membership(program, types, std::move(body), {}, &unstated);	auto ranged = ((void)program, std::expected<kernel::Proposition, Failure>(std::move(body)));	^negative_quantified_propositions$|^unit_quantified_propositions_test$
-forall-binder-refinement-kept	clang/src/bridge.cpp	binder_type.refinements = std::move(*refined);	(void)refined;	^negative_quantified_propositions$|^e2e_refined_quantifiers$
-equality-operand-refinement-kept	clang/src/bridge.cpp	equality.operand_type.refinements = std::move(*refined);	(void)refined;	^negative_quantified_propositions$
+forall-binder-refinement-kept	clang/src/formal.cpp	binder_type.refinements = std::move(*refined);	(void)refined;	^negative_quantified_propositions$|^e2e_refined_quantifiers$
+equality-operand-refinement-kept	clang/src/formal.cpp	equality.operand_type.refinements = std::move(*refined);	(void)refined;	^negative_quantified_propositions$
 formal-equality-refinement-refused	compiler/obligations/src/generate_propositions.cpp	if (carries_refinement(equality->operand_type)) {	if (false && carries_refinement(equality->operand_type)) {	^negative_quantified_propositions$|^unit_quantified_propositions_test$
 old-entry-value-refused	compiler/frontend/src/projection_declarations.cpp	if (const auto snapshot = detail::entry_value_form(stream, postcondition->expression)) {	if (const auto snapshot = (false ? detail::entry_value_form(stream, postcondition->expression) : std::nullopt)) {	^negative_erasure$
 analysis-target-compared	compiler/driver/src/pipeline.cpp	if (analyzed->unit.target != target->effective) {	if (false) {	^negative_analysis_target$

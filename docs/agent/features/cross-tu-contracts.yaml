@@ -80,6 +80,7 @@ implementation:
     - clang/include/cppl/clang/ast.hpp
     - clang/src/bridge.cpp
     - clang/src/calls.cpp
+    - clang/src/formal.cpp
   elaboration:
     - compiler/elaboration/src/elaborate.cpp
   vir:
