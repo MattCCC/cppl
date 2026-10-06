@@ -102,23 +102,99 @@ kernel::ProofTerm close(const obligations::ContractVerification& function, kerne
     return proof;
 }
 
+// The arguments of a term, whatever forms it: a call's, a primitive's, a
+// projection's or an element's. Null for a variable or a literal.
+const std::vector<kernel::Term>* arguments_of(const kernel::Term& term) {
+    return std::visit(
+        [](const auto& node) -> const std::vector<kernel::Term>* {
+            if constexpr (requires { node.arguments; }) {
+                return &node.arguments;
+            } else {
+                return nullptr;
+            }
+        },
+        term.node);
+}
+
+// The selection inside `value` whose condition is `condition`, the first met
+// walking the term, if any.
+std::optional<kernel::Term> selection_on(const kernel::Term& value, const kernel::Proposition& condition) {
+    if (const auto* branch = std::get_if<kernel::Prim>(&value.node);
+        branch != nullptr && branch->op == kernel::PrimOp::Select && branch->arguments.size() == 3 &&
+        kernel::predicate(branch->arguments[0], true) == condition) {
+        return value;
+    }
+    if (const std::vector<kernel::Term>* arguments = arguments_of(value)) {
+        for (const kernel::Term& argument : *arguments) {
+            if (std::optional<kernel::Term> found = selection_on(argument, condition)) {
+                return found;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+// `value` with every occurrence of `target` replaced by `by`.
+kernel::Term replaced(const kernel::Term& value, const kernel::Term& target, const kernel::Term& by) {
+    if (value == target) {
+        return by;
+    }
+    kernel::Term result = value;
+    std::visit(
+        [&](auto& node) {
+            if constexpr (requires { node.arguments; }) {
+                for (kernel::Term& argument : node.arguments) {
+                    argument = replaced(argument, target, by);
+                }
+            }
+        },
+        result.node);
+    return result;
+}
+
+// Evidence that the postcondition holds of `value`, composed from the evidence
+// of the return paths beneath it. A selection the value makes is taken apart by
+// the kernel's conditional elimination, as route splitting split on it: at the
+// top of the value, or beneath another operation where a local bound to a
+// conditional is read there (`!both`, for `both = p && q`), which route
+// splitting splits on in the order the next path states. The motive abstracts
+// that selection where the value has it and nowhere else, so the
+// postcondition's own terms are left as stated, and each arm is the value with
+// the arm in its place. Every step is the kernel's to accept.
 std::expected<kernel::ProofTerm, std::string> assemble(const obligations::Program& program,
                                                        const obligations::ContractVerification& function,
                                                        const kernel::Term& value, std::size_t depth, std::size_t& leaf,
                                                        const std::map<std::size_t, kernel::ProofTerm>& proven) {
+    std::optional<kernel::Term> selection;
     if (const auto* branch = std::get_if<kernel::Prim>(&value.node);
         branch != nullptr && branch->op == kernel::PrimOp::Select && branch->arguments.size() == 3) {
-        auto when_true = assemble(program, function, branch->arguments[1], depth + 1, leaf, proven);
+        selection = value;
+    } else if (leaf < function.paths.size() && function.paths[leaf].conditions.size() > depth) {
+        selection = selection_on(value, function.paths[leaf].conditions[depth].actual);
+    }
+    if (selection.has_value()) {
+        const auto& branch = std::get<kernel::Prim>(selection->node);
+        auto when_true =
+            assemble(program, function, replaced(value, *selection, branch.arguments[1]), depth + 1, leaf, proven);
         if (!when_true)
             return when_true;
-        auto when_false = assemble(program, function, branch->arguments[2], depth + 1, leaf, proven);
+        auto when_false =
+            assemble(program, function, replaced(value, *selection, branch.arguments[2]), depth + 1, leaf, proven);
         if (!when_false)
             return when_false;
+        kernel::Proposition motive = function.postcondition;
+        kernel::Type selected = function.result;
+        if (!(*selection == value)) {
+            const kernel::Term hole = replaced(kernel::shift(value, 1), kernel::shift(*selection, 1),
+                                               kernel::Term::variable(kernel::VarIndex{0}));
+            motive = kernel::instantiate(kernel::shift(function.postcondition, 1, 1), hole);
+            selected = kernel::Type{branch.type};
+        }
         return kernel::ProofTerm::conditional_elimination(
-            function.result, branch->arguments[0], branch->arguments[1], branch->arguments[2], function.postcondition,
-            kernel::ProofTerm::implication_introduction(kernel::predicate(branch->arguments[0], true),
+            std::move(selected), branch.arguments[0], branch.arguments[1], branch.arguments[2], std::move(motive),
+            kernel::ProofTerm::implication_introduction(kernel::predicate(branch.arguments[0], true),
                                                         std::move(*when_true)),
-            kernel::ProofTerm::implication_introduction(kernel::predicate(branch->arguments[0], false),
+            kernel::ProofTerm::implication_introduction(kernel::predicate(branch.arguments[0], false),
                                                         std::move(*when_false)));
     }
     if (leaf >= function.paths.size())

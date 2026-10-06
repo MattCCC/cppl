@@ -34,6 +34,7 @@ expected='4 -1 2 3
 1 0 7 -1 1 0
 1 0 7 1
 7 0 5 4 12
+0 1
 1 0 1 0 1 0
 1 3 1 0 1 0
 1 0 2 4
@@ -57,7 +58,7 @@ for standard in c++20 c++23; do
         cat "$base.err" >&2
         fail "verifying the conditions warned ($standard)"
     fi
-    for line in 'Laws proven: +3' 'Function contracts proven: +31' '  partial correctness only: +0' 'Loop invariants proven: +16' \
+    for line in 'Laws proven: +3' 'Function contracts proven: +32' '  partial correctness only: +0' 'Loop invariants proven: +16' \
         'Loop measures proven: +8' 'Unresolved obligations: +0' 'Laws trusted: +0'; do
         grep -Eq "^$line\$" "$base.report" || { cat "$base.report" >&2; fail "the report does not state '$line'"; }
     done

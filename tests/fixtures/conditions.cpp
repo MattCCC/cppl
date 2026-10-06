@@ -115,6 +115,15 @@ verified unsigned sum_present(const std::vector<unsigned>& v, std::size_t i, std
     return total;
 }
 
+// A local holding `&&`, read beneath `!`: the path splits on the local's
+// condition, and the proof is composed through the negation.
+verified bool not_both(bool p, bool q)
+    ensures (result <-> !(p && q))
+{
+    const bool both = p && q;
+    return !both;
+}
+
 // `&&` and `||` as values are what C++ evaluates: the division happens only
 // where the divisor is nonzero.
 verified bool divides(unsigned a, unsigned b)
@@ -329,6 +338,7 @@ int main() {
     const std::vector<unsigned> u{5u, 0u, 7u};
     std::printf("%d %d %u %u %u\n", kept_or_zero(v, 2), kept_or_zero(v, 5), zeros_seen(u, 1, 4u), zeros_seen(u, 8, 4u),
                 sum_present(u, 0, 2));
+    std::printf("%d %d\n", not_both(true, true) ? 1 : 0, not_both(true, false) ? 1 : 0);
     std::printf("%d %d %d %d %d %d\n", divides(9u, 3u) ? 1 : 0, divides(9u, 0u) ? 1 : 0,
                 zero_or_divides(9u, 0u) ? 1 : 0, zero_or_divides(9u, 2u) ? 1 : 0, ordered(1, 2, 3) ? 1 : 0,
                 ordered(2, 1, 3) ? 1 : 0);

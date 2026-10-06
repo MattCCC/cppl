@@ -1420,6 +1420,12 @@ number of intervening locals splits as a directly written one does, and a
 conditional whose arm reads an earlier conditional local resolves through it.
 Resolution is bounded without a fixed hop limit, because a version's value reads
 only versions established before it, and it does not cross a version boundary.
+A conditional local the returned value reads beneath another operation, as
+`return !both;` reads `both = p && q`, splits the same way, and the composition
+of the path proofs takes that `select` apart where the value has it, the motive
+abstracting it there and nowhere else (`assemble` in
+`compiler/automation/src/composition.cpp`; automation proposes, and the kernel's
+conditional elimination is what accepts it).
 
 `&&`, `||` and `!` are modeled in a verified condition. They are not lowered as
 values — a proposition is not a value, and outside a condition they stay refused

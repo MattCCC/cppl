@@ -238,6 +238,28 @@ verified int kept_or_zero(const std::vector<int>& v, std::size_t i)
 int main() { return 0; }
 CPP
 
+# A local holding `&&` read beneath `!` is its negation, never the `&&` itself,
+# and never the negation of only one operand.
+refused not_both_claimed_both "$false_claim" <<'CPP'
+verified bool not_both(bool p, bool q)
+    ensures (result <-> (p && q))
+{
+    const bool both = p && q;
+    return !both;
+}
+int main() { return 0; }
+CPP
+
+refused not_both_claimed_not_first "$false_claim" <<'CPP'
+verified bool not_both(bool p, bool q)
+    ensures (result <-> !p)
+{
+    const bool both = p && q;
+    return !both;
+}
+int main() { return 0; }
+CPP
+
 # A declared `&&` is false where its first operand is.
 refused declared_and_claimed_true "$false_claim" <<'CPP'
 #include <cstddef>
