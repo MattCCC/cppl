@@ -15,6 +15,7 @@ add_library(cppl_clang STATIC
     src/cursors.cpp
     src/default_arguments.cpp
     src/editor.cpp
+    src/expressions.cpp
     src/editor_completion.cpp
     src/editor_description.cpp
     src/editor_names.cpp
