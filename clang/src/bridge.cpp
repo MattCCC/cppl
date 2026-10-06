@@ -1272,10 +1272,10 @@ bool designates_storage(CXType written) {
 }
 
 // Whether `argument`, an argument of a call, is the default argument of its
-// parameter, which Clang supplies where the call writes none (SPEC.md R.16).
-// libclang exposes that node as an unexposed expression with no children and no
-// extent: nothing at the call wrote it, and the expression it stands for is the
-// parameter's.
+// parameter, which Clang supplies where the call writes none (SPEC.md R.16,
+// EDGECASE-038). libclang exposes that node as an unexposed expression with no
+// children and no extent: nothing at the call wrote it, and the expression it
+// stands for is the parameter's.
 bool is_default_argument(CXCursor argument) {
     return clang_getCursorKind(argument) == CXCursor_UnexposedExpr &&
            clang_Range_isNull(clang_getCursorExtent(argument)) != 0 && children_of(argument).empty();
@@ -3061,9 +3061,10 @@ void attribute_to_default(Expr& expression, const std::string& owner, unsigned d
 
 // A default argument a call relies on, lowered as the expression its callee's
 // declaration states, evaluated where the call stands, before the call, exactly
-// as if the caller had written it there (SPEC.md R.16). Whatever it calls owes
-// at this call what any call owes, and the callee's contract, its refined
-// parameters and its measure meet its value as they meet any argument's.
+// as if the caller had written it there (SPEC.md R.16, CONTRACTCOMP-002,
+// EDGECASE-038). Whatever it calls owes at this call what any call owes, and the
+// callee's contract, its refined parameters and its measure meet its value as
+// they meet any argument's.
 //
 // C++ lets a default argument use no parameter, no local and no `this`
 // ([dcl.fct.default]), so it is lowered with none of the caller's in scope:

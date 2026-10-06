@@ -2010,11 +2010,12 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
         function.primary_usr.empty() || declaration.explicit_specialization ? nullptr : &function.template_arguments;
 
     // A clause is read back from a probe restating the function's parameters,
-    // without their default arguments (SPEC.md R.16), and for a postcondition of
-    // a function with a result `result` after them. A position in the clause is
-    // the function's parameter at that position only while the two lists agree,
-    // so a probe whose list does not is refused: reading its clause could bind a
-    // parameter to another one, or `result` to a parameter.
+    // without their default arguments (SPEC.md R.16, CONTRACTCOMP-002), and for
+    // a postcondition of a function with a result `result` after them. A
+    // position in the clause is the function's parameter at that position only
+    // while the two lists agree, so a probe whose list does not is refused:
+    // reading its clause could bind a parameter to another one, or `result` to
+    // a parameter.
     const auto restates_parameters = [&](std::string_view probe_name, const source::SourceLocation& written,
                                          bool states_result, const std::string& subject) {
         const clangbridge::Function* probe = proposition_function(request, probe_name, written, arguments);

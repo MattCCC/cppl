@@ -227,9 +227,10 @@ done
 equivalent path_splits $'1 1 1 1 0 5 1 3 1 1 1 1\n1' \
     'Function contracts proven: +15' 'Omitted cases proven: +27' 'Impossible paths proven: +1'
 
-# SPEC.md R.16: a default argument a verified call relies on is verified where
-# the call stands, and stays in the program exactly as written, on a function,
-# a member function and a template alike.
+# SPEC: CONTRACTCOMP-002, EDGECASE-038, ERASE-001
+# A default argument a verified call relies on is verified where the call
+# stands (SPEC.md R.16), and stays in the program exactly as written, on a
+# function, a member function and a template alike.
 equivalent default_arguments $'take() == 50\nnarrow() == 7\ndoubled() == 8\nsum(10) == 13\nneed() == 70\nnested() == 7\nbumped(3) == 5\nwalk() == 0\nbelow(3) == 3\npicked() == 7\ncaller() == 148\nunsigned_caller() == 22\nmember_caller(6) == 10' \
     'Function contracts proven: +16' 'Call preconditions proven: +7' 'Recursive call measures proven: +1'
 

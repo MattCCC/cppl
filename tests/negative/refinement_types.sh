@@ -890,6 +890,7 @@ verified unsigned read_index() ensures (result < 4u) {
 int main() { return read_index() == 3u ? 0 : 1; }
 CPP
 
+# SPEC: CONTRACTCOMP-002, EDGECASE-038, REFINEOBL-002
 # A refined parameter's default enters the type where a verified call relies on
 # it, and owes the predicate there exactly as the value written out would
 # (SPEC.md R.16). The declaration alone evaluates nothing and owes nothing.

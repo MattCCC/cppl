@@ -289,7 +289,7 @@ std::string spelled_indices(const TokenStream& stream, const RefinementType& ref
 }
 
 // A verified function's parameter list as its probes declare it: the list as
-// written, without its default arguments (SPEC.md R.16).
+// written, without its default arguments (SPEC.md R.16, CONTRACTCOMP-002).
 //
 // A default argument is a value a call relying on it evaluates at the call, so
 // it belongs to the call, never to the contract: a probe states the clause over

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Default arguments of verified functions (SPEC.md R.16).
 #
+# SPEC: CONTRACTCOMP-002, EDGECASE-038, TUBOUND-003, TUBOUND-004, ERASE-001
+# TRUST.md TCB-CALL-003, TCB-CALL-005
+#
 # A call relying on a default argument is verified with the default evaluated
 # where the call stands, as if written there: the callee's contract is
 # instantiated at its value, and its precondition, its refined parameter, the

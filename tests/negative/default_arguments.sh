@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Default arguments of verified functions that must be refused (SPEC.md R.16).
 #
+# SPEC: CONTRACTCOMP-002, EDGECASE-038, TUBOUND-003
+# TRUST.md TCB-CALL-003, TCB-CALL-005
+#
 # A call relying on a default argument evaluates it where the call stands, so
 # whatever the default owes is owed there, exactly as for the value written
 # out: the callee's precondition, its refined parameter, the precondition of a

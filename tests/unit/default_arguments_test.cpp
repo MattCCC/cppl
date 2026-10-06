@@ -10,6 +10,9 @@
 // only from a probe whose parameters are the function's own, `result` after
 // them for a postcondition, since a position in the clause names the
 // function's parameter at that position only while the two lists agree.
+//
+// SPEC: CONTRACTCOMP-002, EDGECASE-038
+// TRUST.md TCB-CORR-004, TCB-CALL-001
 
 #include "cppl/clang/ast.hpp"
 #include "cppl/diagnostics/diagnostic.hpp"
