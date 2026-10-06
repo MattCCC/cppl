@@ -204,6 +204,18 @@ probe-parameters-without-defaults	compiler/frontend/src/projection.cpp	} else if
 probe-default-not-delimited	compiler/frontend/src/projection.cpp	if (angles != 0 && !parameters.ambiguous.has_value()) {	if (false && angles != 0 && !parameters.ambiguous.has_value()) {	^unit_default_arguments_test$|^negative_default_arguments$
 contract-probe-parameter-count	compiler/elaboration/src/elaborate.cpp	bool agrees = probe->parameters.size() ==	bool agrees = true || probe->parameters.size() ==	^unit_default_arguments_test$
 contract-probe-parameter-types	compiler/elaboration/src/elaborate.cpp	const clangbridge::Type& stated = probe->parameters[index].type;	const clangbridge::Type& stated = function.parameters[index].type;	^unit_default_arguments_test$
+range-for-initialization-refused	clang/src/bridge.cpp	if (range_for_initializes(statement)) {	if (false && range_for_initializes(statement)) {	^negative_range_for$
+range-for-invariant-before-variable	clang/src/bridge.cpp	named_declarations(initializer).contains(clang_hashCursor(header.range->variable))) {	false) {	^negative_range_for$
+range-for-range-is-a-name	clang/src/bridge.cpp	if (clang_getCursorKind(named) != CXCursor_DeclRefExpr) {	if (false) {	^negative_range_for$|^negative_sequence_boundaries$|^negative_verified_loops$
+range-for-unmodeled-range-refused	clang/src/bridge.cpp	return reject("the range of the range-based for at " + where + " is '" + range.range + "' of type '" +	(void)std::string("the range of the range-based for at " + where + " is '" + range.range + "' of type '" +	^negative_range_for$
+range-for-aggregate-elements-refused	clang/src/bridge.cpp	held.kind != CXType_Invalid && elements.kind != TypeKind::Int && elements.kind != TypeKind::Bool) {	false) {	^negative_range_for$
+range-for-span-parameter-reference	clang/src/bridge.cpp	if (range.reference && range.sequence && !range.region.root.has_value()) {	if (false) {	^negative_range_for$
+range-for-storage-kept	clang/src/bridge.cpp	locals[root].version == frame.head[root].version) {	true) {	^negative_range_for$|^negative_sequence_attacks$
+range-for-element-alias-carried	clang/src/bridge.cpp	        if (!range.writable) {	        if (true) {	^e2e_range_for$
+range-for-generated-measure	clang/src/bridge.cpp	measures.push_back(range_measure(*header.range, frame.head));	(void)frame;	^e2e_range_for$
+range-for-condition-bounds-position	clang/src/bridge.cpp	below.op = BinaryOp::Less;	below.op = BinaryOp::LessEqual;	^e2e_range_for$
+operator-parameters-after-operator	compiler/frontend/src/recognizer.cpp	return at + 2;	return name + 1;	^unit_recognizer_test$|^negative_verified_methods$
+operator-conversion-function-refused	compiler/frontend/src/recognizer.cpp	if (operator_function && conversion_function(tokens, *name)) {	if (false && conversion_function(tokens, *name)) {	^unit_recognizer_test$
 call-element-beside-reallocatable-container	clang/src/bridge.cpp	(container.storage != owner && !may_alias(holder, state[owner]))) {	true || (container.storage != owner && !may_alias(holder, state[owner]))) {	^negative_sequence_boundaries$
 deref-symbolic-index-overlaps	clang/src/bridge.cpp	if (other.has_symbolic_step() || target.has_symbolic_step()) {	if (false && (other.has_symbolic_step() || target.has_symbolic_step())) {	^negative_memory_capabilities$
 record-user-destructor-unmodeled	clang/src/bridge.cpp	                if (has_user_provided_destructor(definition)) {	                if (false && has_user_provided_destructor(definition)) {	^negative_verified_methods$
@@ -213,7 +225,7 @@ template-argument-refinement-use-site	clang/src/bridge.cpp	collector.refused_arg
 template-argument-refinement-verified-body	clang/src/bridge.cpp	found.refused_arguments.emplace_back(refined_template_argument_refusal(*refined), cursor);	(void)refined;	^negative_refinement_types$
 template-argument-refinement-through-alias	clang/src/bridge.cpp	if (auto hidden = refined_template_argument(named, selection, depth + 1)) {	if (auto hidden = std::optional<RefinedTemplateArgument>{}) {	^negative_refinement_types$
 unsafe-block-new-generation	clang/src/bridge.cpp	new_generation(state[index], "the unsafe block at " + at);	(void)state[index];	^negative_containers$|^negative_sequence_attacks$
-container-span-capability	clang/src/bridge.cpp	if (region->parameter.has_value() && !granted(*region->parameter, required)) {	if (false && region->parameter.has_value() && !granted(*region->parameter, required)) {	^negative_containers$
+container-span-capability	clang/src/bridge.cpp	if (!region.parameter.has_value() || granted(*region.parameter, required)) {	if (true) {	^negative_containers$
 container-call-disjointness	clang/src/bridge.cpp	if (other == root || may_alias(state[other], state[root])) {	if (false && (other == root || may_alias(state[other], state[root]))) {	^negative_containers$
 span-copy-hands-storage	clang/src/bridge.cpp	return handed_storage(call->arguments.front(), state);	return std::nullopt;	^negative_sequence_boundaries$
 container-refined-writable-view	clang/src/bridge.cpp	if (!state[root].sequence->element.refinements.empty()) {	if (false && !state[root].sequence->element.refinements.empty()) {	^negative_containers$
