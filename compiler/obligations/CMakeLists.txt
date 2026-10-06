@@ -12,7 +12,8 @@ add_library(cppl_obligations STATIC
     src/definedness.cpp
     src/library.cpp
     src/status.cpp
-    src/trust.cpp)
+    src/trust.cpp
+    src/walks.cpp)
 
 target_include_directories(cppl_obligations PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)

@@ -26,6 +26,7 @@
 #include "cppl/vir/types.hpp"
 #include "definedness.hpp"
 #include "lowering.hpp"
+#include "walks.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -48,6 +49,7 @@ namespace cppl::obligations {
 namespace {
 
 using detail::arithmetic_fact;
+using detail::collect_callees;
 using detail::Failure;
 using detail::Standing;
 using detail::Unestablished;
@@ -783,53 +785,6 @@ std::optional<kernel::Proposition> quantify_over(const Program& program, const s
         body = kernel::Proposition::for_all(*binder, std::move(body));
     }
     return body;
-}
-
-void collect_callees(const vir::Expr& expr, std::set<std::string>& callees) {
-    if (const auto* call = std::get_if<vir::Call>(&expr.node)) {
-        callees.insert(call->callee.usr);
-        for (const vir::Expr& argument : call->arguments) {
-            collect_callees(argument, callees);
-        }
-        return;
-    }
-    if (const auto* binary = std::get_if<vir::Binary>(&expr.node)) {
-        for (const vir::Expr& operand : binary->operands) {
-            collect_callees(operand, callees);
-        }
-    }
-    if (const auto* branch = std::get_if<vir::Conditional>(&expr.node)) {
-        for (const auto& operand : branch->operands)
-            collect_callees(operand, callees);
-    }
-    if (const auto* bound = std::get_if<vir::PlaceVersion>(&expr.node)) {
-        for (const auto& operand : bound->operands)
-            collect_callees(operand, callees);
-    }
-    if (const auto* negation = std::get_if<vir::Negation>(&expr.node)) {
-        for (const auto& operand : negation->operands)
-            collect_callees(operand, callees);
-    }
-    if (const auto* minus = std::get_if<vir::Minus>(&expr.node)) {
-        for (const auto& operand : minus->operands)
-            collect_callees(operand, callees);
-    }
-    if (const auto* conversion = std::get_if<vir::Conversion>(&expr.node)) {
-        for (const auto& operand : conversion->operands)
-            collect_callees(operand, callees);
-    }
-    if (const auto* aggregate = std::get_if<vir::Aggregate>(&expr.node)) {
-        for (const auto& operand : aggregate->operands)
-            collect_callees(operand, callees);
-    }
-    if (const auto* loop = std::get_if<vir::Loop>(&expr.node)) {
-        for (const auto& operand : loop->operands)
-            collect_callees(operand, callees);
-    }
-    if (const auto* next = std::get_if<vir::Iterate>(&expr.node)) {
-        for (const auto& operand : next->operands)
-            collect_callees(operand, callees);
-    }
 }
 
 void encode(source::Hasher& hasher, const kernel::Type& type);

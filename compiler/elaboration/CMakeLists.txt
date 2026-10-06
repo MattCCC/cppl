@@ -1,4 +1,5 @@
 add_library(cppl_elaboration STATIC
+    src/body_walks.cpp
     src/elaborate.cpp)
 
 target_include_directories(cppl_elaboration PUBLIC
