@@ -76,7 +76,8 @@ implementation:
     - vir/src/vir.cpp
   obligations:
     - compiler/obligations/include/cppl/obligations/contracts.hpp
-    - compiler/obligations/src/contracts.cpp
+    - compiler/obligations/src/contracts_conditions.cpp
+    - compiler/obligations/src/contracts_evaluation.cpp
     - compiler/obligations/src/generate.cpp
     - compiler/obligations/include/cppl/obligations/trust.hpp
     - compiler/obligations/src/trust.cpp

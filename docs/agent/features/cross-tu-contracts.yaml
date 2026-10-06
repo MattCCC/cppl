@@ -88,6 +88,7 @@ implementation:
     - compiler/obligations/src/interface.cpp
     - compiler/obligations/include/cppl/obligations/contracts.hpp
     - compiler/obligations/src/contracts.cpp
+    - compiler/obligations/src/contracts_termination.cpp
     - compiler/obligations/include/cppl/obligations/trust.hpp
     - compiler/obligations/src/trust.cpp
   automation:

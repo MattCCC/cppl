@@ -55,7 +55,7 @@ implementation:
     - compiler/elaboration/src/elaborate.cpp
   obligations:
     - compiler/obligations/src/generate.cpp
-    - compiler/obligations/src/contracts.cpp
+    - compiler/obligations/src/contracts_build.cpp
   analysis:
     - compiler/analysis/src/analyze.cpp
   automation:

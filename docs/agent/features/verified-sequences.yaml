@@ -95,7 +95,7 @@ implementation:
     - compiler/obligations/include/cppl/obligations/obligation.hpp
     - compiler/obligations/src/library.hpp
     - compiler/obligations/src/library.cpp
-    - compiler/obligations/src/contracts.cpp
+    - compiler/obligations/src/contracts_evaluation.cpp
     - compiler/obligations/src/generate.cpp
     - compiler/obligations/src/status.cpp
     - compiler/obligations/include/cppl/obligations/trust.hpp

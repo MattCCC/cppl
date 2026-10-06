@@ -66,7 +66,7 @@ proof-instantiation-variable-template	clang/src/proof_instantiation_hazards.cpp	
 bridge-refusal-category	compiler/driver/src/pipeline.cpp	return diagnostics::Category::UnsupportedSemantics;	return diagnostics::Category::CppSemantic;	^(negative_diagnostic_categories|negative_proof_instantiation|lsp_server_test)$
 partial-contract-warned	compiler/driver/src/pipeline.cpp	warn_partial_contracts(program, elaborated.module, outcome.counters.closure, engine);	(void)&warn_partial_contracts;	^(e2e_partial_correctness|e2e_erasure_directives|lsp_server_test)$
 partial-warning-only-partial	compiler/driver/src/pipeline.cpp	if (claim.kind != obligations::ClaimKind::Contract || claim.total) {	if (claim.kind != obligations::ClaimKind::Contract) {	^e2e_partial_correctness$
-partial-callees-recorded	compiler/obligations/src/contracts.cpp	if (callee != index && !total[callee]) {	if (false && callee != index && !total[callee]) {	^(e2e_partial_correctness|e2e_cross_tu)$
+partial-callees-recorded	compiler/obligations/src/contracts_termination.cpp	if (callee != index && !total[callee]) {	if (false && callee != index && !total[callee]) {	^(e2e_partial_correctness|e2e_cross_tu)$
 partial-warning-not-for-refused	compiler/driver/src/pipeline.cpp	!function->contract->measures.empty()) {	false) {	^e2e_partial_correctness$
 init-statement-detected	clang/src/statements.cpp	} else if (spelled == ";" && nesting == 1) {	} else if (false) {	^(negative_verified_paths|negative_switch_statements|e2e_if_statements)$
 if-init-runs	clang/src/bridge.cpp	prefix.push_back(parts[0]);	(void)0;	^(e2e_if_statements|negative_if_statements)$
@@ -133,9 +133,9 @@ mem-initializers-hold-no-clause	compiler/frontend/src/recognizer.cpp	if (nesting
 trailing-return-names-its-type	compiler/frontend/src/recognizer.cpp	if (nesting == 0 && !awaiting_return_type && !tokens[cursor - 1].is_punctuator("::") &&	if (nesting == 0 && (true || !awaiting_return_type) && !tokens[cursor - 1].is_punctuator("::") &&	^unit_recognizer_test$|^conformance_words_as_cpp$
 qualified-clause-word-is-a-name	compiler/frontend/src/recognizer.cpp	!tokens[cursor - 1].is_punctuator("::") &&	(true || !tokens[cursor - 1].is_punctuator("::")) &&	^unit_recognizer_test$|^conformance_words_as_cpp$
 statement-keyword-is-no-declarator	compiler/frontend/src/recognizer.cpp	!is_type_keyword(tokens[cursor - 1]) && !is_one_of(tokens[cursor - 1], kNotDeclaratorNames)) {	!is_type_keyword(tokens[cursor - 1]) && (true || !is_one_of(tokens[cursor - 1], kNotDeclaratorNames))) {	^unit_recognizer_test$|^conformance_words_as_cpp$
-call-capability-kind	compiler/obligations/src/contracts.cpp	return candidate.kind == required.kind &&	return true &&	^negative_memory_capabilities$
-call-capability-pointer	compiler/obligations/src/contracts.cpp	candidate.place.root.id == passed->parameter;	(true || candidate.place.root.id == passed->parameter);	^negative_memory_capabilities$
-call-capability-extent	compiler/obligations/src/contracts.cpp	if (required.extent.empty() && !held_sized && !region.has_value()) {	if (true || (required.extent.empty() && !held_sized && !region.has_value())) {	^negative_memory_capabilities$
+call-capability-kind	compiler/obligations/src/contracts_evaluation.cpp	return candidate.kind == required.kind &&	return true &&	^negative_memory_capabilities$
+call-capability-pointer	compiler/obligations/src/contracts_evaluation.cpp	candidate.place.root.id == passed->parameter;	(true || candidate.place.root.id == passed->parameter);	^negative_memory_capabilities$
+call-capability-extent	compiler/obligations/src/contracts_evaluation.cpp	if (required.extent.empty() && !held_sized && !region.has_value()) {	if (true || (required.extent.empty() && !held_sized && !region.has_value())) {	^negative_memory_capabilities$
 memory-assumption-trusted-only	compiler/elaboration/src/elaborate.cpp	    if (!declaration.trusted) {	    if (false && !declaration.trusted) {	^negative_trusted_dependencies$
 verified-specifier-span	compiler/frontend/src/recognizer.cpp	verified.keyword = tokens[index].span;	verified.keyword = source::ByteSpan{tokens[specifiers_start(tokens, index)].span.offset, tokens[index].span.end() - tokens[specifiers_start(tokens, index)].span.offset};	^e2e_erasure_equivalence$
 unsafe-block-havoc	clang/src/bridge.cpp	const std::vector<std::size_t> reached = unsafe_reach(state);	const std::vector<std::size_t> reached;	^negative_unsafe_boundary$
@@ -143,7 +143,7 @@ unsafe-names-escape	clang/src/bridge.cpp	lowering.escaped.insert(named);	(void)n
 unsafe-revokes-capabilities	clang/src/bridge.cpp	revoked_by = where;	(void)where;	^negative_unsafe_boundary$
 capability-rechecked-on-reuse	clang/src/bridge.cpp	if (!held) {	if (false && !held) {	^negative_unsafe_boundary$|^negative_memory_capabilities$
 capability-reuse-callable-position	clang/src/bridge.cpp	granted(signature.position(static_cast<std::size_t>(at - parameters.begin())), required);	granted(static_cast<std::uint32_t>(at - parameters.begin()), required);	^e2e_memory_capabilities$
-unsafe-revokes-call-capabilities	compiler/obligations/src/contracts.cpp	scope.unsafe = location;	(void)location;	^negative_unsafe_boundary$
+unsafe-revokes-call-capabilities	compiler/obligations/src/contracts_conditions.cpp	scope.unsafe = location;	(void)location;	^negative_unsafe_boundary$
 unsafe-control-stays-in-block	clang/src/bridge.cpp	left = leaves_block(block, 0, 0, 0)	left = (false ? leaves_block(block, 0, 0, 0) : std::optional<std::string>{})	^negative_unsafe_boundary$
 unsafe-call-outside-block	compiler/elaboration/src/elaborate.cpp	if (unsafe_call != callees.end()) {	if (false && unsafe_call != callees.end()) {	^negative_unsafe_boundary$
 unsafe-pure-refused	compiler/elaboration/src/elaborate.cpp	candidate.pure && contains_unsafe_region(	false && contains_unsafe_region(	^negative_unsafe_boundary$
@@ -245,10 +245,10 @@ container-refined-std-array	clang/src/types.cpp	if (!stated || !stated->empty())
 container-refined-span-local	clang/src/bridge.cpp	!written || !written->refinements.empty()) {	false) {	^negative_containers$
 capability-const-writable	clang/src/bridge.cpp	if (capability.kind == Capability::Kind::Writable && clang_isConstQualifiedType(element) != 0)	if (false && capability.kind == Capability::Kind::Writable && clang_isConstQualifiedType(element) != 0)	^negative_containers$
 container-pop-precondition	compiler/obligations/src/library.cpp	summary.preconditions.push_back(	(void)(	^negative_containers$
-validation-fact-conditional	compiler/obligations/src/contracts.cpp	kernel::Proposition::implication(kernel::predicate(result, true), std::move(holds)),	std::move(holds),	^negative_runtime_validation$
-validation-fact-polarity	compiler/obligations/src/contracts.cpp	kernel::Proposition::implication(kernel::predicate(result, true), std::move(holds)),	kernel::Proposition::implication(kernel::predicate(result, false), std::move(holds)),	^negative_runtime_validation$|^e2e_runtime_validation$
+validation-fact-conditional	compiler/obligations/src/contracts_evaluation.cpp	kernel::Proposition::implication(kernel::predicate(result, true), std::move(holds)),	std::move(holds),	^negative_runtime_validation$
+validation-fact-polarity	compiler/obligations/src/contracts_evaluation.cpp	kernel::Proposition::implication(kernel::predicate(result, true), std::move(holds)),	kernel::Proposition::implication(kernel::predicate(result, false), std::move(holds)),	^negative_runtime_validation$|^e2e_runtime_validation$
 validation-site-seeded	compiler/obligations/src/trust.cpp	for (const ValidationSite& found : contract.validations) {	for (const ValidationSite& found : std::vector<ValidationSite>{}) {	^e2e_runtime_validation$|^unit_trust_closure_test$
-validation-undefined-predicate	compiler/obligations/src/contracts.cpp	if (stated->unvalidatable.has_value()) {	if (false && stated->unvalidatable.has_value()) {	^negative_runtime_validation$
+validation-undefined-predicate	compiler/obligations/src/contracts_evaluation.cpp	if (stated->unvalidatable.has_value()) {	if (false && stated->unvalidatable.has_value()) {	^negative_runtime_validation$
 validation-loop-clause	compiler/frontend/src/recognizer.cpp	if (in_loop_clause(keyword.span.offset)) {	if (false && in_loop_clause(keyword.span.offset)) {	^negative_runtime_validation$
 trust-proof-uses-reported	compiler/obligations/src/trust.cpp	proofs_used(written_uses(obligation), closure.claims.back().uses);	(void)written_uses(obligation);	^e2e_trust_report_json$|^unit_trust_closure_test$
 trust-contract-uses-reported	compiler/obligations/src/trust.cpp	std::ranges::move(called, std::back_inserter(closure.claims.back().uses));	(void)called;	^e2e_trust_report_json$|^unit_trust_closure_test$
@@ -268,16 +268,16 @@ ghost-initializer-pure	compiler/elaboration/src/elaborate.cpp	            if (!p
 ghost-scalar-type	clang/src/bridge.cpp	        if (!ghost_scalar(type)) {	        if (false && !ghost_scalar(type)) {	^negative_ghost_state$
 ghost-erased-whole	compiler/erasure/src/erase.cpp	        spans.push_back(ghost.erased);	        spans.push_back(ghost.keyword);	^e2e_ghost_state$
 generated-prefix-reserved	compiler/driver/src/pipeline.cpp	token.text.starts_with(projection_options.generated_prefix)	false && token.text.starts_with(projection_options.generated_prefix)	^negative_ghost_state$
-recursive-call-descent-owed	compiler/obligations/src/contracts.cpp	            if (std::ranges::find(recursion_, found->second) != recursion_.end()) {	            if (false && std::ranges::find(recursion_, found->second) != recursion_.end()) {	^negative_termination$
+recursive-call-descent-owed	compiler/obligations/src/contracts_evaluation.cpp	        if (std::ranges::find(recursion_, found->second) != recursion_.end()) {	        if (false && std::ranges::find(recursion_, found->second) != recursion_.end()) {	^negative_termination$
 recursion-needs-measure	compiler/obligations/src/contracts.cpp	            if (function.contract->measures.empty()) {	            if (false && function.contract->measures.empty()) {	^negative_termination$
 recursion-group-established-whole	compiler/automation/src/composition.cpp	} else if (std::ranges::all_of(group, proven_whole)) {	} else if (proven_whole(condition->second.contract)) {	^negative_termination$
-totality-unmeasured-loop	compiler/obligations/src/contracts.cpp	total[index] = contract.unmeasured_loops.empty() && contract.unsafe_regions.empty();	total[index] = true;	^negative_termination$
-totality-through-callees	compiler/obligations/src/contracts.cpp	            if (total[index] &&	            if (false && total[index] &&	^negative_termination$
-lexicographic-first-stays	compiler/obligations/src/contracts.cpp	compare(kernel::PrimOp::Equal, index)	compare(kernel::PrimOp::GreaterEqual, index)	^negative_refused_declarations$|^negative_termination$
+totality-unmeasured-loop	compiler/obligations/src/contracts_termination.cpp	total[index] = contract.unmeasured_loops.empty() && contract.unsafe_regions.empty();	total[index] = true;	^negative_termination$
+totality-through-callees	compiler/obligations/src/contracts_termination.cpp	            if (total[index] &&	            if (false && total[index] &&	^negative_termination$
+lexicographic-first-stays	compiler/obligations/src/contracts_termination.cpp	compare(kernel::PrimOp::Equal, index)	compare(kernel::PrimOp::GreaterEqual, index)	^negative_refused_declarations$|^negative_termination$
 do-loop-exit-decided	clang/src/bridge.cpp	    if (!frame.condition_last) {	    if (true) {	^negative_termination$
 xtu-statement-compared	compiler/obligations/src/contracts.cpp	if (!(*plan.interface_statement == recorded->entry.statement)) {	if (false && !(*plan.interface_statement == recorded->entry.statement)) {	^negative_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-imported-established	compiler/automation/src/composition.cpp	    if (function.imported.has_value()) {	    if (function.imported.has_value() && false) {	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
-xtu-imported-totality	compiler/obligations/src/contracts.cpp	total[index] = contract.total;	total[index] = true;	^negative_cross_tu$|^unit_cross_unit_contracts_test$
+xtu-imported-totality	compiler/obligations/src/contracts_termination.cpp	total[index] = contract.total;	total[index] = true;	^negative_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-partial-record-refused-with-measure	compiler/obligations/src/contracts.cpp	if (!total && function.contract.has_value() && !function.contract->measures.empty()) {	if (false && !total && function.contract.has_value() && !function.contract->measures.empty()) {	^unit_cross_unit_contracts_test$
 xtu-recursion-refused	compiler/obligations/src/contracts.cpp	if (through_record && cyclic) {	if (through_record && cyclic && component.empty()) {	^unit_cross_unit_contracts_test$
 xtu-recursion-through-records	compiler/obligations/src/contracts.cpp	const bool through_record =	const bool through_record = false &&	^unit_cross_unit_contracts_test$
@@ -289,7 +289,7 @@ xtu-models-known	compiler/driver/src/interface_io.cpp	unusable = unknown_model(*
 xtu-models-known-by-name	compiler/obligations/src/interface.cpp	known.identity == model.identity && known.name == model.name	known.identity == model.identity	^negative_cross_tu$
 xtu-result-identity-dependencies	compiler/artifact/src/interface.cpp	{"depends", unique(entry.depends, dependency_line)}	{"depends", std::vector<std::string>{}}	^unit_interface_test$
 xtu-internal-linkage-not-imported	compiler/elaboration/src/elaborate.cpp	converted.defined_elsewhere = candidate.contract != nullptr && function->external_linkage;	converted.defined_elsewhere = candidate.contract != nullptr;	^negative_cross_tu$
-xtu-internal-linkage-not-exported	compiler/obligations/src/contracts.cpp	    if (function.external_linkage) {	    if (true) {	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
+xtu-internal-linkage-not-exported	compiler/obligations/src/contracts_build.cpp	    if (function.external_linkage) {	    if (true) {	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-restatements-agree	compiler/obligations/src/contracts.cpp	if (!restatements_agree(function, pure_definitions, program, engine)) {	if (false && !restatements_agree(function, pure_definitions, program, engine)) {	^negative_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-trusted-through-import	compiler/obligations/src/trust.cpp	return !claim.premises.empty() || std::ranges::any_of(claim.imported	return !claim.premises.empty() || std::ranges::any_of(std::vector<ImportedDependency>{}	^e2e_cross_tu$|^e2e_integration_ledger$
 xtu-unsafe-through-import	compiler/obligations/src/trust.cpp	return !claim.unsafe.empty() || std::ranges::any_of(claim.imported	return !claim.unsafe.empty() || std::ranges::any_of(std::vector<ImportedDependency>{}	^e2e_cross_tu$|^e2e_integration_ledger$|^e2e_cross_feature$
@@ -359,7 +359,7 @@ unsafe-member-write-rooted	clang/src/bridge.cpp	return access.has_value() && !ac
 alias-write-charged	clang/src/bridge.cpp	        require(locals[index].type);	        (void)index;	^negative_verified_methods$
 alias-write-validity-from-prior	clang/src/bridge.cpp	const bool valid = valid_versions.contains(locals[index].version);	const bool valid = true;	^negative_verified_methods$
 return-charges-unestablished	clang/src/bridge.cpp	if (!valid_versions.contains(locals[local].version) && carries_refinement(locals[local].type)) {	if (false) {	^negative_verified_methods$|^negative_cross_feature$
-call-effect-refinement-charged	compiler/obligations/src/contracts.cpp	const auto required = membership(program_, effect.declared, arguments[effect.argument]);	const auto required = membership(program_, effect.declared.erased(), arguments[effect.argument]);	^negative_verified_methods$|^negative_cross_feature$
+call-effect-refinement-charged	compiler/obligations/src/contracts_evaluation.cpp	const auto required = membership(program_, effect.declared, arguments[effect.argument]);	const auto required = membership(program_, effect.declared.erased(), arguments[effect.argument]);	^negative_verified_methods$|^negative_cross_feature$
 unsafe-reach-counted-valid	clang/src/bridge.cpp	new_generation(state[index], "the unsafe block at " + at);	new_generation(state[index], "the unsafe block at " + at); valid_versions.insert(state[index].version);	^negative_verified_methods$|^negative_cross_feature$
 loop-head-counted-valid	clang/src/bridge.cpp	"the loop at " + describe_location(header.statement) + ", which may change it");	"the loop at " + describe_location(header.statement) + ", which may change it"); valid_versions.insert(frame.head[index].version);	^negative_cross_feature$
 read-only-position-kept-apart	clang/src/bridge.cpp	if (!position.writable && !reached_by_a_write(position.storage)) {	if (!position.writable && (true || !reached_by_a_write(position.storage))) {	^negative_verified_methods$|^e2e_verified_methods$
@@ -380,8 +380,8 @@ first-order-split-offered	compiler/automation/src/arithmetic.cpp	return decided_
 first-order-split-only-orders	compiler/automation/src/arithmetic.cpp	return decided_by_order(sides) || decided_by_enumeration(sides) || decided_by_first_order(sides);	return decided_by_order(sides) || decided_by_enumeration(sides) || decide(*sides.front()).has_value();	^(e2e_disjunction|negative_conditions)$
 selection-in-disjunctive-goal	compiler/automation/src/arithmetic.cpp	return found ? found : selection_in(*disjunction->right);	return std::nullopt;	^e2e_conditions$
 premise-selection-split	compiler/automation/src/arithmetic.cpp	if (premises_[index - 1].selected) {	if (true) {	^e2e_conditions$
-selection-route-reads-condition	compiler/obligations/src/contracts.cpp	self(choice->operands[0], true, self);	self(choice->operands[0], inside, self);	^e2e_conditions$
-definedness-unsequenced-call	compiler/obligations/src/contracts.cpp	if (!sequenced_before(site, *post.call)) {	if (false && !sequenced_before(site, *post.call)) {	^negative_signed_arithmetic$
+selection-route-reads-condition	compiler/obligations/src/contracts_routes.cpp	self(choice->operands[0], true, self);	self(choice->operands[0], inside, self);	^e2e_conditions$
+definedness-unsequenced-call	compiler/obligations/src/contracts_evaluation.cpp	if (!sequenced_before(site, *post.call)) {	if (false && !sequenced_before(site, *post.call)) {	^negative_signed_arithmetic$
 pure-definedness-refused	compiler/obligations/src/generate.cpp	if (const auto site = detail::first_definedness_site(*function.returned_value)) {	if (const auto site = (false ? detail::first_definedness_site(*function.returned_value) : std::nullopt)) {	^negative_signed_arithmetic$
 law-argument-definedness	compiler/obligations/src/generate.cpp	if (const auto sites = detail::definedness_sites(argument); !sites.empty()) {	if (const auto sites = detail::definedness_sites(argument); false && !sites.empty()) {	^negative_signed_arithmetic$
 product-range-corners	kernel/src/linear.cpp	!multiply(a, b, product) || product < lowest(primitive.type) || product > highest(primitive.type)	!multiply(a, b, product)	^kernel_definedness_test$|^unit_definedness_arithmetic_test$|^negative_signed_arithmetic$
@@ -390,7 +390,7 @@ conversion-identity-widening-only	kernel/src/linear.cpp	if (lowest(from) >= lowe
 truncating-remainder-magnitude	kernel/src/linear.cpp	const Wide largest = (divisor < 0 ? -divisor : divisor) - 1;	const Wide largest = (divisor < 0 ? -divisor : divisor) - 2;	^kernel_definedness_test$|^unit_definedness_arithmetic_test$
 remainder-sign-of-dividend	kernel/src/linear.cpp	return either(negated(*dividend), 0, remainder, 0);	return either(negated(*dividend), 0, remainder, 1);	^kernel_definedness_test$|^unit_definedness_arithmetic_test$
 representability-fails-outside	kernel/src/linear.cpp	return holds ? bound(**exact, primitive->type) : outside(**exact, primitive->type);	return holds ? bound(**exact, primitive->type) : (false ? outside(**exact, primitive->type) : bound(**exact, primitive->type));	^kernel_definedness_test$|^unit_definedness_arithmetic_test$
-definedness-not-self-supposed	compiler/obligations/src/contracts.cpp	emit(before, Origin::DefinedBehavior, function_.qualified_name, site.operation->provenance.range,	before.events.emplace_back(*condition); emit(before, Origin::DefinedBehavior, function_.qualified_name, site.operation->provenance.range,	^negative_signed_arithmetic$
+definedness-not-self-supposed	compiler/obligations/src/contracts_evaluation.cpp	emit(before, Origin::DefinedBehavior, function_.qualified_name, site.operation->provenance.range,	before.events.emplace_back(*condition); emit(before, Origin::DefinedBehavior, function_.qualified_name, site.operation->provenance.range,	^negative_signed_arithmetic$
 bit-field-read-refused	clang/src/bridge.cpp	if (clang_getFieldDeclBitWidth(field) >= 0) {	if (false && clang_getFieldDeclBitWidth(field) >= 0) {	^negative_signed_arithmetic$
 pointer-call-havocs-aliases	clang/src/bridge.cpp	for (const std::size_t reached : invalidate_pointee_aliases(state, handed, invalidated)) {	for (const std::size_t reached : (false ? invalidate_pointee_aliases(state, handed, invalidated) : std::vector<std::size_t>{})) {	^negative_verified_storage$
 pointer-call-havoc-without-reference-writes	clang/src/bridge.cpp	        havoc_pointees({});	        (void)0;	^negative_verified_storage$
@@ -478,7 +478,7 @@ multiline_file() {
     case "$1" in
         callee-body-linkage|call-precondition-gate) echo "compiler/automation/src/composition.cpp" ;;
         receiver-caller-storage) echo "clang/src/bridge.cpp" ;;
-        post-state-after-returned-call) echo "compiler/obligations/src/contracts.cpp" ;;
+        post-state-after-returned-call) echo "compiler/obligations/src/contracts_conditions.cpp" ;;
         *) echo "kernel/src/check.cpp" ;;
     esac
 }
@@ -552,17 +552,17 @@ multiline_before() {
             printf '%s' '.type = leaf.type,
                                        .external = true,' ;;
         post-state-after-returned-call)
-            printf '%s' '            if (auto evaluated = evaluate(result, scope); !evaluated)
-                return evaluated;
-            std::vector<kernel::Term> arguments;
-            for (std::size_t index = 1; index < completed->operands.size(); ++index) {
-                if (core_type(completed->operands[index].type) != std::optional{plan_.parameters[index - 1]})
-                    return fail("post-state parameter type mismatch", location);
-                auto value = lower(completed->operands[index], scope);
-                if (!value)
-                    return std::unexpected(value.error());
-                arguments.push_back(*value);
-            }' ;;
+            printf '%s' '        if (auto evaluated = evaluate(result, scope); !evaluated)
+            return evaluated;
+        std::vector<kernel::Term> arguments;
+        for (std::size_t index = 1; index < completed->operands.size(); ++index) {
+            if (core_type(completed->operands[index].type) != std::optional{plan_.parameters[index - 1]})
+                return fail("post-state parameter type mismatch", location);
+            auto value = lower(completed->operands[index], scope);
+            if (!value)
+                return std::unexpected(value.error());
+            arguments.push_back(*value);
+        }' ;;
     esac
 }
 
@@ -607,17 +607,17 @@ multiline_after() {
             printf '%s' '.type = leaf.type,
                                        .external = false,' ;;
         post-state-after-returned-call)
-            printf '%s' '            std::vector<kernel::Term> arguments;
-            for (std::size_t index = 1; index < completed->operands.size(); ++index) {
-                if (core_type(completed->operands[index].type) != std::optional{plan_.parameters[index - 1]})
-                    return fail("post-state parameter type mismatch", location);
-                auto value = lower(completed->operands[index], scope);
-                if (!value)
-                    return std::unexpected(value.error());
-                arguments.push_back(*value);
-            }
-            if (auto evaluated = evaluate(result, scope); !evaluated)
-                return evaluated;' ;;
+            printf '%s' '        std::vector<kernel::Term> arguments;
+        for (std::size_t index = 1; index < completed->operands.size(); ++index) {
+            if (core_type(completed->operands[index].type) != std::optional{plan_.parameters[index - 1]})
+                return fail("post-state parameter type mismatch", location);
+            auto value = lower(completed->operands[index], scope);
+            if (!value)
+                return std::unexpected(value.error());
+            arguments.push_back(*value);
+        }
+        if (auto evaluated = evaluate(result, scope); !evaluated)
+            return evaluated;' ;;
     esac
 }
 

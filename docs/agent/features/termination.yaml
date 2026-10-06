@@ -83,6 +83,7 @@ implementation:
     - compiler/obligations/include/cppl/obligations/obligation.hpp
     - compiler/obligations/include/cppl/obligations/contracts.hpp
     - compiler/obligations/src/contracts.cpp
+    - compiler/obligations/src/contracts_termination.cpp
     - compiler/obligations/src/status.cpp
     - compiler/obligations/include/cppl/obligations/trust.hpp
     - compiler/obligations/src/trust.cpp

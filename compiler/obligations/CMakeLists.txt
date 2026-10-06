@@ -7,6 +7,11 @@ add_library(cppl_obligations STATIC
     src/aggregates.cpp
     src/generate.cpp
     src/contracts.cpp
+    src/contracts_build.cpp
+    src/contracts_conditions.cpp
+    src/contracts_evaluation.cpp
+    src/contracts_routes.cpp
+    src/contracts_termination.cpp
     src/contradiction.cpp
     src/interface.cpp
     src/definedness.cpp
