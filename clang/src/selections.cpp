@@ -1,5 +1,6 @@
 #include "cppl/clang/ast.hpp"
 #include "lowering.hpp"
+#include "places.hpp"
 #include "statements.hpp"
 
 #include <clang-c/Index.h>
