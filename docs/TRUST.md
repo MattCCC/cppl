@@ -679,7 +679,11 @@ wrapping primitive and owes `add_fits`, `sub_fits` or `mul_fits` of its operands
 `/` and `%` are stated with `quot` and `rem`, total by definition, and owe a
 nonzero divisor and, signed, that the operands are not the least value and `-1`;
 a conversion is stated with `convert` and owes, for a signed target, that the
-value fits. The wrapping primitive is modular for every operand, so a valid
+value fits. `bool` is the core's one-bit unsigned type, so its conversion to an
+integer type is `convert` of 0 or 1, which no target lacks room for; a
+conversion to `bool` is never stated with `convert`, but as the comparison
+`x != 0` C++ defines it to be (`boolean_conversion` in `clang/src/bridge.cpp`,
+`negative_boolean_conversions`). The wrapping primitive is modular for every operand, so a valid
 signed operation such as `-1 + -1` still reduces at the level of the encoding;
 what the verifier relies on is that, once the obligation is discharged, the
 kernel's linear rule proves the primitive's value, read as a signed value, equal
