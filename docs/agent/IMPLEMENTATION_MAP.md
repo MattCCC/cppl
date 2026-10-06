@@ -420,7 +420,7 @@ Normative sources: `GHOST-001`, `GHOST-002` (SPEC §25), `ERASE-011` (SPEC
 | --- | --- | --- |
 | recognizer | Read a ghost declaration at the start of a statement, decided C++-first once the unit is read; refuse one outside a verified body, as a statement's body, in an unsafe block, or without a type. | `compiler/frontend/src/recognizer.cpp`, `compiler/frontend/include/cppl/frontend/syntax.hpp` |
 | projection | Blank the whole declaration in the runtime text; put a marker declaration before it in the analysis text. | `compiler/frontend/src/projection.cpp` |
-| bridge | Before lowering, decide each ghost's type, storage, value and initializer, record its calls, and refuse every reference by code that runs; lower each ghost as a term binding. | `clang/src/bridge.cpp` (`GhostScan`, `lower_ghost`), `clang/include/cppl/clang/ast.hpp` |
+| bridge | Before lowering, decide each ghost's type, storage, value and initializer, record its calls, and refuse every reference by code that runs; lower each ghost as a term binding. | `clang/src/ghost.cpp` (`GhostScan`, `lower_ghost`), `clang/include/cppl/clang/ast.hpp` |
 | elaboration | Report each ghost error where it stands; refuse a call in an initializer to anything but a pure function. | `compiler/elaboration/src/elaborate.cpp` |
 | erasure | Require the whole declaration to have left the program. | `compiler/erasure/src/erase.cpp` |
 | editors | Color the word once the compile recognized ghost state. | `src/lsp/src/semantic_tokens.cpp`, `src/lsp/src/server.cpp` |
