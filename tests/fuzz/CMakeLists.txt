@@ -78,14 +78,17 @@ function(cppl_add_fuzz_target name)
                      "${work}/corpus"
                      "${corpus}")
     # AddressSanitizer keeps freed memory in its quarantine and its free lists,
-    # so a search's resident size climbs with the inputs it has run, not with
-    # any one of them, until the RSS limit stops a search no input was too
-    # large for. Memory is returned to the system every second and the
-    # quarantine is bounded; a use after free is still caught until 64 MiB of
-    # later frees have passed through it.
+    # and keeps every distinct allocation stack it has seen, so a search's
+    # resident size climbs with the inputs it has run, not with any one of
+    # them, until the RSS limit stops a search no input was too large for.
+    # Memory is returned to the system every second, the quarantine is bounded,
+    # and an allocation records four frames of its stack: a use after free is
+    # still caught until 64 MiB of later frees have passed through it, and the
+    # access that faults is still reported with its whole stack.
     set_tests_properties(${target}_search PROPERTIES
         LABELS "fuzz"
-        ENVIRONMENT "ASAN_OPTIONS=allocator_release_to_os_interval_ms=1000:quarantine_size_mb=64"
+        ENVIRONMENT
+            "ASAN_OPTIONS=allocator_release_to_os_interval_ms=1000:quarantine_size_mb=64:malloc_context_size=4"
         TIMEOUT ${CPPL_TEST_TIMEOUT})
 endfunction()
 
