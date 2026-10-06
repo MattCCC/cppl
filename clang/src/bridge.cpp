@@ -5657,7 +5657,7 @@ struct BodyLowering {
                     // write through it: every element place of the container is
                     // unknown after the call, as one a written view reaches, and
                     // a content invariant could not be kept.
-                    if (!state[root].sequence->element.refinements.empty()) {
+                    if (const auto& held = *state[root].sequence; !held.element.refinements.empty()) {
                         return "the elements of '" + state[root].spelling + "' are handed to '" +
                                qualified_name_of(clang_getCursorReferenced(call)) +
                                "', whose unsafe code may write them, and nothing obliges it to write values "

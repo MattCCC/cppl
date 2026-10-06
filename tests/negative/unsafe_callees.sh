@@ -162,6 +162,24 @@ verified unsigned caller() ensures (true) {
 }
 CPP
 
+# A view of `const` elements over a container of refined elements: the callee's
+# unsafe code could break the content invariant through it.
+refuse refined_elements_by_const_view <<'CPP' "whose unsafe code may write them, and nothing obliges it to write values satisfying 'Small'"
+#include <span>
+#include <vector>
+type Small = unsigned where (self < 10u);
+verified unsigned scribble(std::span<const unsigned> s) ensures (true) {
+    unsafe {
+        const_cast<unsigned&>(s[0]) = 99u;
+    }
+    return 0u;
+}
+verified unsigned caller() ensures (true) {
+    std::vector<Small> v{5u};
+    return scribble(std::span<const unsigned>(v));
+}
+CPP
+
 # A const member function's unsafe code may write the object it is called on.
 refuse const_member_function_object <<'CPP' "return path 'claims_five path 1' does not satisfy its contract"
 struct Counter {
