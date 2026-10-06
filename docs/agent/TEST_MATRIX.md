@@ -344,6 +344,18 @@ Rules: `CONTRACTCOMP-002`, `EDGECASE-038` (`SPEC.md` R.16); `TRUST.md` TCB-CALL-
 | The default is no part of the contract | unit, mutation | covered — the declarations a contract is read from restate the parameters without their defaults, comments and attributes kept, a template's declared before it and defined after it; a default whose end only lookup could tell refused; a clause whose declaration lost a parameter or changed one's type refused (`unit/default_arguments_test.cpp`; `probe-parameters-without-defaults`, `probe-default-not-delimited`, `contract-probe-parameter-count`, `contract-probe-parameter-types`) |
 | Across translation units | positive, negative | covered — a caller relying on its own declaration's default through a contract the defining unit proved without one, linked and run, and its twin whose default is outside the precondition refused (`e2e/default_arguments.sh`, `negative/default_arguments.sh` citing `TUBOUND-003`) |
 
+### range-based for
+
+Rules: `LOOP-001`, `LOOP-004`, `STMT-005`, `STDMODEL-015`, `STDMODEL-019`, `CONSTRUCT-094`; `TRUST.md` 12.1.
+
+| Required case | Category | Status |
+| --- | --- | --- |
+| Every modeled range, verified and erased | positive, erasure | covered — a vector, a string, a span parameter, an array local, a `std::array` local and an array a parameter designates, by value, by reference and by `const` reference, `break`, `continue`, an early return, nested loops and one in a while loop, empty ranges at run time, every loop total by its generated measure, in two standards; the program keeps every loop and is the code of its erasure by hand (`e2e/range_for.sh`, `range_for` in `e2e/erasure_equivalence.sh`, CONSTRUCT-094 in `e2e/safety_subset.sh`; `range-for-element-bound`, `range-for-generated-measure`) |
+| False claims and invariants | negative, adversarial | covered — an off-by-one bound, an element the claim ignores, an invariant an iteration breaks, a written measure that does not descend, each refused beside its accepted twin (`negative/range_for.sh`) |
+| Refinements | negative | covered — a write through the loop variable owing the element type's refinement and a refined loop variable owing its own, each refused beside its twin (`negative/range_for.sh`) |
+| Storage replaced while iterated | negative, adversarial, mutation | covered — a mutator, a call handed the range by mutable reference and an unsafe block reaching it, each refused naming the operation, a stale loop reference refused, and the same mutator followed by `break` verified (`negative/range_for.sh`, `negative/sequence_attacks.sh`; `range-for-storage-kept`, `range-for-element-alias-carried`) |
+| Unmodeled forms refused by name | negative, mutation | covered — a range of another type, a range that is not a name, an initialization statement, aggregate elements, an invariant naming the loop variable, a span read without its capability and a reference to a span parameter's element (`negative/range_for.sh`, `negative/sequence_boundaries.sh`, `negative/verified_loops.sh`; `range-for-initialization-refused`, `range-for-invariant-before-variable`) |
+
 ### cross-feature integration
 
 Rules: the `TUBOUND-*`, `CLASS-*`, `ARITH-*`, `DEFINEDBEHAVIOR-*` and

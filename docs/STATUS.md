@@ -241,7 +241,34 @@ suppose. Calls in the condition and body prove their preconditions where the
 loop makes them. A measure is an unsigned value or a lexicographic list of
 them, and every path that continues to another iteration owes a strictly
 smaller one, compared component by component in the machine's non-wrapping
-order (`SPEC.md` 22.3, 22.5, LOOP-006). Range-based `for` is rejected.
+order (`SPEC.md` 22.3, 22.5, LOOP-006).
+
+A range-based `for` is verified over a `std::vector` or `std::string` the body
+names, a `std::span` local or by-value parameter, an array local or `std::array`
+local, and a built-in array a parameter designates, when its elements are
+integers, enumerations or Booleans (`SPEC.md` LOOP-001, LOOP-004, STMT-005,
+STDMODEL-019, `e2e_range_for`, `negative_range_for`, `range_for` in
+`e2e_erasure_equivalence`). It is the one loop lowering above, iterated by a
+position the body names nowhere: 0 before the loop, compared with the range's
+length at every head, one more at each iteration's end. Each iteration forms
+the element at the position as a subscript would, owing its bound and, over a
+span parameter, its capability; a loop variable by value is initialized from
+it, owing a refinement its type names, and one by reference or `const`
+reference is bound to the element place, so a write through it is a write to
+that element, owing the element type's refinement. Invariants hold at the head,
+before the loop variable is initialized, and one naming it is refused. Without
+a written `decreases`, the loop is given the measure of the positions left,
+`length - position`, which the kernel checks as any loop measure, so such a
+loop is total when that descent is proven; a written measure is checked in its
+place. The position is named by no clause, so an invariant cannot speak of how
+far the loop has come: a claim about a prefix needs an index loop. An iteration
+that may have replaced the range's storage, by a mutator, a call handed it by
+mutable reference or an unsafe block reaching it, and goes on to another
+iteration is refused naming the operation, since C++ leaves that undefined; one
+that leaves by `break` or `return` is verified. A range that is not a name, a
+range of any other type (an iterator pair, a user class with `begin`/`end`, a
+temporary), an initialization statement before the loop variable, a structured
+binding, and an element that is not a scalar are refused by name.
 
 A `switch` is verified with C++'s semantics (C++ [stmt.switch]). Its condition,
 a call in it with its effects included, is evaluated once and bound to one
@@ -1769,7 +1796,7 @@ changed, that shows the construct is modeled rather than passed over. The other
 58 are refused wherever a verified body uses them, each with the diagnostic its
 row pins, and never written to an object: among them floating point, pointers
 other than parameters read under `readable`, shifts and bitwise operators,
-a comma inside an expression, range-based `for`, `goto`, exceptions, dynamic allocation, lambdas,
+a comma inside an expression, `goto`, exceptions, dynamic allocation, lambdas,
 virtual dispatch and virtual functions, casts between class types, unions,
 bit-fields, static and thread-local storage, globals, verified constructors and
 destructors, coroutines, variadic verified templates and modules. The manifest

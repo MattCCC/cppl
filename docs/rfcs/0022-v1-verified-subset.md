@@ -176,7 +176,7 @@ so a construct the specification adds is refused until it is classified.
 | CONSTRUCT-091 | switch statement | verified | -- |
 | CONSTRUCT-092 | while statement | verified | -- |
 | CONSTRUCT-093 | classic for statement | verified | -- |
-| CONSTRUCT-094 | range-for statement | refused | range-based for loops are not modeled |
+| CONSTRUCT-094 | range-for statement | verified | -- |
 | CONSTRUCT-095 | do-while statement | verified | -- |
 | CONSTRUCT-096 | break statement | verified | -- |
 | CONSTRUCT-097 | continue statement | verified | -- |

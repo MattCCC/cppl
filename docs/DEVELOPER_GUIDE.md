@@ -2084,24 +2084,39 @@ verified unsigned one_iteration()
 `invariant (i <= 1u)` would not do: it allows `i == 1u` before a body, after
 which the loop would return 2.
 
-A range-for uses the same location for its clauses, but this implementation
-does not model range-based `for` yet and refuses it:
+A range-for uses the same location for its clauses, after its header. Its
+invariant holds at each iteration's head, before the loop variable is
+initialized, so it does not name the loop variable; and the position the loop
+has reached is named by no clause, so a claim about a prefix needs an index
+loop. Written without `decreases`, a range-for over a vector, a string, a span
+or an array is given the measure of the positions left, which the kernel checks
+like any other, so this loop terminates as written (`SPEC.md` STDMODEL-019):
+
+<!-- cppl-example: verify -->
 
 ```cpp
-verified unsigned visit_three()
-    ensures (result == 0u)
+verified unsigned largest_of_three()
+    ensures (result <= 9u)
 {
-    unsigned values[3] = {0u, 0u, 0u};
+    unsigned values[3] = {4u, 9u, 2u};
+    unsigned largest = 0u;
 
     for (unsigned value : values)
-        invariant (values[0] == 0u)
+        invariant (largest <= 9u)
     {
-        static_cast<void>(value);
+        if (value <= 9u && value > largest) {
+            largest = value;
+        }
     }
 
-    return 0u;
+    return largest;
 }
 ```
+
+An iteration that may replace the range's storage -- a `push_back` on the
+vector it walks, a call taking that vector by mutable reference -- and goes on
+to another iteration is refused naming the operation, since C++ leaves the rest
+of that loop undefined.
 
 Recursive termination uses the same measure syntax, over the function's
 parameters:

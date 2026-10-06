@@ -6898,9 +6898,28 @@ assumption-free. A model is a library-model dependency in the sense of TUBOUND-0
 TUBOUND-006, so a function defined in another translation unit carries the models of its body
 to every claim proven through its recorded contract.
 
-[STDMODEL-019] Iterators, range-based `for`, element access other than `operator[]`, and every
-member of a modeled sequence not named in STDMODEL-011 to STDMODEL-017 are refused in a verified
-body by name. An operation that is refused is never approximated.
+[STDMODEL-019] Iterators, element access other than `operator[]`, and every member of a modeled
+sequence not named in STDMODEL-011 to STDMODEL-017 are refused in a verified body by name. An
+operation that is refused is never approximated. A range-based `for` is modeled where its range
+is a modeled sequence or a span the body names directly, or an array whose elements a subscript
+forms places of, and its elements are integers, enumerations or Booleans: as C++ iterates it
+([stmt.ranged], STMT-005), it reads one element per position from 0 to the range's length,
+which is taken once, before the first iteration; each element is the place `range[i]` names at
+that position, owing `i < length` and, for a span parameter, the capability the element access
+needs; the loop variable is initialized from it, owing a refinement its type names, or bound
+to it as a reference, through which a write is a write to that element place, owing its
+element type's refinement. An iteration that may have replaced the range's storage, by an
+operation that may reallocate or replace it, a call handed it by mutable reference or an
+unsafe block that may reach it, and that goes on to another iteration, is refused naming that
+operation, since C++ leaves the rest of the iteration undefined; one that leaves the loop by a
+`break` or a `return` is not. Such a loop written without `decreases` is given the measure of
+the positions left, `length - i`, which is checked as a written measure is (LOOP-006) and
+establishes termination only by that check; a written one is checked in its place. The
+position is named by no clause, so an invariant states nothing about it, and an invariant holds
+at each head before the loop variable is initialized (LOOP-004), so it does not name the loop
+variable either. Every other range-based `for` -- a range that is not a name, a range of any
+other type, an initialization statement before the loop variable, a structured binding, an
+element of another type -- is refused by name.
 
 [STDMODEL-020] A refinement written as a template argument is its base type in the C++ type:
 `std::vector<Positive>` is the specialization `std::vector<unsigned>`, with that type's
