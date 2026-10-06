@@ -16,7 +16,8 @@ add_library(cppl_clang STATIC
     src/editor_names.cpp
     src/editor_navigation.cpp
     src/editor_structure.cpp
-    src/proof_instantiation.cpp)
+    src/proof_instantiation.cpp
+    src/statements.cpp)
 
 target_include_directories(cppl_clang PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)

@@ -68,7 +68,7 @@ partial-contract-warned	compiler/driver/src/pipeline.cpp	warn_partial_contracts(
 partial-warning-only-partial	compiler/driver/src/pipeline.cpp	if (claim.kind != obligations::ClaimKind::Contract || claim.total) {	if (claim.kind != obligations::ClaimKind::Contract) {	^e2e_partial_correctness$
 partial-callees-recorded	compiler/obligations/src/contracts.cpp	if (callee != index && !total[callee]) {	if (false && callee != index && !total[callee]) {	^(e2e_partial_correctness|e2e_cross_tu)$
 partial-warning-not-for-refused	compiler/driver/src/pipeline.cpp	!function->contract->measures.empty()) {	false) {	^e2e_partial_correctness$
-init-statement-detected	clang/src/bridge.cpp	} else if (spelled == ";" && nesting == 1) {	} else if (false) {	^(negative_verified_paths|negative_switch_statements|e2e_if_statements)$
+init-statement-detected	clang/src/statements.cpp	} else if (spelled == ";" && nesting == 1) {	} else if (false) {	^(negative_verified_paths|negative_switch_statements|e2e_if_statements)$
 if-init-runs	clang/src/bridge.cpp	prefix.push_back(parts[0]);	(void)0;	^(e2e_if_statements|negative_if_statements)$
 if-condition-variable-declared	clang/src/bridge.cpp	prefix.push_back(parts[condition]);	(void)0;	^e2e_if_statements$
 if-constexpr-selects	clang/src/bridge.cpp	if (holds) {	if (!holds) {	^(e2e_if_statements|negative_if_statements)$
@@ -78,7 +78,7 @@ switch-init-statement-refused	clang/src/bridge.cpp	return reject("a 'switch' sta
 switch-nested-label-refused	clang/src/bridge.cpp	if (holds_switch_label(statement)) {	if (false && holds_switch_label(statement)) {	^negative_switch_statements$
 switch-unreachable-prefix-refused	clang/src/bridge.cpp	if (entries.empty() && !is_switch_label(statement)) {	if (false && entries.empty() && !is_switch_label(statement)) {	^negative_switch_statements$
 switch-case-range-refused	clang/src/bridge.cpp	if (!fallback && label.size() == 3) {	if (false && !fallback && label.size() == 3) {	^negative_switch_statements$
-switch-fallthrough-only	clang/src/bridge.cpp	return spelled == standard || spelled == qualified;	return true;	^negative_switch_statements$
+switch-fallthrough-only	clang/src/statements.cpp	return spelled == standard || spelled == qualified;	return true;	^negative_switch_statements$
 switch-condition-read-once	clang/src/bridge.cpp	read.node = PlaceRef{version, anonymous_place("switch condition")};	read = *value;	^(e2e_switch_statements|negative_switch_statements)$
 switch-condition-effects	clang/src/bridge.cpp	body = unknown(state, changed, std::move(body), header.statement);	(void)changed;	^(e2e_switch_statements|negative_switch_statements)$
 switch-case-compares-equal	clang/src/bridge.cpp	matches.node = Binary{BinaryOp::Equal, {std::move(read), std::move(*literal)}};	matches.node = Binary{BinaryOp::NotEqual, {std::move(read), std::move(*literal)}};	^(e2e_switch_statements|negative_switch_statements|e2e_safety_subset)$

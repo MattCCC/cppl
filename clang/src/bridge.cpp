@@ -8,12 +8,12 @@
 #include "cppl/source/storage.hpp"
 #include "places.hpp"
 #include "proof_instantiation.hpp"
+#include "statements.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <clang-c/CXDiagnostic.h>
 #include <clang-c/CXErrorCode.h>
-#include <clang-c/CXFile.h>
 #include <clang-c/CXSourceLocation.h>
 #include <clang-c/CXString.h>
 #include <clang-c/Index.h>
@@ -55,6 +55,17 @@ using detail::bridge::record_has_base;
 using detail::bridge::strip_parens;
 using detail::bridge::take;
 namespace aggregates = detail::aggregates;
+
+// What the bridge reads of a statement's shape (statements.hpp).
+using detail::before;
+using detail::FilePosition;
+using detail::holds_switch_label;
+using detail::is_fallthrough;
+using detail::is_switch_label;
+using detail::selection_head;
+using detail::SelectionHead;
+using detail::stands_at;
+using detail::start_of;
 
 constexpr std::size_t kMaxReturnPaths = 128;
 // A condition's operators nest, and each `&&`/`||` places its second operand on
@@ -4007,153 +4018,6 @@ bool terminates(CXCursor statement, unsigned depth) {
         return parts.size() == 3 && terminates(parts[1], depth + 1) && terminates(parts[2], depth + 1);
     }
     return false;
-}
-
-bool is_switch_label(CXCursor statement) {
-    const CXCursorKind kind = clang_getCursorKind(statement);
-    return kind == CXCursor_CaseStmt || kind == CXCursor_DefaultStmt;
-}
-
-// Whether a `case` or `default` label of the switch being lowered stands
-// somewhere in `root` (C++ [stmt.switch]): a nested switch and a lambda own
-// the labels inside them. Such a label is a way into the middle of `root`
-// that only lowering `root` from its start would never take.
-bool holds_switch_label(CXCursor root, unsigned depth = 0) {
-    if (depth > kMaxExpressionDepth) {
-        return true;
-    }
-    const CXCursorKind kind = clang_getCursorKind(root);
-    if (kind == CXCursor_SwitchStmt || kind == CXCursor_LambdaExpr) {
-        return false;
-    }
-    return std::ranges::any_of(children_of(root), [depth](CXCursor child) {
-        return is_switch_label(child) || holds_switch_label(child, depth + 1);
-    });
-}
-
-// Where a location is in the file its translation unit reads, so the head of
-// a statement and its parts can be compared.
-struct FilePosition {
-    CXFile file = nullptr;
-    unsigned offset = 0;
-};
-
-FilePosition file_position(CXSourceLocation location) {
-    FilePosition position;
-    clang_getFileLocation(location, &position.file, nullptr, nullptr, &position.offset);
-    return position;
-}
-
-FilePosition start_of(CXCursor cursor) {
-    return file_position(clang_getRangeStart(clang_getCursorExtent(cursor)));
-}
-
-// Whether `position` stands in `file` before `offset`.
-bool before(const FilePosition& position, CXFile file, unsigned offset) {
-    return position.file != nullptr && clang_File_isEqual(position.file, file) != 0 && position.offset < offset;
-}
-
-// Whether `position` stands in `file` at `offset`.
-bool stands_at(const FilePosition& position, CXFile file, unsigned offset) {
-    return position.file != nullptr && clang_File_isEqual(position.file, file) != 0 && position.offset == offset;
-}
-
-// The head of an `if` or a `switch`, read from its tokens (C++ [stmt.select]):
-// `if constexpr`, `if consteval`, and in the parentheses after the keyword,
-// where they open and close and the `;` that ends an init-statement directly
-// inside them. libclang does not expose a switch's init-statement as a child
-// at all, and lists an `if`'s where the condition otherwise stands, so the
-// head is what says which part is which. Nothing when it cannot be read,
-// which the caller refuses rather than guessing.
-struct SelectionHead {
-    bool constant = false;  // `if constexpr`
-    bool immediate = false; // `if consteval` or `if !consteval`, which has no parentheses
-    CXFile file = nullptr;
-    unsigned first = 0; // where the first token inside the parentheses stands
-    std::optional<unsigned> separator;
-    unsigned close = 0;
-};
-
-std::optional<SelectionHead> selection_head(CXCursor statement) {
-    const std::vector<CXCursor> parts = children_of(statement);
-    if (parts.empty()) {
-        return std::nullopt;
-    }
-    CXTranslationUnit unit = clang_Cursor_getTranslationUnit(statement);
-    const CXSourceRange range = clang_getRange(clang_getRangeStart(clang_getCursorExtent(statement)),
-                                               clang_getRangeStart(clang_getCursorExtent(parts.back())));
-    CXToken* tokens = nullptr;
-    unsigned count = 0;
-    clang_tokenize(unit, range, &tokens, &count);
-    SelectionHead head;
-    bool read = false;
-    std::size_t nesting = 0;
-    for (unsigned index = 0; index < count && !read; ++index) {
-        const std::string spelled = take(clang_getTokenSpelling(unit, tokens[index]));
-        if (index == 1 && spelled == "constexpr") {
-            head.constant = true;
-        }
-        if ((index == 1 || index == 2) && spelled == "consteval") {
-            head.immediate = true;
-            read = true;
-            break;
-        }
-        const FilePosition at = file_position(clang_getTokenLocation(unit, tokens[index]));
-        if (nesting == 1 && head.file == nullptr) {
-            head.file = at.file;
-            head.first = at.offset;
-        }
-        if (clang_getTokenKind(tokens[index]) != CXToken_Punctuation) {
-            continue;
-        }
-        if (spelled == "(" || spelled == "[" || spelled == "{") {
-            ++nesting;
-        } else if ((spelled == ")" || spelled == "]" || spelled == "}") && nesting > 0) {
-            if (--nesting == 0) {
-                head.close = at.offset;
-                read = head.file != nullptr && at.file != nullptr && clang_File_isEqual(at.file, head.file) != 0;
-                break;
-            }
-        } else if (spelled == ";" && nesting == 1) {
-            if (!head.separator.has_value()) {
-                head.separator = at.offset;
-            }
-        }
-    }
-    clang_disposeTokens(unit, tokens, count);
-    if (!read) {
-        return std::nullopt;
-    }
-    return head;
-}
-
-// Whether `statement` is `[[fallthrough]];`, an empty statement that says a
-// label is reached by falling into it (C++ [dcl.attr.fallthrough]). Any other
-// attribute on an empty statement, such as `[[assume(e)]]`, is not this one.
-bool is_fallthrough(CXCursor statement) {
-    if (clang_getCursorKind(statement) != CXCursor_UnexposedStmt) {
-        return false;
-    }
-    const std::vector<CXCursor> parts = children_of(statement);
-    if (parts.size() != 1 || clang_getCursorKind(parts.front()) != CXCursor_NullStmt) {
-        return false;
-    }
-    CXTranslationUnit unit = clang_Cursor_getTranslationUnit(statement);
-    CXToken* tokens = nullptr;
-    unsigned count = 0;
-    clang_tokenize(unit, clang_getCursorExtent(statement), &tokens, &count);
-    std::vector<std::string> spelled;
-    spelled.reserve(count);
-    for (unsigned index = 0; index < count; ++index) {
-        spelled.push_back(take(clang_getTokenSpelling(unit, tokens[index])));
-    }
-    clang_disposeTokens(unit, tokens, count);
-    if (!spelled.empty() && spelled.back() == ";") {
-        spelled.pop_back();
-    }
-    const std::vector<std::string> standard{"[", "[", "fallthrough", "]", "]"};
-    const std::vector<std::string> qualified{"[", "[", "clang", "::", "fallthrough", "]", "]"};
-    return spelled == standard || spelled == qualified;
 }
 
 // The declaration the projector put just inside an unsafe block's `{`, when
