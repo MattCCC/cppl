@@ -89,6 +89,7 @@ implementation:
     - clang/src/formed_places.cpp
     - clang/src/lowering.cpp
     - clang/src/refinements.cpp
+    - clang/src/sequence_statements.cpp
     - clang/src/sequences.cpp
     - clang/src/types.cpp
   vir:

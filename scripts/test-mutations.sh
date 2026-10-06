@@ -172,7 +172,7 @@ xtu-unsafe-imported	compiler/obligations/src/contracts.cpp	recorded->entry.unsaf
 library-model-closure-through-calls	compiler/obligations/src/trust.cpp	changed = models[index].emplace(model, LibraryDependency{model, false}).second || changed;	changed = (models[index].contains(model) && false) || changed;	^e2e_containers$
 container-stale-view	clang/src/access.cpp	if (root.version == entry.borrows->version) {	if (true) {	^negative_containers$|^negative_integration_ledger$|^negative_cross_feature$|^negative_sequence_attacks$
 container-element-generation	clang/src/access.cpp	return !entry.formed_at.has_value() ||	return true ||	^negative_containers$|^negative_sequence_attacks$
-sequence-mutator-new-generation	clang/src/bridge.cpp	effects.push_back(new_generation(state[*root], where));	(void)where;	^negative_containers$|^negative_sequence_attacks$
+sequence-mutator-new-generation	clang/src/sequence_statements.cpp	effects.push_back(new_generation(state[*root], where));	(void)where;	^negative_containers$|^negative_sequence_attacks$
 call-two-writable-views	clang/src/calls.cpp	for (const std::size_t other : written_roots) {	for (const std::size_t other : std::vector<std::size_t>{}) {	^negative_sequence_boundaries$
 call-span-parameter-written-twice	clang/src/calls.cpp	if (writes && std::ranges::any_of(written_span_parameters, [&](CXCursor written_parameter) {	if (false && writes && std::ranges::any_of(written_span_parameters, [&](CXCursor written_parameter) {	^negative_sequence_boundaries$
 unsafe-callee-writes-const-references	clang/src/calls.cpp	        if (position.writable || unsafe_callee) {	        if (position.writable) {	^negative_unsafe_callees$
@@ -240,12 +240,12 @@ container-call-disjointness	clang/src/calls.cpp	if (other == root || may_alias(s
 span-copy-hands-storage	clang/src/calls.cpp	return handed_storage(call->arguments.front(), state);	return std::nullopt;	^negative_sequence_boundaries$
 container-refined-writable-view	clang/src/calls.cpp	if (!state[root].sequence->element.refinements.empty()) {	if (false && !state[root].sequence->element.refinements.empty()) {	^negative_containers$
 container-mutable-call-aliases	clang/src/calls.cpp	!may_alias(state[target], state[other])) {	true) {	^negative_containers$|^negative_cross_feature$
-container-copy-refinement	clang/src/bridge.cpp	if (auto gap = refinement_gap(root, declaring[*origin])) {	if (auto gap = refinement_gap(root, declaring[*origin]); false) {	^negative_containers$
+container-copy-refinement	clang/src/sequence_statements.cpp	if (auto gap = refinement_gap(root, declaring[*origin])) {	if (auto gap = refinement_gap(root, declaring[*origin]); false) {	^negative_containers$
 container-refined-mutable-reference	clang/src/calls.cpp	if (handed.sequence.has_value() && !handed.sequence->element.refinements.empty()) {	if (false) {	^negative_containers$
 container-element-beside-view	clang/src/calls.cpp	if (root == owner || may_alias(state[root], state[owner])) {	if (false) {	^negative_containers$
 container-refined-result	clang/src/lowering.cpp	if (const bool refined_result = !element->refinements.empty(); refined_result) {	if (const bool refined_result = false; refined_result) {	^negative_containers$
 container-refined-std-array	clang/src/types.cpp	if (!stated || !stated->empty()) {	if (false) {	^negative_containers$
-container-refined-span-local	clang/src/bridge.cpp	!written || !written->refinements.empty()) {	false) {	^negative_containers$
+container-refined-span-local	clang/src/sequence_statements.cpp	!written || !written->refinements.empty()) {	false) {	^negative_containers$
 capability-const-writable	clang/src/bridge.cpp	if (capability.kind == Capability::Kind::Writable && clang_isConstQualifiedType(element) != 0)	if (false && capability.kind == Capability::Kind::Writable && clang_isConstQualifiedType(element) != 0)	^negative_containers$
 container-pop-precondition	compiler/obligations/src/library.cpp	summary.preconditions.push_back(	(void)(	^negative_containers$
 validation-fact-conditional	compiler/obligations/src/contracts_evaluation.cpp	kernel::Proposition::implication(kernel::predicate(result, true), std::move(holds)),	std::move(holds),	^negative_runtime_validation$
