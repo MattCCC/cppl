@@ -532,6 +532,9 @@ cppl_add_script_test(e2e_verified_loops e2e/verified_loops.sh)
 cppl_add_script_test(e2e_switch_statements e2e/switch_statements.sh)
 # `if` with an init-statement, a condition variable or `if constexpr` (C++ [stmt.if]).
 cppl_add_script_test(e2e_if_statements e2e/if_statements.sh)
+# A range-based for, verified as C++ iterates it (SPEC.md LOOP-004, STMT-005).
+cppl_add_script_test(e2e_range_for e2e/range_for.sh)
+cppl_add_script_test(negative_range_for negative/range_for.sh)
 cppl_add_script_test(e2e_verified_methods e2e/verified_methods.sh)
 
 # Contracts across translation units, through verification interfaces

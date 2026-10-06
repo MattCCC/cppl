@@ -7151,6 +7151,13 @@ struct BodyLowering {
                 element = &declared.projections.front();
             }
             if (element == nullptr) {
+                const CXType held = clang_getArrayElementType(clang_getCanonicalType(clang_getCursorType(named)));
+                if (const Type elements = convert_type(held);
+                    held.kind != CXType_Invalid && elements.kind != TypeKind::Int && elements.kind != TypeKind::Bool) {
+                    return reject("the elements of '" + range.range + "' are '" + elements.spelling +
+                                  "', which a range-based for does not bind: an integer, enumeration or Boolean "
+                                  "element is modeled");
+                }
                 return reject("array '" + range.range + "', the range of the range-based for at " + where +
                               ", is not storage of this body whose elements a subscript forms places of");
             }

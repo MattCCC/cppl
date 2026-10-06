@@ -234,6 +234,16 @@ equivalent path_splits $'1 1 1 1 0 5 1 3 1 1 1 1\n1' \
 equivalent default_arguments $'take() == 50\nnarrow() == 7\ndoubled() == 8\nsum(10) == 13\nneed() == 70\nnested() == 7\nbumped(3) == 5\nwalk() == 0\nbelow(3) == 3\npicked() == 7\ncaller() == 148\nunsigned_caller() == 22\nmember_caller(6) == 10' \
     'Function contracts proven: +16' 'Call preconditions proven: +7' 'Recursive call measures proven: +1'
 
+# SPEC: LOOP-001, LOOP-004, STMT-005, STDMODEL-019, ERASE-002
+# A range-based for over a vector, a string, a span and arrays stays a
+# range-based for, its clauses leaving no trace, and every one of them
+# terminates by the measure of the positions left. `std::span` is C++20.
+standards='c++20 c++23'
+equivalent range_for $'sum_vector(v) == 17, sum_vector(empty) == 0\ncount_spaces(text) == 1\nsum_span(v) == 17, sum_span(empty) == 0\nsum_arrays() == 15\nlargest_digit() == 9\nreset_digits() == 2\nupcase_a("a banana") == A bAnAnA\nfirst_over(v, 5) == 12, first_over(v, 20) == 0\nsum_to_zero(v) == 13\npairs(v) == 323\nlargest_capped(values) == 7' \
+    'Function contracts proven: +11' '  partial correctness only: +0' 'Loop invariants proven: +9' \
+    'Loop measures proven: +20'
+standards='c++17 c++20 c++23'
+
 # SPEC: ERASE-001, ERASEMATRIX-002
 # Proofs over every representation provider erase whole, however their arms
 # nest, and no record they decompose changes layout.

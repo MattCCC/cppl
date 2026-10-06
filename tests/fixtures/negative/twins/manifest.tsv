@@ -31,6 +31,7 @@ twin	equivalence/path_splits.cpp	negative/twins/equivalence_path_splits.cpp	erro
 twin	equivalence/proofs.cpp	negative/twins/equivalence_proofs.cpp	error \[proof-failure\]: 'identity_returns_input_holds' does not prove what proof 'identity_of_seven_h	-	-
 twin	equivalence/providers.cpp	negative/twins/equivalence_providers.cpp	error \[kernel-rejection\]: proof 'variant_alternatives' does not establish what it claims	-	-
 twin	equivalence/quantified_propositions.cpp	negative/twins/equivalence_quantified_propositions.cpp	error \[kernel-rejection\]: proof 'identity_everywhere_holds' does not establish law 'identity_everywh	-	-
+twin	equivalence/range_for.cpp	negative/twins/equivalence_range_for.cpp	error \[kernel-rejection\]: return path 'largest_digit path [0-9]+' does not satisfy its contract	-	-
 twin	equivalence/refinements.cpp	negative/twins/equivalence_refinements.cpp	error \[proof-failure\]: verified function 'fifty' does not satisfy its contract	-	-
 twin	equivalence/rewritten_proof.cpp	negative/twins/equivalence_rewritten_proof.cpp	error \[kernel-rejection\]: proof 'identity_at_zero_holds' does not establish law 'identity_at_zero'	-	-
 twin	partial_correctness.cpp	negative/twins/partial_correctness.cpp	error \[kernel-rejection\]: return path 'loop_nodec path [0-9]+' does not satisfy its contract	-	-
