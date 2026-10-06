@@ -244,16 +244,24 @@ records it. CI presets therefore refuse to inherit these variables
 Developer presets are unaffected; exporting `CXXFLAGS` to try something is
 legitimate.
 
-Two checks run without configuring anything:
+Three checks run without configuring anything, and each is also a CTest test (`ci_hostpaths`, `ci_presetlayout`, `ci_frozendocuments`):
 
 ```sh
-cmake -P cmake/ci/CheckHostPaths.cmake     # committed machine-specific paths
-cmake -P cmake/ci/CheckPresetLayout.cmake  # preset conventions
+cmake -P cmake/ci/CheckHostPaths.cmake        # committed machine-specific paths
+cmake -P cmake/ci/CheckPresetLayout.cmake     # preset conventions
+cmake -P cmake/ci/CheckFrozenDocuments.cmake  # a release's frozen documents
 ```
 
 `CheckHostPaths` does not ban absolute paths. It requires that a toolchain
 location be discovered (`brew --prefix`, `llvm-config`, `find_program`) or
 supplied by the environment, rather than committed as an assumption.
+
+`CheckFrozenDocuments` holds a released version to its freeze: from 1.0.0 on,
+`docs/SPEC.md`, `docs/GRAMMAR.md` and `docs/KERNEL.md` must each state the
+version `CMakeLists.txt` names and have the SHA-256 `docs/STATUS.md` records
+for it, and `docs/STATUS.md` must say both are frozen. A change to a frozen
+document is therefore a change to its recorded digest too, made in the same
+commit and only by an RFC and a new version.
 
 ---
 

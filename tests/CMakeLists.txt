@@ -664,7 +664,7 @@ add_subdirectory(fuzz)
 # committed host path, a broken preset convention or a local CI run that no
 # longer runs what the workflow runs, rather than that
 # depending on someone remembering to run `make ci-checks` (AGENTS.md 40).
-foreach(check IN ITEMS HostPaths PresetLayout WorkflowSteps)
+foreach(check IN ITEMS HostPaths PresetLayout WorkflowSteps FrozenDocuments)
     string(TOLOWER "ci_${check}" check_test)
 
     add_test(NAME ${check_test}
