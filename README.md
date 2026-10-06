@@ -1293,6 +1293,9 @@ Keep ordinary C++ everywhere else.
 
 # Command-line usage
 
+[INSTALL.md](docs/INSTALL.md) covers building and installing `cppl` and the
+platform it supports.
+
 Compile supported C++ through `cppl`:
 
 ```bash
@@ -1411,6 +1414,7 @@ Not a theorem prover beside C++.
 
 # Documentation
 
+- [INSTALL.md](docs/INSTALL.md) — building, installing and what a release claims
 - [SPEC.md](docs/SPEC.md) — normative C++L language semantics
 - [GRAMMAR.md](docs/GRAMMAR.md) — concrete C++L grammar
 - [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) — practical usage and examples

@@ -927,6 +927,11 @@ A function's header declaration and its definition may both be marked
 clauses must be; the two must state the same contract, compared by meaning, or
 the function is refused (`SPEC.md` TU-003).
 
+A verified function with a default argument is refused, and the diagnostic
+names it: a call relying on the default passes a value its caller does not
+write, which this implementation does not model (`SPEC.md` R.16,
+`a_default_argument_of_a_verified_function` in `negative_refinement_types`).
+
 ---
 
 # Refinement status
