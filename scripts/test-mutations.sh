@@ -790,7 +790,7 @@ if [ -s "$changed" ]; then
     (cd "$source_copy" && xargs -0 touch < "$changed")
 fi
 if [ -n "$reuse" ]; then
-    stale_files=$(comm -13 <(cd "$root" && copied -print | LC_ALL=C sort) \
+    stale_files=$(LC_ALL=C comm -13 <(cd "$root" && copied -print | LC_ALL=C sort) \
                            <(cd "$source_copy" && copied -print | LC_ALL=C sort))
     if [ -n "$stale_files" ]; then
         echo "The reused copy holds files the checkout does not:" >&2
