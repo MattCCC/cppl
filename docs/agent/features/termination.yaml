@@ -111,6 +111,7 @@ tests:
   positive:
     - tests/fixtures/termination.cpp
     - tests/fixtures/equivalence/termination.cpp
+    - tests/fixtures/partial_correctness.cpp
   negative:
     - tests/negative/termination.sh
     - tests/fixtures/negative/termination_recursion_without_measure.cpp
@@ -140,8 +141,10 @@ tests:
   unit:
     - tests/unit/recognizer_test.cpp
     - tests/unit/trust_closure_test.cpp
+    - tests/unit/lsp_server_test.cpp
   end_to_end:
     - tests/e2e/termination.sh
+    - tests/e2e/partial_correctness.sh
     - tests/e2e/verified_loops.sh
     - tests/e2e/impossible_path.sh
     - tests/e2e/erasure_equivalence.sh
@@ -161,6 +164,7 @@ required_test_categories:
   - a false base case refused
   - ghost measures
   - totality reported and each partial contract named
+  - each partial contract warned about where it is compiled, with every reason, and no total one
   - diagnostics naming the measures compared
   - erasure equivalence, no runtime counter
 

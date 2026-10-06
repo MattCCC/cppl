@@ -2173,6 +2173,22 @@ Partial-correctness contracts: 0
 A function that states `decreases` asks that it terminate, so a loop without a
 measure, a call to a partial function or an unsafe block in it is refused.
 
+A function that does not ask is verified all the same, and the compiler says
+where it is partial rather than leaving that to the report. Each contract proven
+for partial correctness only gets a warning naming every reason:
+
+```text
+guide.cpp:1:19: warning [partial-correctness]: the contract of 'loop_nodec' is proven for partial correctness only: the loop at guide.cpp:4:5 states no 'decreases', so it is not shown to terminate (SPEC.md CORRECT-002)
+  guide.cpp:4:5: note: the loop that states no 'decreases'
+guide.cpp:8:19: warning [partial-correctness]: the contract of 'caller' is proven for partial correctness only: it calls 'loop_nodec', whose termination is not established, so the call is not shown to return (SPEC.md CORRECT-005)
+```
+
+It is a warning, not a failure: the contract is proven, of every return. The
+build succeeds, `-Werror` does not make it an error, and `-w` silences it as it
+silences C++L's other warnings. A `decreases` clause on the loop makes it go
+away; a function that must terminate states its own `decreases`, which turns a
+missing measure into the refusal above.
+
 Proof-producing computation must terminate even without a written measure.
 
 Runtime verification is partial correctness unless termination is requested or
@@ -4161,6 +4177,7 @@ Distinguish these common causes:
 | Callee precondition failed            | Establish the callee's `expects` before the call      |
 | Conflicting redeclaration             | Make all declarations describe one logical contract   |
 | `verification-interface`              | Import the defining unit's current interface (15.4)   |
+| `partial-correctness` (a warning)     | Add `decreases` where termination must be proven (11) |
 
 Each diagnostic names its category in brackets, `error [proof-failure]: ...`,
 and an editor shows the same category as the diagnostic's code.
@@ -4281,6 +4298,10 @@ unsupported semantics needed for the proof
 
 These must not silently degrade into warnings while still reporting the code as
 verified.
+
+The one warning verification gives is the other way round: `[partial-correctness]`
+reports a contract that was proven, and says how much was proven, that it holds
+if the function returns (11). Nothing failed, so it never fails the build.
 
 A build system may separately choose to compile ordinary unverified C++ where the
 project permits it, but that must not be reported as successful C++L verification.

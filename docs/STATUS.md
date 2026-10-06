@@ -260,9 +260,17 @@ passes through no unsafe block, and every contract it calls is total, its
 recursion group's included; otherwise it is **partial correctness**: what
 holds if the function returns (`SPEC.md` 23). The trust report counts both,
 names each partial-correctness contract, and counts loop measures and recursive
-call measures proven apart from invariants. A function that states `decreases`
-and is not total is refused, for the first loop, unsafe block or callee that
-stops it (TERMINATION-006). A function with a loop, or calling one, is never
+call measures proven apart from invariants. The compiler also warns at each
+partial-correctness contract it proves, on the command line and in the editor,
+naming the function and every reason its termination is not established: each
+loop that states no `decreases`, with where it stands, each unsafe block, and
+each callee whose own contract is partial. The warning, category
+`partial-correctness`, reads the same totality decision the report counts and
+names exactly the contracts the report lists; it changes no verdict, report or
+exit status, `-Werror` does not make it an error, as it makes none of C++L's
+warnings one, and `-w` silences it (`e2e/partial_correctness.sh`). A function
+that states `decreases` and is not total is refused, for the first loop, unsafe
+block or callee that stops it (TERMINATION-006), and is not warned about too. A function with a loop, or calling one, is never
 admitted as a core definition, and neither is a recursive one, so no Law or
 specification can unfold it and nontermination cannot reach the kernel. Measures
 erase with the rest of the contract; no counter or runtime check is added
@@ -1550,7 +1558,8 @@ smaller unsigned measure, lexicographically for a list, as an obligation the
 kernel decides; recursion needs a measure in every function of it; and a
 contract is total only when every loop and callee it depends on terminates.
 Where a descent is not proven, the diagnostic names the measure before and
-after. Nontermination is isolated because a function with a loop or recursion
+after. Where a contract is proven but its termination is not established, a
+warning names why. Nontermination is isolated because a function with a loop or recursion
 is never a core definition, so the kernel unfolds nothing that could diverge.
 Structural recursion without a written measure is not inferred.
 

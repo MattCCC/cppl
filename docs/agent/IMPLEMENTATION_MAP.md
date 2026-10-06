@@ -470,7 +470,7 @@ Normative sources: `TERMINATION-001`–`TERMINATION-007` (SPEC §22),
 | elaboration | Read a function's measure into `vir::Contract::measures`; refuse a template's. | `compiler/elaboration/src/elaborate.cpp` |
 | obligations | Owe a lexicographic descent on every continuing loop path and every call within a recursion group; find recursion groups; state and reserve a group before building it; refuse recursion without a measure and measures of different lengths; settle totality and refuse a `decreases` function that is not total. | `compiler/obligations/src/contracts.cpp` |
 | automation | Suppose a group member's contract before it is established; establish a group whole. | `compiler/automation/src/composition.cpp` |
-| trust closure, driver | A group member is proven only with its group; count measures and recursive call measures; name each partial-correctness contract. | `compiler/obligations/src/trust.cpp`, `compiler/driver/src/pipeline.cpp`, `compiler/driver/src/driver.cpp` |
+| trust closure, driver | A group member is proven only with its group; count measures and recursive call measures; name each partial-correctness contract, and warn at it with the loops, unsafe blocks and partial callees `settle_totality` recorded. | `compiler/obligations/src/trust.cpp`, `compiler/driver/src/pipeline.cpp`, `compiler/driver/src/driver.cpp` |
 
 ### Required behavior
 
@@ -482,6 +482,7 @@ a recursive function       states a measure, of the group's length
 a recursion group          is established only when every member is proven
 a contract                 is total when every loop and callee terminates
 a `decreases` function     that is not total is refused
+a partial contract         is warned about, never refused, with every reason
 a measure                  erases, and no counter is added
 ```
 
