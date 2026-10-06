@@ -14,7 +14,8 @@ are contextual words. `refl`, `exact`, `apply`, `assume`, `rewrite`,
 `contradiction`, `cases`, `decompose`, and `induction` are contextual proof
 statements; `contradiction`, `cases` and `decompose` also begin a statement in a
 verified function's body where the translation unit gives the word no other
-meaning (sections 5.6 and 5.7). `omit`
+meaning (sections 5.6 and 5.7), which a unit that imports a module cannot show
+(SPEC.md WORD-019). `omit`
 and `by` have meaning only in a case omission (section 5.7),
 and `omit` begins one only where a case label followed by `by` comes after it.
 `result`, `old`, and `self` have only the scopes defined below. C++ keywords take

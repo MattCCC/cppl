@@ -114,6 +114,7 @@ exempt	contextual_identifiers.cpp	-	ordinary C++ using C++L words as its own nam
 exempt	words_as_cpp/declarator_lists.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	words_as_cpp/loop_bodies.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	words_as_cpp/member_initializers.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
+exempt	words_as_cpp/modules/main.cpp	-	ordinary C++ using a module's entities named after C++L words; it states no claim	-	-
 exempt	words_as_cpp/operator_spellings.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	words_as_cpp/qualified_declarators.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	words_as_cpp/qualified_names.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-

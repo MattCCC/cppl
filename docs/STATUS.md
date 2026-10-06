@@ -825,7 +825,12 @@ The conformance suite covers each of C++17, C++20 and C++23 with an ordinary
 program and with a program that uses C++L words as ordinary identifiers, and
 checks that the runtime program emitted for a C++17 target compiles as C++17 on
 its own. That is enough for `PROTOTYPE`, not for `IMPLEMENTED`: templates,
-modules, concepts and ABI-sensitive constructs are not yet covered.
+modules, concepts and ABI-sensitive constructs are not yet covered. What a
+module declares is not read, so a unit that imports one keeps every statement
+led by `contradiction`, `cases`, `decompose`, `validate`, `unsafe` or `ghost`
+ordinary C++, since the module may declare the word (`WORD-019`); a unit using a
+module's entities so named builds as Clang builds it
+(`conformance_words_as_cpp`). Verification across modules is not implemented.
 
 ---
 

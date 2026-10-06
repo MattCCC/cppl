@@ -2371,6 +2371,30 @@ void split_claims(const ProofStatement& statement,
     }
 }
 
+// The first module import of the unit, `import name;`, `import :part;` or
+// `import <header>;`, exported or not, standing at the top level where a
+// declaration begins (SPEC.md MODULE-001).
+std::optional<std::size_t> first_module_import(const std::vector<Token>& tokens) {
+    std::size_t depth = 0;
+    for (std::size_t at = 0; at + 1 < tokens.size(); ++at) {
+        const Token& token = tokens[at];
+        if (token.is_punctuator("{")) {
+            ++depth;
+        } else if (token.is_punctuator("}") && depth > 0) {
+            --depth;
+        } else if (depth == 0 && token.is_identifier("import")) {
+            const bool begins = at == 0 || tokens[at - 1].is_punctuator(";") || tokens[at - 1].is_punctuator("}") ||
+                                tokens[at - 1].is_identifier("export");
+            const Token& next = tokens[at + 1];
+            if (begins && (next.kind == TokenKind::Identifier || next.is_punctuator(":") || next.is_punctuator("<") ||
+                           next.kind == TokenKind::StringLiteral)) {
+                return at;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 // Whether a statement can begin at `index`: what precedes it ends a statement
 // or opens a block or a statement's body, and no parenthesis is open around it,
 // as one is in a `for` header.
@@ -3164,15 +3188,42 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
         return std::ranges::any_of(
             written_splits, [at](const Written& written) { return written.keyword <= at && at <= written.terminator; });
     };
-    if (!written_contradictions.empty()) {
-        std::optional<std::size_t> other;
-        for (std::size_t at = 0; at < tokens.size() && !other.has_value(); ++at) {
-            if (tokens[at].is_identifier("contradiction") && !in_proof(tokens[at]) && !in_split(at) &&
-                std::ranges::none_of(written_contradictions,
-                                     [at](const Written& written) { return written.keyword == at; })) {
-                other = at;
+    // A module the unit imports may declare any name, in text not read here
+    // (SPEC.md MODULE-001). In a unit that imports one, no word can be shown
+    // to name nothing else, so the import stands for the other use that keeps
+    // each statement below ordinary C++ (WORD-019).
+    const std::optional<std::size_t> module_import = first_module_import(tokens);
+    // Warns that the statement led by the word at `at` is ordinary C++, since
+    // `other` uses the word or imports a module that may declare it.
+    const auto warn_ordinary = [&](std::size_t at, std::size_t other, std::string_view rest) {
+        const bool imported = !tokens[other].is_identifier(tokens[at].text);
+        diagnostics::Diagnostic diagnostic;
+        diagnostic.severity = diagnostics::Severity::Warning;
+        diagnostic.category = diagnostics::Category::CpplSyntax;
+        diagnostic.message = "'" + std::string(tokens[at].text) +
+                             (imported ? "' may name an entity of a module this translation unit imports, so "
+                                       : "' is also a name in this translation unit, so ") +
+                             std::string(rest);
+        diagnostic.location = stream.location_of(tokens[at]);
+        diagnostic.notes.push_back(diagnostics::Note{imported ? "the module is imported here" : "the name is used here",
+                                                     stream.location_of(tokens[other])});
+        engine.report(std::move(diagnostic));
+    };
+    // The first use of `word` outside laws and proofs that `claimed` does not
+    // hold, or else the module import that may declare it.
+    const auto other_use = [&](std::string_view word, const auto& claimed) -> std::optional<std::size_t> {
+        for (std::size_t at = 0; at < tokens.size(); ++at) {
+            if (tokens[at].is_identifier(word) && !in_proof(tokens[at]) && !claimed(at)) {
+                return at;
             }
         }
+        return module_import;
+    };
+    if (!written_contradictions.empty()) {
+        const std::optional<std::size_t> other = other_use("contradiction", [&](std::size_t at) {
+            return in_split(at) || std::ranges::any_of(written_contradictions,
+                                                       [at](const Written& written) { return written.keyword == at; });
+        });
 
         for (const Written& written : written_contradictions) {
             const auto body = std::ranges::find_if(verified_bodies, [&written](const VerifiedBody& candidate) {
@@ -3180,15 +3231,8 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
             });
             if (other.has_value()) {
                 if (body != verified_bodies.end()) {
-                    diagnostics::Diagnostic diagnostic;
-                    diagnostic.severity = diagnostics::Severity::Warning;
-                    diagnostic.category = diagnostics::Category::CpplSyntax;
-                    diagnostic.message = "'contradiction' is also a name in this translation unit, so this statement "
-                                         "is ordinary C++, not a claim that the path cannot occur";
-                    diagnostic.location = stream.location_of(tokens[written.keyword]);
-                    diagnostic.notes.push_back(
-                        diagnostics::Note{"the name is used here", stream.location_of(tokens[*other])});
-                    engine.report(std::move(diagnostic));
+                    warn_ordinary(written.keyword, *other,
+                                  "this statement is ordinary C++, not a claim that the path cannot occur");
                 }
                 continue;
             }
@@ -3219,16 +3263,8 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
     // {...}` is a declaration with a braced initializer wherever `cases` names a
     // type (SPEC.md 3.1, CASE-017).
     if (!written_splits.empty()) {
-        const auto other_use = [&](std::string_view word) -> std::optional<std::size_t> {
-            for (std::size_t at = 0; at < tokens.size(); ++at) {
-                if (tokens[at].is_identifier(word) && !in_proof(tokens[at]) && !in_split(at)) {
-                    return at;
-                }
-            }
-            return std::nullopt;
-        };
-        const std::optional<std::size_t> other_cases = other_use("cases");
-        const std::optional<std::size_t> other_decompose = other_use("decompose");
+        const std::optional<std::size_t> other_cases = other_use("cases", in_split);
+        const std::optional<std::size_t> other_decompose = other_use("decompose", in_split);
 
         for (const Written& written : written_splits) {
             const Token& keyword = tokens[written.keyword];
@@ -3238,16 +3274,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
             });
             if (other.has_value()) {
                 if (body != verified_bodies.end()) {
-                    diagnostics::Diagnostic diagnostic;
-                    diagnostic.severity = diagnostics::Severity::Warning;
-                    diagnostic.category = diagnostics::Category::CpplSyntax;
-                    diagnostic.message = "'" + std::string(keyword.text) +
-                                         "' is also a name in this translation unit, so this statement is ordinary "
-                                         "C++, not a case split";
-                    diagnostic.location = stream.location_of(keyword);
-                    diagnostic.notes.push_back(
-                        diagnostics::Note{"the name is used here", stream.location_of(tokens[*other])});
-                    engine.report(std::move(diagnostic));
+                    warn_ordinary(written.keyword, *other, "this statement is ordinary C++, not a case split");
                 }
                 continue;
             }
@@ -3299,23 +3326,10 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                    std::ranges::any_of(written_unsafe_declarations,
                                        [at](const WrittenUnsafeDeclaration& written) { return written.keyword == at; });
         };
-        std::optional<std::size_t> other;
-        for (std::size_t at = 0; at < tokens.size() && !other.has_value(); ++at) {
-            if (tokens[at].is_identifier("unsafe") && !in_proof(tokens[at]) && !claimed(at)) {
-                other = at;
-            }
-        }
+        const std::optional<std::size_t> other = other_use("unsafe", claimed);
         if (other.has_value()) {
             const auto warn = [&](std::size_t at) {
-                diagnostics::Diagnostic diagnostic;
-                diagnostic.severity = diagnostics::Severity::Warning;
-                diagnostic.category = diagnostics::Category::CpplSyntax;
-                diagnostic.message = "'unsafe' is also a name in this translation unit, so this is ordinary C++, not "
-                                     "an unsafe boundary";
-                diagnostic.location = stream.location_of(tokens[at]);
-                diagnostic.notes.push_back(
-                    diagnostics::Note{"the name is used here", stream.location_of(tokens[*other])});
-                engine.report(std::move(diagnostic));
+                warn_ordinary(at, *other, "this is ordinary C++, not an unsafe boundary");
             };
             // Only where an unsafe boundary could have been meant (WORD-018):
             // in a verified body, or where the C++ reading cannot be valid, as
@@ -3402,12 +3416,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
             return std::ranges::any_of(written_ghosts,
                                        [at](const WrittenGhost& written) { return written.keyword == at; });
         };
-        std::optional<std::size_t> other;
-        for (std::size_t at = 0; at < tokens.size() && !other.has_value(); ++at) {
-            if (tokens[at].is_identifier("ghost") && !in_proof(tokens[at]) && !claimed(at)) {
-                other = at;
-            }
-        }
+        const std::optional<std::size_t> other = other_use("ghost", claimed);
         for (const WrittenGhost& written : written_ghosts) {
             const Token& keyword = tokens[written.keyword];
             if (other.has_value()) {
@@ -3416,15 +3425,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                 if (!in_verified_body(written.keyword)) {
                     continue;
                 }
-                diagnostics::Diagnostic diagnostic;
-                diagnostic.severity = diagnostics::Severity::Warning;
-                diagnostic.category = diagnostics::Category::CpplSyntax;
-                diagnostic.message =
-                    "'ghost' is also a name in this translation unit, so this is ordinary C++, not ghost state";
-                diagnostic.location = stream.location_of(keyword);
-                diagnostic.notes.push_back(
-                    diagnostics::Note{"the name is used here", stream.location_of(tokens[*other])});
-                engine.report(std::move(diagnostic));
+                warn_ordinary(written.keyword, *other, "this is ordinary C++, not ghost state");
                 continue;
             }
             const auto body = std::ranges::find_if(verified_bodies, [&written](const VerifiedBody& candidate) {
@@ -3548,14 +3549,10 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
         });
     };
     if (!written_validations.empty()) {
-        std::optional<std::size_t> other;
-        for (std::size_t at = 0; at < tokens.size() && !other.has_value(); ++at) {
-            if (tokens[at].is_identifier("validate") && !in_proof(tokens[at]) &&
-                std::ranges::none_of(written_validations,
-                                     [at](const Written& written) { return written.keyword == at; })) {
-                other = at;
-            }
-        }
+        const std::optional<std::size_t> other = other_use("validate", [&](std::size_t at) {
+            return std::ranges::any_of(written_validations,
+                                       [at](const Written& written) { return written.keyword == at; });
+        });
         for (const Written& written : written_validations) {
             const Token& keyword = tokens[written.keyword];
             const auto body = std::ranges::find_if(verified_bodies, [&written](const VerifiedBody& candidate) {
@@ -3563,15 +3560,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
             });
             if (other.has_value()) {
                 if (body != verified_bodies.end()) {
-                    diagnostics::Diagnostic diagnostic;
-                    diagnostic.severity = diagnostics::Severity::Warning;
-                    diagnostic.category = diagnostics::Category::CpplSyntax;
-                    diagnostic.message = "'validate' is also a name in this translation unit, so this expression is "
-                                         "ordinary C++, not a validation";
-                    diagnostic.location = stream.location_of(keyword);
-                    diagnostic.notes.push_back(
-                        diagnostics::Note{"the name is used here", stream.location_of(tokens[*other])});
-                    engine.report(std::move(diagnostic));
+                    warn_ordinary(written.keyword, *other, "this expression is ordinary C++, not a validation");
                 }
                 continue;
             }

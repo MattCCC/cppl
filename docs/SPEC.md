@@ -347,6 +347,16 @@ neither of which C++ can read. A warning of this section never changes what a
 program means, and an option that silences the implementation's warnings, such
 as `-w`, silences these too.
 
+[WORD-019] A module a translation unit imports may declare any name (MODULE-001), and
+its declarations are not part of the unit's text. A unit that imports one, as
+`import name;`, `import :partition;` or `import <header>;`, therefore uses every
+word as a C++ entity for WORD-011, WORD-012, WORD-013 and WORD-018: in it
+`contradiction name;`, `cases subject {...}`, `decompose subject {...}`,
+`validate<R>(e)`, `unsafe {...}`, an `unsafe` declaration and a `ghost`
+declaration keep their ordinary C++ meaning, with the warnings those rules
+describe naming the import. Constructs ordinary C++ cannot spell, such as laws,
+proofs and verified functions, are unaffected.
+
 ---
 
 ## 3.2 Preprocessing

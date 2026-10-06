@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPEC: WORD-008, WORD-014, WORD-015, WORD-016, WORD-017, WORD-018
+# SPEC: WORD-008, WORD-014, WORD-015, WORD-016, WORD-017, WORD-018, WORD-019
 # Ordinary C++ spelled with C++L words, where C++ gives each word a meaning of
 # its own, is compiled as the ordinary C++ it is.
 #
@@ -62,6 +62,35 @@ if [ "$compared" -eq 0 ]; then
     echo "no fixture was compared" >&2
     exit 1
 fi
+
+# SPEC: WORD-019, MODULE-001
+# A module may declare the words where the recognizer never reads. A unit that
+# imports one uses its entities as the C++ they are, in every standard with
+# modules, and builds the program Clang builds.
+modules="$2/words_as_cpp/modules"
+for standard in c++20 c++23; do
+    base="$run/modules-$standard"
+    mkdir -p "$base"
+    "$CLANG" "-std=$standard" --precompile "$modules/words.cppm" -o "$base/words.pcm"
+    "$CLANG" "-std=$standard" -c "$base/words.pcm" -o "$base/words.o"
+    if ! "$CPPL" "-std=$standard" "-fmodule-file=words=$base/words.pcm" "$modules/main.cpp" "$base/words.o" \
+        -o "$base/main.cppl" "--cppl-emit-projection=$base/projection" 2> "$base/cppl.err"; then
+        echo "cppl refused a unit using a module's entities named after C++L words ($standard):" >&2
+        cat "$base/cppl.err" >&2
+        exit 1
+    fi
+    if [ -s "$base/cppl.err" ] || [ -e "$base/projection" ]; then
+        echo "cppl read a unit using a module's entities named after C++L words as C++L ($standard):" >&2
+        cat "$base/cppl.err" >&2
+        exit 1
+    fi
+    "$CLANG" "-std=$standard" "-fmodule-file=words=$base/words.pcm" "$modules/main.cpp" "$base/words.o" \
+        -o "$base/main.clang"
+    if [ "$("$base/main.cppl")" != "$("$base/main.clang")" ]; then
+        echo "a unit importing a module behaves differently built by cppl and by Clang ($standard)" >&2
+        exit 1
+    fi
+done
 
 # SPEC: WORD-018
 # `-w` silences a C++L warning as it silences Clang's, and changes nothing else:

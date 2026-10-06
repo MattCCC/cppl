@@ -1084,6 +1084,57 @@ CPPL_TEST(unsafe_named_anywhere_else_keeps_blocks_and_declarations_ordinary_cpp)
     }
 }
 
+// SPEC: WORD-019, MODULE-001
+// A module the unit imports may declare any word, in text the recognizer never
+// reads, so each statement whose C++L reading rests on the word naming nothing
+// else keeps its C++ meaning there. In a verified body a warning says so and
+// points at the import.
+CPPL_TEST(a_unit_importing_a_module_keeps_every_word_led_statement_ordinary_cpp) {
+    for (const char* text : {"import words;\nint main() { contradiction verdict; cases c{3}; return c.v; }\n",
+                             "export import words;\nvoid f() { decompose d{1}; ghost g; unsafe { run(); } }\n",
+                             "import :part;\nvoid f() { validate<int>(1); }\n",
+                             "module;\nexport module m;\nimport <vector>;\nvoid f() { contradiction v; }\n"}) {
+        Recognized result;
+        recognize(text, result);
+        CPPL_CHECK(!result.engine.has_errors());
+        CPPL_CHECK(result.syntax.path_contradictions.empty());
+        CPPL_CHECK(result.syntax.path_splits.empty());
+        CPPL_CHECK(result.syntax.ghost_declarations.empty());
+        CPPL_CHECK(result.syntax.unsafe_blocks.empty());
+        CPPL_CHECK(result.syntax.validations.empty());
+    }
+
+    Recognized verified;
+    recognize("import words;\n"
+              "verified unsigned f(unsigned x) ensures (result == x) { contradiction verdict; return x; }\n",
+              verified);
+    CPPL_CHECK(!verified.engine.has_errors());
+    CPPL_CHECK(verified.syntax.path_contradictions.empty());
+    CPPL_CHECK_EQ(verified.engine.diagnostics().size(), std::size_t{1});
+    const auto& warning = verified.engine.diagnostics()[0];
+    CPPL_CHECK(warning.severity == cppl::diagnostics::Severity::Warning);
+    CPPL_CHECK(warning.message.find("may name an entity of a module") != std::string::npos);
+    CPPL_CHECK_EQ(warning.notes.size(), std::size_t{1});
+    CPPL_CHECK_EQ(warning.notes[0].location.line, 1u);
+
+    // A type named `import` used in a declaration imports nothing, so the claim
+    // in a function that is not verified is still refused.
+    Recognized declared;
+    recognize("struct import {};\nconst import k{};\nvoid f() { contradiction v; }\n", declared);
+    CPPL_CHECK(declared.engine.has_errors());
+
+    // An identifier named `import` is not a module import.
+    Recognized named;
+    recognize("int import = 0;\n"
+              "verified unsigned f(unsigned x) ensures (result == x) {\n"
+              "    if (x > x) { contradiction pinned(x); }\n"
+              "    return x;\n"
+              "}\n"
+              "proof pinned(unsigned v) proves (v == v) { refl; }\n",
+              named);
+    CPPL_CHECK_EQ(named.syntax.path_contradictions.size(), std::size_t{1});
+}
+
 // SPEC: UNSAFE-002
 CPPL_TEST(unsafe_combined_with_verified_or_pure_is_refused) {
     for (const char* text :
