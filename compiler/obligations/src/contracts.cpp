@@ -270,10 +270,10 @@ const vir::Expr& denoted_value(const vir::Expr& value, const std::vector<Step>& 
     return *current;
 }
 
-// Whether `version` is read anywhere inside a conditional's arm in `body`. Such
-// a read places this local's value beneath that conditional in the lowered
-// value, which decides which of the two conditionals the route must split on
-// first.
+// Whether `version` is read anywhere in a conditional in `body`, in its
+// condition or an arm. Such a read places this local's value beneath that
+// conditional in the lowered value, which decides which of the two
+// conditionals the route must split on first.
 bool reads_from_a_conditional(const vir::Expr& body, std::uint32_t version) {
     bool found = false;
     const auto visit = [&](const vir::Expr& node, bool inside, const auto& self) -> void {
@@ -285,7 +285,7 @@ bool reads_from_a_conditional(const vir::Expr& body, std::uint32_t version) {
         }
         if (const auto* choice = std::get_if<vir::Conditional>(&node.node)) {
             if (choice->operands.size() == 3) {
-                self(choice->operands[0], inside, self);
+                self(choice->operands[0], true, self);
                 self(choice->operands[1], true, self);
                 self(choice->operands[2], true, self);
                 return;

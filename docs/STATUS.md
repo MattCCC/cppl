@@ -141,9 +141,18 @@ nothing grants `P || not P`. In a verified `if` condition, `&&`, `||` and `!`
 are elaborated into the routes they select between (SPEC.md 12.7). A loop
 invariant states `&&` and `||` as a contract does, the conjunction and the
 disjunction of its operands, each specified on its own and nested to any depth
-(EXPR-016, SPECEXPR-002; `e2e/conditions.sh`, `negative/conditions.sh`). Value
-uses of `&&` and `||` remain unsupported, because a proposition is not a value
-(SPEC.md 7.6-7.8).
+(EXPR-016, SPECEXPR-002; `e2e/conditions.sh`, `negative/conditions.sh`).
+Automation takes cases on a disjunction inside a conjunctive premise, such as
+a callee's `r <= a && r <= b && (r == a || r == b)`; on the order a disjunctive
+goal's first side states, machine order being total, so `b0 > 0 || (a == a0 &&
+b == 0)` holds where `b0 <= 0` gives the rest, while `x == 0 || x != 0` is
+still not built; on a selection in a disjunctive goal; and, where nothing else
+closes a goal, on a selection a premise states something about, such as the
+route fact of a Boolean local holding `c ? true : d`. Such a local read in a
+later condition is split where that condition stands, as the composed
+contract nests it. Each case is a kernel rule checked on its own; none adds
+an assumption. Value uses of `&&` and `||` remain unsupported, because a
+proposition is not a value (SPEC.md 7.6-7.8).
 Everything else is reported as unsupported and produces no obligation. See
 `docs/ARCHITECTURE.md` 95 for the implemented structure and `TRUST.md` 4 for what
 must be trusted.

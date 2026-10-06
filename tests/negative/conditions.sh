@@ -6,7 +6,9 @@
 # the same body with one thing changed so that it would be proven only if the
 # lowering got the meaning of `&&` and `||` wrong (C++ [expr.log.and],
 # [expr.log.or]): an invariant whose cases do not cover the loop, one operand
-# of a conjunction not stated, or a claim that holds of the other connective.
+# of a conjunction not stated, a claim that holds of the other connective, a
+# case of a callee's disjunction left out, or a case split that would grant
+# what neither case shows.
 set -euo pipefail
 CPPL="$1"
 WORK="$3"
@@ -117,6 +119,132 @@ verified unsigned last_below(unsigned n, unsigned limit)
         }
     }
     return last;
+}
+int main() { return 0; }
+CPP
+
+# --- disjunctions taken apart, and decided case by case ---------------------
+
+# The callee's disjunction has two cases each; `v` may be neither `lo` nor
+# what the claim allows.
+refused clamp_omits_a_case "$false_claim" <<'CPP'
+template <typename T>
+verified T min_of(T a, T b)
+    ensures (result <= a && result <= b && (result == a || result == b))
+{
+    return b < a ? b : a;
+}
+template <typename T>
+verified T max_of(T a, T b)
+    ensures (result >= a && result >= b && (result == a || result == b))
+{
+    return a < b ? b : a;
+}
+verified unsigned clamp(unsigned v, unsigned lo, unsigned hi)
+    expects (lo <= hi)
+    ensures (lo <= result && result <= hi && (result == v || result == lo))
+{
+    return min_of(max_of(v, lo), hi);
+}
+int main() { return 0; }
+CPP
+
+refused median_of_two "$false_claim" <<'CPP'
+template <typename T>
+verified T min_of(T a, T b)
+    ensures (result <= a && result <= b && (result == a || result == b))
+{
+    return b < a ? b : a;
+}
+template <typename T>
+verified T max_of(T a, T b)
+    ensures (result >= a && result >= b && (result == a || result == b))
+{
+    return a < b ? b : a;
+}
+verified int median(int a, int b, int c)
+    ensures (result == a || result == b)
+{
+    return max_of(min_of(a, b), min_of(max_of(a, b), c));
+}
+int main() { return 0; }
+CPP
+
+# Where `b0 > 0u` fails the loop has not run, but `a` need not be 0.
+refused snapshot_case_false_on_entry "does not hold on entry" <<'CPP'
+verified unsigned gcd(unsigned a, unsigned b)
+    ensures (true)
+{
+    ghost unsigned a0 = a;
+    ghost unsigned b0 = b;
+    while (b != 0u)
+        invariant (b0 > 0u || (a == 0u && b == 0u))
+        decreases (b)
+    {
+        const unsigned t = a % b;
+        a = b;
+        b = t;
+    }
+    return a;
+}
+int main() { return 0; }
+CPP
+
+# Splitting on the first side's order is no excluded middle: where `b0 > 0u`
+# fails, the rest still has to hold, and `b0 == 1u` does not.
+refused snapshot_case_rest_false "does not hold on entry" <<'CPP'
+verified unsigned gcd(unsigned a, unsigned b)
+    ensures (true)
+{
+    ghost unsigned b0 = b;
+    while (b != 0u)
+        invariant (b0 > 0u || b0 == 1u)
+        decreases (b)
+    {
+        const unsigned t = a % b;
+        a = b;
+        b = t;
+    }
+    return a;
+}
+int main() { return 0; }
+CPP
+
+# `any` holds for `y > 0u` alone.
+refused flag_on_one_operand "$false_claim" <<'CPP'
+verified unsigned either(unsigned x, unsigned y)
+    ensures (result == 0u || x > 0u)
+{
+    const bool any = x > 0u ? true : y > 0u;
+    if (any) {
+        return 1u;
+    }
+    return 0u;
+}
+int main() { return 0; }
+CPP
+
+# Selected the other way, the flag is 0 where only one operand holds.
+refused flag_selected_as_both "$false_claim" <<'CPP'
+verified unsigned either(unsigned x, unsigned y)
+    ensures (result == 1u || (x == 0u && y == 0u))
+{
+    const bool any = x > 0u ? y > 0u : false;
+    if (any) {
+        return 1u;
+    }
+    return 0u;
+}
+int main() { return 0; }
+CPP
+
+# `x == 1u` adds one too.
+refused bump_claims_strict "$false_claim" <<'CPP'
+verified unsigned bump(unsigned count, unsigned x)
+    expects (count < 100u)
+    ensures (result == count || (x > 1u && result == count + 1u))
+{
+    return count + (x > 0u ? 1u : 0u);
 }
 int main() { return 0; }
 CPP
