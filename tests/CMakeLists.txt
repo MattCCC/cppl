@@ -214,7 +214,8 @@ target_link_libraries(unit_contracts_test PRIVATE cppl_automation)
 target_include_directories(unit_contracts_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../compiler/automation/src)
 
-cppl_add_unit_test(unit_arithmetic_test unit/arithmetic_test.cpp)
+cppl_add_unit_test(unit_arithmetic_test unit/arithmetic_test.cpp unit/arithmetic_test_reasoning.cpp
+                   unit/arithmetic_test_authority.cpp unit/arithmetic_test_obligations.cpp)
 target_link_libraries(unit_arithmetic_test PRIVATE cppl_automation)
 
 cppl_add_unit_test(unit_definedness_arithmetic_test unit/definedness_arithmetic_test.cpp)

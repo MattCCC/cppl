@@ -193,6 +193,9 @@ tests:
   unit:
     - tests/unit/definedness_arithmetic_test.cpp
     - tests/unit/arithmetic_test.cpp
+    - tests/unit/arithmetic_test_reasoning.cpp
+    - tests/unit/arithmetic_test_authority.cpp
+    - tests/unit/arithmetic_test_obligations.cpp
     - tests/unit/driver_options_test.cpp
   property:
     - tests/property/arithmetic_oracle.cpp
