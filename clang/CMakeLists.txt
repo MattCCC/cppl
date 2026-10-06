@@ -8,6 +8,11 @@
 add_library(cppl_clang STATIC
     src/bridge.cpp
     src/editor.cpp
+    src/editor_completion.cpp
+    src/editor_description.cpp
+    src/editor_names.cpp
+    src/editor_navigation.cpp
+    src/editor_structure.cpp
     src/proof_instantiation.cpp)
 
 target_include_directories(cppl_clang PUBLIC
