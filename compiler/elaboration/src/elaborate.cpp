@@ -618,7 +618,7 @@ class ExpressionElaborator {
             auto operand = convert(conversion->operands.front());
             if (!operand)
                 return std::nullopt;
-            if (!operand->type.is_integer()) {
+            if (!operand->type.is_integer() && !operand->type.is_boolean()) {
                 failure_ = Failure{"a conversion from '" + describe(operand->type) + "' is not modeled", expr.location};
                 return std::nullopt;
             }

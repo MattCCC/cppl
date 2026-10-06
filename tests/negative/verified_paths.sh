@@ -57,8 +57,8 @@ reject effect_guard 'not modeled' \
     'verified unsigned f(unsigned x) ensures (result <= 10u) { if (++x <= 10u) return x; return 10u; }'
 reject effect_arm 'return path.*does not satisfy' \
     'verified unsigned f(unsigned x) ensures (result <= 10u) { if (x <= 10u) { x = 11u; return x; } return 10u; }'
-reject conversion 'conversion.*not modeled' \
-    'verified unsigned f(unsigned x, bool b) ensures (result <= 10u) { if (x <= b) return x; return 10u; }'
+reject conversion 'does not satisfy' \
+    'verified unsigned f(unsigned x, bool b) ensures (result == 0u) { if (x <= b) return x; return 0u; }'
 reject float_comparison 'not modeled' \
     'verified unsigned f(float x) ensures (result <= 10u) { if (x <= 10.0f) return 0u; return 10u; }'
 # `&&` in a condition is elaborated into the routes it selects between, so the

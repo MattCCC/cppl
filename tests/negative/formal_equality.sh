@@ -27,8 +27,10 @@ reject wrong_evidence <<'CPP'
 proof first(int x) proves (Eq<int>(x, x)) { refl; }
 proof wrong(int x, int y) proves (Eq<int>(x, y)) { exact first(x); }
 CPP
+# An operand whose conversion to the equality's type is not modeled is refused
+# where it is written. (A `bool` operand converts to `int` as 0 or 1.)
 reject wrong_type <<'CPP'
-proof wrong(bool x) proves (Eq<int>(x, x)) { refl; }
+proof wrong(float x) proves (Eq<int>(x, x)) { refl; }
 CPP
 reject missing_operand <<'CPP'
 proof wrong(int x) proves (Eq<int>(x)) { refl; }
@@ -90,5 +92,5 @@ grep -q 'depends on itself' "$run/mutual_reference.log"
 grep -q 'kernel-rejection' "$run/false.log"
 grep -q 'was not admitted' "$run/failed_dependency.log"
 grep -q 'unsupported-semantics' "$run/formal_operand_of_formal.log"
-column=$(awk 'NR == 1 { print index($0, "(x, x)") + 1 }' "$run/wrong_type.cpp")
-grep -q "wrong_type.cpp:1:$column:" "$run/wrong_type.log"
+grep -q "wrong_type.cpp:1:[0-9]*: error \[unsupported-semantics\]: proof 'wrong' has a parameter of type 'float', which is not modeled" \
+    "$run/wrong_type.log"

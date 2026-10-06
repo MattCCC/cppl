@@ -437,11 +437,12 @@ class TermLowering {
         // reduction into the target type. That is C++'s conversion to an
         // unsigned type. To a signed type, every evaluation owes that the value
         // is representable in the target, and where it is the reduction's value
-        // is proven to be that value unchanged (SPEC.md ARITH-008). `bool`
-        // converts by truth and is never stated this way.
+        // is proven to be that value unchanged (SPEC.md ARITH-008). `bool` is
+        // the core's one-bit unsigned type, so its conversion to an integer type
+        // is this reduction of 0 or 1, which is C++'s. A conversion to `bool`
+        // is whether the value is nonzero and is never stated this way.
         if (const auto* conversion = std::get_if<vir::Conversion>(&expr.node)) {
-            if (conversion->operands.size() != 1 || !type || !type->is_integer() || expr.type.is_boolean() ||
-                conversion->operands[0].type.is_boolean()) {
+            if (conversion->operands.size() != 1 || !type || !type->is_integer() || expr.type.is_boolean()) {
                 return fail("an integral conversion requires integer operand and result types", location);
             }
             const std::optional<kernel::Type> source = lower_type(conversion->operands[0].type);

@@ -1702,12 +1702,15 @@ comparisons are modeled exactly at every width from 1 to 64 bits, each operation
 defines only under a condition owing it where it is evaluated (RFC 0019).
 Signed arithmetic and division are `PARTIAL` because a product of two unknowns
 is decided only where their types bound it, and a quotient by an unknown divisor
-is left unknown; conversions are `PARTIAL` because those to or from `bool`
-and floating point, and from an integer to an enumeration, are refused, as is
-compound assignment of a
+is left unknown; conversions are `PARTIAL` because those to or from floating
+point, and from an integer to an enumeration, are refused, as is compound
+assignment of a
 promoted type, and `char8_t`, `char16_t`, `char32_t`, `wchar_t` and bit-fields,
 whose promotion is not modeled, are refused where they are named. Shifts and
-bitwise operators are refused. An enumeration, scoped or not, is a value of
+bitwise operators are refused. A conversion between `bool` and an integer
+type, implicit or written, is what C++ defines it to be: an integer converts
+to `bool` as whether it is nonzero, and `bool` to an integer as 1 when true and
+0 when false (`negative_boolean_conversions`). An enumeration, scoped or not, is a value of
 its underlying type: an unscoped one converts implicitly to an integer type as
 that value, and one without a fixed underlying type, which holds a subset of
 that type's values, is read as the whole type, which asks more and never less.

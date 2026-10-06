@@ -30,8 +30,8 @@ reject bad_rewrite 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) expects (x == 0u) ensures (result == 2u) { return x + 1u; }'
 reject branch 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures (result == x) { if (x == 0u) return 1u; else return x; }'
-reject loop_condition_conversion "implicit conversion from 'unsigned int' to 'bool' is not modeled" \
-    'verified unsigned f(unsigned x) ensures (result == x) { while (x) {} return x; }'
+reject loop_condition_conversion 'does not satisfy its contract' \
+    'verified unsigned f(unsigned x) ensures (result == 1u) { while (x) { x = x - 1u; } return x; }'
 reject goto_statement 'only if/else' \
     'verified unsigned f(unsigned x) ensures (result == x) { again: if (x == 0u) goto again; return x; }'
 reject multiple_returns 'unreachable trailing' \
@@ -91,9 +91,9 @@ reject unused_result_overflow 'signed overflow' \
     'verified int f(int x) ensures (x == x) { return x + 1; }'
 reject refl_cannot_rewrite 'does not establish law' \
     'law l(unsigned x) expects (x == 0u) proves (x + 1u == 1u); proof p(unsigned x) proves (l(x)) { refl; }'
-reject bool_promotion "conversion from 'bool' to 'int' is not modeled" \
-    'verified unsigned f(bool b) ensures (result == 0u) { if (b == true) return 0u; return 0u; }'
-reject bool_widening "conversion from 'bool' to 'unsigned int' is not modeled" \
+reject bool_promotion 'does not satisfy' \
+    'verified unsigned f(bool b) ensures (result == 1u) { if (b == true) return 0u; return 0u; }'
+reject bool_widening 'does not satisfy' \
     'verified unsigned f(bool b) ensures (result == 0u) { return b; }'
 reject volatile_parameter 'not modeled' \
     'verified unsigned f(volatile unsigned x) ensures (result == 0u) { return x; }'
@@ -111,7 +111,7 @@ reject conditional_operator_false 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures (result == x) { return x == 0u ? 1u : x; }'
 # A cast between integer types is the conversion it names (ARITH-008); a cast to
 # `bool` converts by truth, which is not modeled.
-reject explicit_cast "conversion from 'bool' to 'unsigned int' is not modeled" \
+reject explicit_cast 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures (result == x) { return (unsigned)(bool)x; }'
 reject switch_statement "found a 'switch' statement" \
     'verified unsigned f(unsigned x) ensures (result == x) { switch (x) { default: return x; } }'

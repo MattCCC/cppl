@@ -2454,6 +2454,31 @@ Expr integral_conversion(Expr operand, Type type, CXCursor at, bool written) {
     return converted;
 }
 
+// The conversion of `operand` to `type` where exactly one of the two is `bool`
+// and the other a modeled integer type (SPEC.md ARITH-008): an integer converts
+// to `bool` as whether it is nonzero, and `bool` to an integer type as 1 when
+// true and 0 when false, which is what C++ defines each to be. The second is the
+// core's conversion of its one-bit value; the first is never stated with it.
+Expr boolean_conversion(Expr operand, Type type, CXCursor at) {
+    if (type.kind == TypeKind::Bool) {
+        Expr zero;
+        zero.type = operand.type;
+        zero.location = operand.location;
+        zero.node = IntLiteral{0};
+        Expr nonzero;
+        nonzero.type = std::move(type);
+        nonzero.location = presumed_location(clang_getCursorLocation(at));
+        nonzero.node = Binary{BinaryOp::NotEqual, {std::move(operand), std::move(zero)}};
+        return nonzero;
+    }
+    return integral_conversion(std::move(operand), std::move(type), at, false);
+}
+
+// Whether `from` and `to` are a modeled integer type and `bool`, in either order.
+bool boolean_pair(const Type& from, const Type& to) {
+    return (from.kind == TypeKind::Bool && integral(to)) || (integral(from) && to.kind == TypeKind::Bool);
+}
+
 // Whether C++ may perform arithmetic on this type only after an integral
 // promotion: to `int` where `int` holds every value, otherwise to `unsigned
 // int`. libclang does not expose the type a compound assignment computes in, so
@@ -3309,6 +3334,13 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
                 expression.type = destination;
                 return expression;
             }
+            if (destination.kind == TypeKind::Bool && source.kind == TypeKind::Bool) {
+                return build_expression(*operand, signature, locals, depth + 1);
+            }
+            if (boolean_pair(source, destination)) {
+                return boolean_conversion(build_expression(*operand, signature, locals, depth + 1), destination,
+                                          cursor);
+            }
             if (integral(destination) && integral(source)) {
                 Expr expression = build_expression(*operand, signature, locals, depth + 1);
                 if (same_modeled_value(destination, source)) {
@@ -3349,6 +3381,9 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
             if (kind == CXCursor_UnexposedExpr && integral(converted) && integral(original)) {
                 return integral_conversion(build_expression(inner[0], signature, locals, depth + 1), converted, cursor,
                                            false);
+            }
+            if (kind == CXCursor_UnexposedExpr && boolean_pair(original, converted)) {
+                return boolean_conversion(build_expression(inner[0], signature, locals, depth + 1), converted, cursor);
             }
             // An unscoped enumeration converts implicitly to an integer type:
             // its value is a value of its underlying type, which is what Clang

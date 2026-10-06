@@ -94,7 +94,7 @@ reject condition_declaration 'declares a variable' \
 # invariant false where the loop is entered.
 reject signed_counter 'does not hold on entry' \
     'verified int f(int n) ensures (result == n) { int i = 0; while (i < n) invariant (i <= n) { ++i; } return i; }'
-reject converted_invariant 'not modeled' \
+reject converted_invariant 'does not hold on entry' \
     "$count while (i < n) invariant (i) { ++i; } return n; }"
 reject effect_in_invariant 'not modeled' \
     "$count while (i < n) invariant (i++ <= n) { ++i; } return n; }"
