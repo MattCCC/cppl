@@ -3156,6 +3156,10 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                std::ranges::any_of(syntax.laws,
                                    [&covers](const LawDeclaration& law) { return covers(law.range.span); });
     };
+    const auto in_verified_body = [&verified_bodies](std::size_t at) {
+        return std::ranges::any_of(verified_bodies,
+                                   [at](const VerifiedBody& body) { return body.open < at && at < body.close; });
+    };
     const auto in_split = [&written_splits](std::size_t at) {
         return std::ranges::any_of(
             written_splits, [at](const Written& written) { return written.keyword <= at && at <= written.terminator; });
@@ -3313,8 +3317,16 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                     diagnostics::Note{"the name is used here", stream.location_of(tokens[*other])});
                 engine.report(std::move(diagnostic));
             };
+            // Only where an unsafe boundary could have been meant (WORD-018):
+            // in a verified body, or where the C++ reading cannot be valid, as
+            // with braces holding a statement, which no initializer holds, and
+            // with a declaration, whose word a return type follows. `unsafe{};`
+            // elsewhere is a temporary and nothing else.
             for (const Written& written : written_unsafe_blocks) {
-                warn(written.keyword);
+                if (in_verified_body(written.keyword) ||
+                    holds_a_statement(tokens, written.keyword + 1, written.terminator)) {
+                    warn(written.keyword);
+                }
             }
             for (const WrittenUnsafeDeclaration& written : written_unsafe_declarations) {
                 warn(written.keyword);
@@ -3399,6 +3411,11 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
         for (const WrittenGhost& written : written_ghosts) {
             const Token& keyword = tokens[written.keyword];
             if (other.has_value()) {
+                // Ghost state exists only in a verified body, so only there could
+                // it have been meant (WORD-018).
+                if (!in_verified_body(written.keyword)) {
+                    continue;
+                }
                 diagnostics::Diagnostic diagnostic;
                 diagnostic.severity = diagnostics::Severity::Warning;
                 diagnostic.category = diagnostics::Category::CpplSyntax;

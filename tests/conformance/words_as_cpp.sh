@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPEC: WORD-008, WORD-014, WORD-015, WORD-016, WORD-017
+# SPEC: WORD-008, WORD-014, WORD-015, WORD-016, WORD-017, WORD-018
 # Ordinary C++ spelled with C++L words, where C++ gives each word a meaning of
 # its own, is compiled as the ordinary C++ it is.
 #
@@ -62,4 +62,41 @@ if [ "$compared" -eq 0 ]; then
     echo "no fixture was compared" >&2
     exit 1
 fi
-echo "$compared builds of ordinary C++ spelled with C++L words behave as Clang's"
+
+# SPEC: WORD-018
+# `-w` silences a C++L warning as it silences Clang's, and changes nothing else:
+# the unit that warns without it builds the same program with it. An error is
+# never silenced.
+named="$2/case_split_as_cpp_name.cpp"
+"$CPPL" -std=c++20 "$named" -o "$run/named" 2> "$run/named.err"
+if ! grep -q "warning \[cppl-syntax\]: 'cases' is also a name" "$run/named.err"; then
+    echo "the unit naming a type 'cases' no longer warns, so -w is not tested" >&2
+    exit 1
+fi
+"$CPPL" -std=c++20 -w "$named" -o "$run/quiet" 2> "$run/quiet.err"
+if [ -s "$run/quiet.err" ]; then
+    echo "-w left a C++L warning:" >&2
+    cat "$run/quiet.err" >&2
+    exit 1
+fi
+if [ "$("$run/quiet")" != "$("$run/named")" ]; then
+    echo "-w changed the program" >&2
+    exit 1
+fi
+cat > "$run/refused.cpp" <<'CPP'
+int f(int n) {
+    while (n > 0) invariant (n >= 0) { --n; }
+    return n;
+}
+CPP
+if "$CPPL" -std=c++20 -w -c "$run/refused.cpp" -o "$run/refused.o" 2> "$run/refused.err"; then
+    echo "-w let a refused unit compile" >&2
+    exit 1
+fi
+if ! grep -q "error \[unsupported-semantics\]: a loop invariant outside a verified function" "$run/refused.err"; then
+    echo "-w silenced a C++L error:" >&2
+    cat "$run/refused.err" >&2
+    exit 1
+fi
+
+echo "$compared builds of ordinary C++ spelled with C++L words behave as Clang's, and -w silences only warnings"

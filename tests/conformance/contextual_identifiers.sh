@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPEC: WORD-001, WORD-002, WORD-008, WORD-010
+# SPEC: WORD-001, WORD-002, WORD-008, WORD-010, WORD-018
 # C++L words used as ordinary identifiers stay ordinary identifiers.
 set -euo pipefail
 
@@ -12,7 +12,14 @@ run=$(mktemp -d "$WORK/contextual.XXXXXX")
 
 for standard in c++17 c++20 c++23; do
     binary="$run/contextual-$standard"
-    "$CPPL" "-std=$standard" "$FIXTURES/contextual_identifiers.cpp" -o "$binary"
+    "$CPPL" "-std=$standard" "$FIXTURES/contextual_identifiers.cpp" -o "$binary" 2> "$binary.err"
+    # No C++L construct could have been meant in ordinary C++ outside any
+    # verified function, so nothing is said about it (WORD-018).
+    if [ -s "$binary.err" ]; then
+        echo "ordinary C++ using the words as names drew a diagnostic ($standard):" >&2
+        cat "$binary.err" >&2
+        exit 1
+    fi
     "$binary"
 
     # The words of `contradiction` and of a case omission, used as names inside

@@ -381,8 +381,15 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     return outcome;
 }
 
-void print_diagnostics(const diagnostics::Engine& engine) {
+// `-w` silences C++L's warnings as it silences Clang's (SPEC.md WORD-018). An
+// error is never silenced.
+void print_diagnostics(const diagnostics::Engine& engine, const Options& options) {
+    const bool silenced = std::ranges::contains(options.arguments, std::string("-w")) ||
+                          std::ranges::contains(options.arguments, std::string("--no-warnings"));
     for (const diagnostics::Diagnostic& diagnostic : engine.diagnostics()) {
+        if (silenced && diagnostic.severity == diagnostics::Severity::Warning) {
+            continue;
+        }
         std::cerr << diagnostics::render(diagnostic) << "\n";
     }
 }
@@ -866,7 +873,7 @@ int run_driver(int argc, const char* const* argv) {
         exported = std::move(outcome.exported);
     }
 
-    print_diagnostics(engine);
+    print_diagnostics(engine, options);
 
     if (failed || engine.has_errors()) {
         return fail_with(failure_exit_code);

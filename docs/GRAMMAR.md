@@ -374,6 +374,8 @@ ghost-declaration ::= "ghost" simple-declaration
 Only locals in verification-enabled blocks are legal. No ghost member, runtime
 parameter or global is implied. Initializers must be specification-safe;
 runtime computation, lifetime and effects cannot depend on erased state.
+Where the unit uses `ghost` as a C++ name, the declaration is ordinary C++, with
+a warning only in a verified body (SPEC.md WORD-018).
 
 ## 22. Unsafe blocks
 
@@ -382,7 +384,9 @@ unsafe-statement ::= "unsafe" compound-statement
 ```
 
 The body executes as ordinary C++. Its unproved safety is explicit and cannot
-manufacture evidence.
+manufacture evidence. Where the unit uses `unsafe` as a C++ name, `unsafe {...}`
+is ordinary C++, with a warning only in a verified body or where the braces hold
+a statement (SPEC.md WORD-018).
 
 ## 23. Unsafe functions
 

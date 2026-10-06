@@ -1054,19 +1054,34 @@ CPPL_TEST(unsafe_blocks_are_recognized_with_the_body_that_holds_them) {
     CPPL_CHECK(!result.syntax.unsafe_blocks[2].nested);
 }
 
-// SPEC: WORD-002, WORD-011
+// SPEC: WORD-002, WORD-011, WORD-018
 // `unsafe {x}` constructs a temporary wherever `unsafe` names a type, so the
 // word used for anything else leaves every block and declaration ordinary C++.
+// A warning says so only where an unsafe boundary could have been meant: in a
+// verified body, before braces holding a statement, which no initializer
+// holds, and on a declaration. A temporary in an ordinary function is ordinary
+// C++ and nothing more.
 CPPL_TEST(unsafe_named_anywhere_else_keeps_blocks_and_declarations_ordinary_cpp) {
     Recognized result;
     recognize("struct unsafe { unsafe(int) {} };\n"
-              "void f() { unsafe {1}; }\n",
+              "void f() { unsafe {1}; unsafe{}; }\n",
               result);
-    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK(result.engine.diagnostics().empty());
     CPPL_CHECK(result.syntax.unsafe_blocks.empty());
     CPPL_CHECK(result.syntax.unsafe_functions.empty());
-    CPPL_CHECK_EQ(result.engine.diagnostics().size(), std::size_t{1});
-    CPPL_CHECK(result.engine.diagnostics()[0].severity == cppl::diagnostics::Severity::Warning);
+
+    for (const char* text : {"struct unsafe { unsafe(int) {} };\n"
+                             "verified unsigned f(unsigned x) ensures (result == x) { unsafe {1}; return x; }\n",
+                             "struct unsafe { unsafe(int) {} };\nvoid g();\nvoid f() { unsafe { g(); } }\n",
+                             "struct unsafe { unsafe(int) {} };\nunsafe unsigned read_device();\n"}) {
+        Recognized warned;
+        recognize(text, warned);
+        CPPL_CHECK(!warned.engine.has_errors());
+        CPPL_CHECK(warned.syntax.unsafe_blocks.empty());
+        CPPL_CHECK(warned.syntax.unsafe_functions.empty());
+        CPPL_CHECK_EQ(warned.engine.diagnostics().size(), std::size_t{1});
+        CPPL_CHECK(warned.engine.diagnostics()[0].severity == cppl::diagnostics::Severity::Warning);
+    }
 }
 
 // SPEC: UNSAFE-002
@@ -1142,18 +1157,21 @@ CPPL_TEST(a_ghost_declaration_is_recognized_with_everything_that_erases) {
                   std::string("ghost unsigned seen = x, twice = seen + seen;"));
 }
 
-// SPEC: WORD-002, WORD-011
+// SPEC: WORD-002, WORD-011, WORD-018
 // `ghost x = y;` declares `x` wherever `ghost` names a type, so the word used
-// for anything else leaves every such declaration ordinary C++.
+// for anything else leaves every such declaration ordinary C++. Ghost state
+// exists only in a verified body, so a warning says so there and nowhere else.
 CPPL_TEST(ghost_named_anywhere_else_keeps_the_declaration_ordinary_cpp) {
     Recognized result;
     recognize("struct ghost { unsigned value; };\n"
-              "verified unsigned f(unsigned x) ensures (result == x) { ghost g{x}; return g.value; }\n",
+              "verified unsigned f(unsigned x) ensures (result == x) { ghost g{x}; return g.value; }\n"
+              "unsigned g(unsigned x) { ghost h{x}; ghost k = h; return k.value; }\n",
               result);
     CPPL_CHECK(!result.engine.has_errors());
     CPPL_CHECK(result.syntax.ghost_declarations.empty());
     CPPL_CHECK_EQ(result.engine.diagnostics().size(), std::size_t{1});
     CPPL_CHECK(result.engine.diagnostics()[0].severity == cppl::diagnostics::Severity::Warning);
+    CPPL_CHECK_EQ(result.engine.diagnostics()[0].location.line, 2u);
 }
 
 // SPEC: GHOST-001

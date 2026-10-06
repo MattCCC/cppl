@@ -117,6 +117,7 @@ exempt	words_as_cpp/member_initializers.cpp	-	ordinary C++ using C++L words as i
 exempt	words_as_cpp/operator_spellings.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	words_as_cpp/qualified_declarators.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	words_as_cpp/qualified_names.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
+exempt	words_as_cpp/temporaries.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	words_as_cpp/trailing_returns.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	words_as_cpp/type_names.cpp	-	ordinary C++ using C++L words as its own names; it states no claim	-	-
 exempt	equivalence/abi_client.cpp	-	the ordinary C++ client of abi_library.cpp; it states no claim	-	-

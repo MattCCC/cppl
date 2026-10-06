@@ -387,7 +387,9 @@ the program (ERASE-011), which compiles to the same code as the program written
 without it (`fixtures/equivalence/ghost_state.cpp`). A ghost is declared only
 directly in a block of a verified body, outside every unsafe block; a class,
 pointer, reference, array or volatile ghost, a static one, one without a value,
-a global and a member are refused by name (`negative_ghost_state`). In any unit
+a global and a member are refused by name (`negative_ghost_state`). Where the
+unit uses `ghost` for anything else, a declaration led by it is ordinary C++,
+with a warning only in a verified body (`WORD-018`). In any unit
 with C++L syntax, a name beginning with `__cppl_`, the prefix of every
 declaration C++L generates, is refused, since the body lowering reads a
 declaration so named as generated.
@@ -1810,7 +1812,10 @@ uses (`fixtures/trust_closure.cpp`).
 `unsafe` marks a runtime boundary (`SPEC.md` 26). A block `unsafe { ... }` and an
 `unsafe` function declaration are recognized under the same C++-first rule as
 every contextual word: in a unit that uses the word for anything else, both stay
-ordinary C++ and are warned about. Both erase to the C++ they mark: the keyword
+ordinary C++, and a warning says so where an unsafe boundary could have been
+meant: on a declaration, and on a block in a verified body or whose braces hold a
+statement (`WORD-018`). `unsafe{};` elsewhere is a temporary, and nothing is
+said about it. Both erase to the C++ they mark: the keyword
 leaves, and the function, the block's braces and every statement in it stay and
 run as written (`fixtures/equivalence/unsafe_boundaries.cpp`).
 

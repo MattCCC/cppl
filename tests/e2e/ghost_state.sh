@@ -64,7 +64,8 @@ if grep -q '__cppl_' "$runtime"; then
 fi
 
 # C++ first (SPEC.md WORD-002): where `ghost` names a type, `ghost x = y;`
-# declares `x`, and every such declaration stays ordinary C++, with a warning.
+# declares `x`, and every such declaration stays ordinary C++. Outside a verified
+# body no ghost state could have been meant, so nothing is said (WORD-018).
 cat > "$run/named.cpp" <<'CPP'
 struct ghost {
     unsigned value;
@@ -88,6 +89,11 @@ status=$?
 set -e
 if [ "$status" != 3 ]; then
     echo "a unit naming a type 'ghost' did not run as ordinary C++ (exit $status)" >&2
+    cat "$run/named.log" >&2
+    exit 1
+fi
+if [ -s "$run/named.log" ]; then
+    echo "a declaration of a local of type 'ghost' outside a verified body was warned about" >&2
     cat "$run/named.log" >&2
     exit 1
 fi

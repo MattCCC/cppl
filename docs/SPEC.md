@@ -337,6 +337,16 @@ entity, the expression keeps its ordinary C++ meaning, and the implementation
 SHOULD warn that it is not a validation. The same expression in a function that
 is not verified is ill-formed C++L rather than an unchecked validation.
 
+[WORD-018] Where the translation unit uses `unsafe` or `ghost` as any C++ entity, a
+block or a declaration led by the word keeps its ordinary C++ meaning:
+`unsafe{};` constructs a temporary and `ghost g;` declares a local. The
+implementation SHOULD warn that it is not an unsafe boundary or ghost state
+only where one could have been meant: in a verified function's body, and for
+`unsafe` also on a function declaration and before braces holding a statement,
+neither of which C++ can read. A warning of this section never changes what a
+program means, and an option that silences the implementation's warnings, such
+as `-w`, silences these too.
+
 ---
 
 ## 3.2 Preprocessing
