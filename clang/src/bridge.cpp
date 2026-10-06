@@ -33,55 +33,6 @@
 
 namespace cppl::clangbridge {
 
-namespace detail {
-
-// What libclang reports, read the one way every unit of the bridge reads it
-// (places.hpp, cursors.cpp).
-using bridge::children_of;
-using bridge::presumed_location;
-using bridge::record_fields;
-using bridge::record_has_base;
-using bridge::strip_parens;
-using bridge::take;
-
-class ScopedString {
-  public:
-    explicit ScopedString(CXString value) : value_(value) {}
-    ~ScopedString() {
-        clang_disposeString(value_);
-    }
-
-    ScopedString(const ScopedString&) = delete;
-    ScopedString& operator=(const ScopedString&) = delete;
-    ScopedString(ScopedString&&) = delete;
-    ScopedString& operator=(ScopedString&&) = delete;
-
-    [[nodiscard]] std::string str() const {
-        const char* text = clang_getCString(value_);
-        return text != nullptr ? std::string(text) : std::string();
-    }
-
-  private:
-    CXString value_;
-};
-
-Severity convert_severity(CXDiagnosticSeverity severity) {
-    switch (severity) {
-        case CXDiagnostic_Ignored:
-        case CXDiagnostic_Note:
-            return Severity::Note;
-        case CXDiagnostic_Warning:
-            return Severity::Warning;
-        case CXDiagnostic_Error:
-            return Severity::Error;
-        case CXDiagnostic_Fatal:
-            return Severity::Fatal;
-    }
-    return Severity::Error;
-}
-
-} // namespace detail
-
 // The bridge's own functions that places.hpp declares for the lowering of
 // whole struct values, so it reads types, places and accesses as the body
 // lowering does.
@@ -136,7 +87,6 @@ namespace {
 using detail::collect;
 using detail::collect_specializations;
 using detail::Collector;
-using detail::convert_severity;
 using detail::convert_type;
 using detail::extract_body;
 using detail::extract_formal;
@@ -161,6 +111,43 @@ using detail::template_arguments_of;
 using detail::UnsafeEffects;
 using detail::bridge::presumed_location;
 using detail::bridge::take;
+
+class ScopedString {
+  public:
+    explicit ScopedString(CXString value) : value_(value) {}
+    ~ScopedString() {
+        clang_disposeString(value_);
+    }
+
+    ScopedString(const ScopedString&) = delete;
+    ScopedString& operator=(const ScopedString&) = delete;
+    ScopedString(ScopedString&&) = delete;
+    ScopedString& operator=(ScopedString&&) = delete;
+
+    [[nodiscard]] std::string str() const {
+        const char* text = clang_getCString(value_);
+        return text != nullptr ? std::string(text) : std::string();
+    }
+
+  private:
+    CXString value_;
+};
+
+Severity convert_severity(CXDiagnosticSeverity severity) {
+    switch (severity) {
+        case CXDiagnostic_Ignored:
+        case CXDiagnostic_Note:
+            return Severity::Note;
+        case CXDiagnostic_Warning:
+            return Severity::Warning;
+        case CXDiagnostic_Error:
+            return Severity::Error;
+        case CXDiagnostic_Fatal:
+            return Severity::Fatal;
+    }
+    return Severity::Error;
+}
+
 } // namespace
 
 const Function* TranslationUnit::find_by_usr(std::string_view usr) const {

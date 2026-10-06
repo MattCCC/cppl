@@ -2453,7 +2453,7 @@ projection (projection.cpp)
     runtime text:  __cppl_v_R (e), the validator lowered beside the alias
     erasure check (erase.cpp) recomputes both lowerings
         ↓
-bridge (bridge.cpp) -> vir::Call{validation = probe}
+bridge (expressions.cpp) -> vir::Call{validation = probe}
         ↓
 obligations (contracts.cpp) conditions walk
     suppose, of a fresh result r, r -> P(e) where the path makes the call;

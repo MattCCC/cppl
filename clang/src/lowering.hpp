@@ -349,7 +349,8 @@ struct BodyLowering {
     };
 
     // The lowering's own state: the capabilities it may rely on, the one write, a
-    // version nothing describes, and the post-state a normal return hands back.
+    // version nothing describes, and the post-state a normal return hands back
+    // (lowering.cpp).
     [[nodiscard]] bool confined_element(const Local& entry) const;
     Expr bind_formed_derefs(Expr body, CXCursor at);
     [[nodiscard]] const StatedCapability* granted_capability(std::uint32_t parameter, Capability::Kind kind) const;
@@ -364,7 +365,8 @@ struct BodyLowering {
     static Place anonymous_place(std::string spelling);
 
     // The places a statement forms: a dereference under its capability, an element
-    // selected at a term, a container's element at its generation.
+    // selected at a term, a container's element at its generation
+    // (formed_places.cpp).
     std::optional<std::size_t> resolve_storage(CXCursor cursor, Locals& state, Capability::Kind required);
     Type declared_place_type(CXCursor declaration, const std::vector<PlaceStep>& prefix, const Locals& state) const;
     static Type walk_components(Type current, const std::vector<PlaceStep>& path);
@@ -384,7 +386,7 @@ struct BodyLowering {
     bool materialize_derefs(CXCursor cursor, Locals& state, unsigned depth = 0);
     bool form_places(CXCursor cursor, Locals& state);
 
-    // Which places a write may reach.
+    // Which places a write may reach (aliasing.cpp).
     [[nodiscard]] bool may_alias(const Local& target, const Local& other) const;
     CallEffect new_generation(Local& root, std::string reason);
     std::vector<std::size_t> invalidate_aliases(std::size_t storage, Locals& state);
@@ -392,7 +394,8 @@ struct BodyLowering {
                                                         const std::vector<std::size_t>& invalidated);
     void mark_sequence_writes(CXCursor root, const Locals& locals, std::vector<bool>& written, unsigned depth = 0);
 
-    // A call: the storage it hands its callee, and the versions it leaves.
+    // A call: the storage it hands its callee, and the versions it leaves
+    // (calls.cpp).
     [[nodiscard]] std::optional<HandedStorage> handed_storage(CXCursor argument, const Locals& state) const;
     std::optional<std::string> view_arguments(CXCursor call, const std::vector<CXCursor>& formals, Locals& state,
                                               std::vector<std::size_t>& invalidated,
@@ -413,7 +416,8 @@ struct BodyLowering {
     std::optional<Expr> evaluate(CXCursor cursor, Locals& state, std::vector<std::size_t>& invalidated);
     std::optional<Expr> lower_call(CXCursor statement, const Continuation& next, const Locals& locals, unsigned depth);
 
-    // A modeled sequence's statements: a mutator, and a local's construction.
+    // A modeled sequence's statements: a mutator, and a local's construction
+    // (sequence_statements.cpp).
     std::optional<Expr> lower_sequence_statement(const SequenceCall& call, CXCursor statement, const Continuation& next,
                                                  const Locals& locals, unsigned depth);
     [[nodiscard]] static std::optional<CXCursor> moved_operand(CXCursor cursor);
@@ -423,7 +427,8 @@ struct BodyLowering {
                                                    const std::vector<CXCursor>& declared, std::size_t index,
                                                    const Continuation& next, const Locals& locals, unsigned depth);
 
-    // Statements, conditions and `if`.
+    // Statements, conditions and `if` (control.cpp), and a returned, declared or
+    // assigned selection (selections.cpp).
     std::optional<Expr> lower_statements(const Continuation& from, const Locals& locals, unsigned depth);
     std::optional<Expr> lower_statement(CXCursor statement, const Continuation& next, const Locals& locals,
                                         unsigned depth);
@@ -441,7 +446,7 @@ struct BodyLowering {
     std::optional<Expr> lower_branch(CXCursor statement, const std::vector<CXCursor>& parts, const Continuation& next,
                                      const Locals& locals, unsigned depth);
 
-    // A range-based `for`.
+    // A range-based `for` (range_for.cpp).
     std::optional<Expr> lower_range_for(CXCursor statement, const Continuation& next, const Locals& locals,
                                         unsigned depth);
     Expr range_length(const RangeIteration& range, const Locals& locals) const;
@@ -454,12 +459,12 @@ struct BodyLowering {
                                                   const Locals& head, unsigned depth);
     std::optional<Expr> advance_range(const LoopFrame& frame, const Locals& locals, unsigned depth);
 
-    // An unsafe block on the path.
+    // An unsafe block on the path (unsafe.cpp).
     [[nodiscard]] std::vector<std::size_t> unsafe_reach(const Locals& locals) const;
     std::optional<Expr> lower_unsafe(CXCursor block, CXCursor marker, const Continuation& next, const Locals& locals,
                                      unsigned depth);
 
-    // A claim that a path cannot occur, and a case split on it.
+    // A claim that a path cannot occur, and a case split on it (path_markers.cpp).
     [[nodiscard]] std::optional<std::string> contradiction_marker(CXCursor statement) const;
     std::optional<Expr> lower_contradiction(const std::string& marker, const std::vector<CXCursor>& statements,
                                             std::size_t index, const Locals& locals);
@@ -469,7 +474,7 @@ struct BodyLowering {
     std::optional<Expr> lower_split(const std::string& marker, const Continuation& from, const Locals& locals,
                                     unsigned depth);
 
-    // Loops.
+    // Loops (loops.cpp).
     [[nodiscard]] bool is_instantiation_marker(CXCursor statement) const;
     [[nodiscard]] std::optional<LoopMarker> invariant_marker(CXCursor statement) const;
     std::optional<Expr> lower_loop(const LoopHeader& header, const Locals& locals, unsigned depth);
@@ -478,14 +483,14 @@ struct BodyLowering {
     std::optional<Expr> lower_break(const Locals& locals, unsigned depth);
     void leave_switches_inside(const LoopFrame& frame);
 
-    // `switch`.
+    // `switch` (switches.cpp).
     std::optional<Expr> lower_switch(CXCursor statement, const Continuation& next, const Locals& locals,
                                      unsigned depth);
     std::optional<Expr> case_value(CXCursor value, const Type& type);
     std::optional<Expr> lower_switch_dispatch(const SwitchHeader& header, const Locals& locals, unsigned depth);
     std::optional<Expr> leave_switch(const SwitchFrame& frame, const Locals& locals, unsigned depth);
 
-    // Local declarations, aggregate ones included.
+    // Local declarations, aggregate ones included (declarations.cpp).
     std::optional<std::string> collect_leaves(const Type& type, CXCursor initializer, const std::string& written,
                                               const std::vector<PlaceStep>& prefix, std::vector<AggregateLeaf>& leaves);
     std::optional<std::string> collect_type_leaves(const Type& type, const std::string& written,
@@ -497,12 +502,12 @@ struct BodyLowering {
     std::optional<Expr> lower_declaration(const std::vector<CXCursor>& declared, std::size_t index,
                                           const Continuation& next, const Locals& locals, unsigned depth);
 
-    // Ghost state.
+    // Ghost state (ghost.cpp).
     std::optional<Expr> lower_ghost(const Continuation& from, const Locals& locals, unsigned depth);
     std::optional<Expr> lower_ghost_declaration(const std::vector<CXCursor>& declared, std::size_t index,
                                                 const Continuation& next, const Locals& locals, unsigned depth);
 
-    // Writes: the place a write targets, assignments and updates.
+    // Writes: the place a write targets, assignments and updates (writes.cpp).
     std::optional<std::optional<std::size_t>> read_reference(CXCursor argument, Locals& locals, CXCursor callee,
                                                              bool unsafe_callee);
     std::optional<std::size_t> written_local(CXCursor target, Locals& locals);
