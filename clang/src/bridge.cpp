@@ -1374,6 +1374,11 @@ std::optional<Expr> BodyLowering::evaluate(CXCursor cursor, Locals& state, std::
     // what is evaluated is that value: the call whose effects follow, when
     // it is one (TRUST.md TCB-AGGREGATE-001).
     cursor = aggregates::copied_value(cursor);
+    if (const ChosenArm* chosen = chosen_for(chosen_arms, cursor)) {
+        if (!chosen->arm)
+            return chosen->constant;
+        cursor = *chosen->arm;
+    }
     if (!form_places(cursor, state)) {
         return std::nullopt;
     }
@@ -2032,6 +2037,20 @@ std::optional<Expr> BodyLowering::lower_statement_form(CXCursor statement, const
     if (kind == CXCursor_CompoundStmt) {
         const std::vector<CXCursor> nested = children_of(statement);
         return lower_statements(Continuation{&next, &nested, 0}, locals, depth + 1);
+    }
+    if (const auto selected = signature.clause ? std::nullopt : selected_reading(statement);
+        selected && chosen_for(chosen_arms, selected->selection) == nullptr) {
+        const auto route = [&](std::optional<CXCursor> arm) -> Branch {
+            return [&, arm](const Locals& state) {
+                chosen_arms.push_back(ChosenArm{selected->selection, arm, selected->constant});
+                std::optional<Expr> lowered =
+                    forming(statement, [&] { return lower_statement_form(statement, next, state, depth + 1); });
+                chosen_arms.pop_back();
+                return lowered;
+            };
+        };
+        return lower_condition(selected->condition, route(selected->when_true), route(selected->when_false), locals,
+                               depth + 1);
     }
     if (kind == CXCursor_CallExpr)
         return lower_call(statement, next, locals, depth);

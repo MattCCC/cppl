@@ -8,6 +8,7 @@
 #include "places.hpp"
 #include "sequences.hpp"
 #include "signature.hpp"
+#include "statements.hpp"
 
 #include <clang-c/Index.h>
 #include <cstddef>
@@ -247,6 +248,7 @@ struct BodyLowering {
     // statement form lowers over its own copy of the locals, so an index would
     // not survive back to where the binding is emitted.
     std::vector<Local> formed_derefs;
+    std::vector<ChosenArm> chosen_arms; // the arm each route evaluates of a selection a statement computes
 
     // The value each leaf of a struct a call may have written takes afterwards,
     // by the leaf's post-call version: its member of the struct's post-state

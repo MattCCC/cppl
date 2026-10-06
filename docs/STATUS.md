@@ -2540,9 +2540,9 @@ allocators, `std::vector<bool>`, element types other than integers and `bool`,
 refined element types anywhere but a `vector` local (parameters, results, spans
 and `std::array`), and an element of a `std::array` a reference designates are
 refused. An element or a dereference read in an `if` or loop condition, or in
-an arm of a returned `?:`, `&&` or `||`, is formed where it is evaluated, and
-owes its bound or capability only on the routes that evaluate it
-(`e2e/conditions.sh`). A container handed to a verified call by value is copied into the
+an arm of a `?:`, `&&` or `||` that is returned, declares one local or is
+assigned, is formed where it is evaluated, and owes its bound or capability
+only on the routes that evaluate it (`e2e/conditions.sh`). A container handed to a verified call by value is copied into the
 parameter, and the caller's is unchanged. A signed index is bounded as the
 size-type value C++ converts it to, and dividing by a length owes it non-zero,
 through the machine-arithmetic rules (`SPEC.md` ARITH-008, ARITH-009). The same

@@ -271,7 +271,7 @@ std::optional<SelectedValue> selected_value(CXCursor value) {
     if (type.kind != TypeKind::Int && type.kind != TypeKind::Bool) {
         return std::nullopt;
     }
-    SelectedValue selected{parts.empty() ? value : parts.front(), std::nullopt, std::nullopt, {}};
+    SelectedValue selected{parts.empty() ? value : parts.front(), std::nullopt, std::nullopt, {}, value};
     selected.constant.type = type;
     selected.constant.location = bridge::presumed_location(clang_getCursorLocation(value));
     if (clang_getCursorKind(value) == CXCursor_ConditionalOperator && parts.size() == 3) {
@@ -293,6 +293,47 @@ std::optional<SelectedValue> selected_value(CXCursor value) {
         return selected;
     }
     return std::nullopt;
+}
+
+namespace {
+
+// Whether `cursor` reads storage through a subscript or a pointer anywhere.
+bool reads_through(CXCursor cursor, unsigned depth = 0) {
+    const CXCursorKind kind = clang_getCursorKind(cursor);
+    if (depth > kMaxStatementDepth || kind == CXCursor_ArraySubscriptExpr ||
+        (kind == CXCursor_UnaryOperator && clang_getCursorUnaryOperatorKind(cursor) == CXUnaryOperator_Deref) ||
+        (kind == CXCursor_CallExpr && take(clang_getCursorSpelling(cursor)) == "operator[]")) {
+        return true;
+    }
+    return std::ranges::any_of(children_of(cursor),
+                               [depth](CXCursor child) { return reads_through(child, depth + 1); });
+}
+
+} // namespace
+
+std::optional<SelectedValue> selected_reading(CXCursor statement) {
+    std::optional<CXCursor> value;
+    const std::vector<CXCursor> parts = children_of(statement);
+    if (clang_getCursorKind(statement) == CXCursor_DeclStmt && parts.size() == 1 &&
+        clang_getCursorKind(parts.front()) == CXCursor_VarDecl &&
+        clang_Cursor_isNull(clang_Cursor_getVarDeclInitializer(parts.front())) == 0) {
+        value = clang_Cursor_getVarDeclInitializer(parts.front());
+    } else if (clang_getCursorKind(statement) == CXCursor_BinaryOperator && parts.size() == 2 &&
+               clang_getCursorBinaryOperatorKind(statement) == CXBinaryOperator_Assign) {
+        value = parts[1];
+    }
+    std::optional<SelectedValue> selected = value ? selected_value(*value) : std::nullopt;
+    if (!selected || !((selected->when_true && reads_through(*selected->when_true)) ||
+                       (selected->when_false && reads_through(*selected->when_false)))) {
+        return std::nullopt;
+    }
+    return selected;
+}
+
+const ChosenArm* chosen_for(const std::vector<ChosenArm>& chosen, CXCursor selection) {
+    const auto at = std::ranges::find_if(
+        chosen, [&](const ChosenArm& entry) { return clang_equalCursors(entry.selection, selection) != 0; });
+    return at == chosen.end() ? nullptr : &*at;
 }
 
 Expr runtime_value(Expr value, bool clause) {

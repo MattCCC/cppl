@@ -133,6 +133,46 @@ verified bool past_or_zero(const std::vector<int>& v, std::size_t i)
 int main() { return 0; }
 CPP
 
+# Declared or assigned, the value reads the element at the end, or on the arm
+# where the index is out of range.
+refused declared_and_reads_at_end "$unbounded" <<'CPP'
+#include <cstddef>
+#include <vector>
+verified bool found_at(const std::vector<int>& v, std::size_t i, int key)
+    ensures (true)
+{
+    const bool hit = i <= v.size() && v[i] == key;
+    return hit;
+}
+int main() { return 0; }
+CPP
+
+refused assigned_conditional_reads_other_arm "$unbounded" <<'CPP'
+#include <cstddef>
+#include <vector>
+verified int value_or(const std::vector<int>& v, std::size_t i, int fallback)
+    ensures (true)
+{
+    int value = fallback;
+    value = i < v.size() ? fallback : v[i];
+    return value;
+}
+int main() { return 0; }
+CPP
+
+# A declared `&&` is false where its first operand is.
+refused declared_and_claimed_true "$false_claim" <<'CPP'
+#include <cstddef>
+#include <vector>
+verified bool found_at(const std::vector<int>& v, std::size_t i, int key)
+    ensures (i < v.size() -> result)
+{
+    const bool hit = i < v.size() && v[i] == key;
+    return hit;
+}
+int main() { return 0; }
+CPP
+
 # A returned `&&` is false where its first operand is.
 refused returned_and_claims_true "$false_claim" <<'CPP'
 #include <cstddef>

@@ -13,6 +13,7 @@
 #include <clang-c/CXFile.h>
 #include <clang-c/Index.h>
 #include <optional>
+#include <vector>
 
 namespace cppl::clangbridge::detail {
 
@@ -85,9 +86,28 @@ struct SelectedValue {
     std::optional<CXCursor> when_true;
     std::optional<CXCursor> when_false;
     Expr constant;
+    CXCursor selection = clang_getNullCursor(); // the `?:`, `&&` or `||` itself
 };
 
 [[nodiscard]] std::optional<SelectedValue> selected_value(CXCursor value);
+
+// The selected value a declaration of one local or an assignment computes,
+// when an arm of it reads storage through a subscript or a pointer: the
+// statement is then lowered once on each route its condition selects, with
+// the arm that route evaluates in place of the selection (`ChosenArm`), so
+// what the arm reads owes its bound or capability on that route alone.
+[[nodiscard]] std::optional<SelectedValue> selected_reading(CXCursor statement);
+
+// The arm a route evaluates in place of `selection`: a cursor, or else the
+// constant no expression of the program writes.
+struct ChosenArm {
+    CXCursor selection = clang_getNullCursor();
+    std::optional<CXCursor> arm;
+    Expr constant;
+};
+
+// The arm `chosen` holds for `selection` on this route, if any.
+[[nodiscard]] const ChosenArm* chosen_for(const std::vector<ChosenArm>& chosen, CXCursor selection);
 
 // A value a body's code computes, with every logical operator it uses as a
 // value, `a && b` and `a || b`, written as the conditional C++ evaluates:

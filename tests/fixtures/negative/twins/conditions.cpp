@@ -3,7 +3,8 @@
 // SPEC: VERIFIED-021, EXPR-014, EXPR-015, EXPR-016, SPECEXPR-002, STDMODEL-012, LOOP-004
 // Conditions in verified bodies, from the shapes realistic programs write: an
 // element read in an `if` or loop condition; `&&` and `||` computed as values;
-// a returned `?:`, `&&` or `||` whose arms read elements; loop invariants
+// a returned, declared or assigned `?:`, `&&` or `||` whose arms read
+// elements; loop invariants
 // stating `&&` and `||`, nested in each other, each operand specified on its
 // own; `&&` and `||` as values in a definition and a contract's term; a ghost
 // snapshot related to the loop case by case; callers taking apart the
@@ -58,6 +59,30 @@ verified bool past_or_zero(const std::vector<int>& v, std::size_t i)
     ensures (i >= v.size() -> result)
 {
     return i >= v.size() || v[i] == 0;
+}
+
+// A declaration or an assignment computing such a value reads the element on
+// the route that evaluates it, as a return does.
+verified bool found_at(const std::vector<int>& v, std::size_t i, int key)
+    ensures (result -> i < v.size())
+{
+    const bool hit = i < v.size() && v[i] == key;
+    return hit;
+}
+
+verified int value_or(const std::vector<int>& v, std::size_t i, int fallback)
+    ensures (i < v.size() || result == fallback)
+{
+    int value = fallback;
+    value = i < v.size() ? v[i] : fallback;
+    return value;
+}
+
+verified bool beyond_or_zero(const std::vector<int>& v, std::size_t i)
+    ensures (i >= v.size() -> result)
+{
+    bool empty = i >= v.size() || v[i] == 0;
+    return empty;
 }
 
 // `&&` and `||` as values are what C++ evaluates: the division happens only
@@ -269,6 +294,8 @@ int main() {
     std::printf("%d %d %zu %zu\n", digit_at(text, 0), digit_at(text, 1), find(v, 7), find(v, 9));
     std::printf("%d %d %d %d %d %d\n", holds_at(v, 1, 0) ? 1 : 0, holds_at(v, 5, 0) ? 1 : 0, at_or(v, 2, -1),
                 at_or(v, 3, -1), past_or_zero(v, 1) ? 1 : 0, past_or_zero(v, 0) ? 1 : 0);
+    std::printf("%d %d %d %d\n", found_at(v, 1, 0) ? 1 : 0, found_at(v, 4, 0) ? 1 : 0, value_or(v, 2, -1),
+                beyond_or_zero(v, 9) ? 1 : 0);
     std::printf("%d %d %d %d %d %d\n", divides(9u, 3u) ? 1 : 0, divides(9u, 0u) ? 1 : 0,
                 zero_or_divides(9u, 0u) ? 1 : 0, zero_or_divides(9u, 2u) ? 1 : 0, ordered(1, 2, 3) ? 1 : 0,
                 ordered(2, 1, 3) ? 1 : 0);
