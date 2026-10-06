@@ -676,8 +676,22 @@ std::size_t physical_offset(CXCursor cursor);
 std::vector<std::int64_t> refinement_arguments(CXCursor declared) {
     std::vector<std::int64_t> arguments;
     const CXCursor initializer = clang_Cursor_getVarDeclInitializer(declared);
+    // In a member, variable or parameter, index arguments are written in the
+    // type, before the declared name; a member's default initializer, like a
+    // variable's or a parameter's default, comes after it. (An alias declares
+    // its name before its type.)
+    unsigned name_offset = 0;
+    const CXCursorKind declared_kind = clang_getCursorKind(declared);
+    if (declared_kind == CXCursor_FieldDecl || declared_kind == CXCursor_VarDecl ||
+        declared_kind == CXCursor_ParmDecl) {
+        clang_getFileLocation(clang_getCursorLocation(declared), nullptr, nullptr, nullptr, &name_offset);
+    }
     for (const CXCursor child : children_of(declared)) {
         if (!clang_Cursor_isNull(initializer) && clang_equalCursors(child, initializer))
+            break;
+        unsigned child_offset = 0;
+        clang_getFileLocation(clang_getCursorLocation(child), nullptr, nullptr, nullptr, &child_offset);
+        if (name_offset != 0 && child_offset > name_offset)
             break;
         const auto kind = clang_getCursorKind(child);
         if (kind == CXCursor_TemplateRef || kind == CXCursor_TypeRef || kind == CXCursor_NamespaceRef)

@@ -1229,6 +1229,33 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             parameters = {};
         }
         const bool has_parameters = parameters.find_first_not_of(" \t\r\n") != std::string_view::npos;
+        // A default argument is a value the caller does not write, and a call
+        // relying on one is not modeled; a contract's probes would also need
+        // one for every parameter after it, `result` included.
+        {
+            int depth = 0;
+            for (const Token& token : stream.tokens()) {
+                if (token.span.offset < verified.parameters.offset || token.span.end() > verified.parameters.end()) {
+                    continue;
+                }
+                if (token.is_punctuator("(") || token.is_punctuator("[") || token.is_punctuator("{")) {
+                    ++depth;
+                } else if (token.is_punctuator(")") || token.is_punctuator("]") || token.is_punctuator("}")) {
+                    --depth;
+                } else if (depth == 0 && token.is_punctuator("=")) {
+                    diagnostics::Diagnostic diagnostic;
+                    diagnostic.severity = diagnostics::Severity::Error;
+                    diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+                    diagnostic.location = stream.location_of(token);
+                    diagnostic.message =
+                        "a parameter of verified function '" + verified.function_name +
+                        "' has a default argument, which is not modeled: a call relying on it passes a value its "
+                        "caller does not write";
+                    projection.diagnostics.push_back(std::move(diagnostic));
+                    break;
+                }
+            }
+        }
         Generated parameter_list;
         if (!parameters.empty()) {
             parameter_list.copy(stream, verified.parameters);

@@ -89,6 +89,23 @@ kernel::Proposition specialize(kernel::Proposition proposition, const std::vecto
 // type and supplies it wherever the whole object is known to be valid. This is
 // one recursive rule rather than a member-specific one: the same call states a
 // scalar's refinement, a member's, and a member of a member's.
+// The refinement an obligation for membership in `type` is named after: the
+// type's own, or, for a record whose refinement is on a member, the first
+// component's that has one; the type itself when neither does.
+std::string refinement_label(const vir::Type& type, unsigned depth = 0) {
+    if (!type.refinements.empty()) {
+        return type.refinements.front().name;
+    }
+    if (type.is_value() && depth < 32) {
+        for (const vir::Type& component : std::get<vir::ValueType>(type.node).projections) {
+            if (std::string label = refinement_label(component, depth + 1); !label.empty()) {
+                return label;
+            }
+        }
+    }
+    return depth == 0 ? vir::describe(type) : std::string{};
+}
+
 std::expected<std::optional<kernel::Proposition>, Failure> membership(const Program& program, const vir::Type& type,
                                                                       const kernel::Term& value) {
     std::optional<kernel::Proposition> required;
@@ -733,7 +750,7 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
                     if (required->has_value() && reasoning->has_value()) {
                         obligations.push_back(obligation_for(
                             program, path, Origin::RefinementIntroduction,
-                            function.qualified_name + " -> " + step.binding->declared.refinements.front().name,
+                            function.qualified_name + " -> " + refinement_label(step.binding->declared),
                             step.value->provenance.range,
                             close(plan, path, 0, path.conditions.size(), false, **required),
                             close(plan, path, path.calls.size(), path.conditions.size(), true, **reasoning)));
@@ -1418,8 +1435,8 @@ class Conditions {
                 return std::unexpected(required.error());
             if (*required) {
                 emit(scope, Origin::RefinementIntroduction,
-                     function_.qualified_name + " -> " + effect.declared.refinements.front().name,
-                     site.provenance.range, **required);
+                     function_.qualified_name + " -> " + refinement_label(effect.declared), site.provenance.range,
+                     **required);
             }
         }
         return {};
@@ -1505,7 +1522,7 @@ class Conditions {
             }
             if (required->has_value()) {
                 emit(scope, Origin::RefinementIntroduction,
-                     function_.qualified_name + " -> " + bound->declared.refinements.front().name,
+                     function_.qualified_name + " -> " + refinement_label(bound->declared),
                      bound->operands[0].provenance.range, **required);
             }
             scope.versions.emplace(bound->version, &bound->operands[0]);

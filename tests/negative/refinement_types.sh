@@ -835,6 +835,65 @@ verified int hold(int raw) ensures (result == raw) {
 }
 CPP
 
+# SPEC: 17.6, REFINE-061
+# A write that may alias a refined member reached through a reference owes the
+# member's predicate: the obligation is named after the member's refinement, and
+# the verifier neither aborts on it nor drops it.
+accept a_write_that_may_alias_a_refined_member <<'CPP'
+type Cap = unsigned where (self <= 100u);
+struct Account { Cap balance; };
+verified unsigned touch(const Account& other, unsigned& r) ensures (result == 0u) {
+    r = 50u;
+    return 0u;
+}
+int main() { return 0; }
+CPP
+
+# A callee writing through a plain reference owes nothing itself; a caller that
+# hands it refined storage owes the predicate of what the callee may leave there.
+reject a_refined_member_handed_to_a_plain_writing_call <<'CPP'
+type Cap = unsigned where (self <= 100u);
+struct Account { Cap balance; };
+verified void put(unsigned& r) ensures (r == 150u) { r = 150u; }
+verified unsigned hand(const Account& other) ensures (result == 0u) {
+    Account a{7u};
+    put(a.balance);
+    return 0u;
+}
+CPP
+grep -qF "this value is not shown to satisfy refinement type 'Cap'" \
+    "$run/a_refined_member_handed_to_a_plain_writing_call.log" ||
+    { cat "$run/a_refined_member_handed_to_a_plain_writing_call.log" >&2; echo "the member's predicate was not owed at the call" >&2; exit 1; }
+
+# A refined member's default initializer is not one of its index arguments.
+accept a_refined_member_with_a_default_initializer <<'CPP'
+type Pct = int where (self >= 0 && self <= 100);
+struct Gauge { Pct level = 10; };
+verified int read_level() ensures (result >= 0 && result <= 100) {
+    Gauge g{20};
+    return g.level;
+}
+int main() { return read_level() == 20 ? 0 : 1; }
+CPP
+
+accept an_indexed_refined_member_with_a_default_initializer <<'CPP'
+type Below(unsigned n) = unsigned where (self < n);
+struct Slot { Below<4> index = 2u; };
+verified unsigned read_index() ensures (result < 4u) {
+    Slot s{3u};
+    return s.index;
+}
+int main() { return read_index() == 3u ? 0 : 1; }
+CPP
+
+# A default argument is refused with its own diagnostic.
+reject a_default_argument_of_a_verified_function <<'CPP'
+verified int take(int p = 50) ensures (result == p) { return p; }
+CPP
+grep -qF "a parameter of verified function 'take' has a default argument, which is not modeled" \
+    "$run/a_default_argument_of_a_verified_function.log" ||
+    { cat "$run/a_default_argument_of_a_verified_function.log" >&2; echo "the default argument was not named" >&2; exit 1; }
+
 # The twin at the base type states nothing to charge, and is proven.
 accept a_class_template_local_at_the_base_type <<'CPP'
 template <class T> struct Box { T value; };
