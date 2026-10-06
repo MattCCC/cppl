@@ -39,6 +39,7 @@ add_library(cppl_clang STATIC
     src/sequences.cpp
     src/signature.cpp
     src/statements.cpp
+    src/switches.cpp
     src/types.cpp
     src/unsafe.cpp
     src/write_scan.cpp)

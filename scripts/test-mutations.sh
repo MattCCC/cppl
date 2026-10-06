@@ -74,10 +74,10 @@ if-condition-variable-declared	clang/src/control.cpp	prefix.push_back(parts[cond
 if-constexpr-selects	clang/src/control.cpp	if (holds) {	if (!holds) {	^(e2e_if_statements|negative_if_statements)$
 if-constexpr-only-selected	clang/src/control.cpp	if (!header.constant) {	if (true) {	^e2e_if_statements$
 if-consteval-refused	clang/src/control.cpp	if (head->immediate) {	if (false) {	^negative_if_statements$
-switch-init-statement-refused	clang/src/bridge.cpp	return reject("a 'switch' statement with an init-statement is not modeled");	(void)0;	^negative_switch_statements$
-switch-nested-label-refused	clang/src/bridge.cpp	if (holds_switch_label(statement)) {	if (false && holds_switch_label(statement)) {	^negative_switch_statements$
-switch-unreachable-prefix-refused	clang/src/bridge.cpp	if (entries.empty() && !is_switch_label(statement)) {	if (false && entries.empty() && !is_switch_label(statement)) {	^negative_switch_statements$
-switch-case-range-refused	clang/src/bridge.cpp	if (!fallback && label.size() == 3) {	if (false && !fallback && label.size() == 3) {	^negative_switch_statements$
+switch-init-statement-refused	clang/src/switches.cpp	return reject("a 'switch' statement with an init-statement is not modeled");	(void)0;	^negative_switch_statements$
+switch-nested-label-refused	clang/src/switches.cpp	if (holds_switch_label(statement)) {	if (false && holds_switch_label(statement)) {	^negative_switch_statements$
+switch-unreachable-prefix-refused	clang/src/switches.cpp	if (entries.empty() && !is_switch_label(statement)) {	if (false && entries.empty() && !is_switch_label(statement)) {	^negative_switch_statements$
+switch-case-range-refused	clang/src/switches.cpp	if (!fallback && label.size() == 3) {	if (false && !fallback && label.size() == 3) {	^negative_switch_statements$
 switch-fallthrough-only	clang/src/statements.cpp	return spelled == standard || spelled == qualified;	return true;	^negative_switch_statements$
 logical-value-and-guard	clang/src/statements.cpp	chosen.node = conjunction ? Conditional{{std::move(first), std::move(second), std::move(constant)}}	chosen.node = conjunction ? Conditional{{std::move(second), std::move(first), std::move(constant)}}	^(e2e_conditions|negative_conditions)$
 logical-value-or-guard	clang/src/statements.cpp	: Conditional{{std::move(first), std::move(constant), std::move(second)}};	: Conditional{{std::move(second), std::move(constant), std::move(first)}};	^(e2e_conditions|negative_conditions)$
@@ -89,12 +89,12 @@ condition-route-loop	clang/src/loops.cpp	decided = lower_condition(header.condit
 statement-arm-split	clang/src/selections.cpp	if (!selected || chosen_for(chosen_arms, selected->selection) != nullptr) {	if (true) {	^(e2e_conditions|negative_conditions)$
 statement-arm-bound-on-route	clang/src/selections.cpp	forming(statement, [&] { return lower_statement_form(statement, next, state, depth + 1); });	lower_statement_form(statement, next, state, depth + 1);	^(e2e_conditions|negative_conditions)$
 logical-value-and-constant	clang/src/statements.cpp	selected.constant.node = IntLiteral{0};	selected.constant.node = IntLiteral{1};	^(e2e_conditions|negative_conditions)$
-switch-condition-read-once	clang/src/bridge.cpp	read.node = PlaceRef{version, anonymous_place("switch condition")};	read = *value;	^(e2e_switch_statements|negative_switch_statements)$
-switch-condition-effects	clang/src/bridge.cpp	body = unknown(state, changed, std::move(body), header.statement);	(void)changed;	^(e2e_switch_statements|negative_switch_statements)$
-switch-case-compares-equal	clang/src/bridge.cpp	matches.node = Binary{BinaryOp::Equal, {std::move(read), std::move(*literal)}};	matches.node = Binary{BinaryOp::NotEqual, {std::move(read), std::move(*literal)}};	^(e2e_switch_statements|negative_switch_statements|e2e_safety_subset)$
-switch-default-entered	clang/src/bridge.cpp	chain = std::move(entered[static_cast<std::size_t>(fallback - entries.begin())]);	chain = lower_statements(*header.exit, state, depth + 1);	^(e2e_switch_statements|negative_switch_statements)$
+switch-condition-read-once	clang/src/switches.cpp	read.node = PlaceRef{version, anonymous_place("switch condition")};	read = *value;	^(e2e_switch_statements|negative_switch_statements)$
+switch-condition-effects	clang/src/switches.cpp	body = unknown(state, changed, std::move(body), header.statement);	(void)changed;	^(e2e_switch_statements|negative_switch_statements)$
+switch-case-compares-equal	clang/src/switches.cpp	matches.node = Binary{BinaryOp::Equal, {std::move(read), std::move(*literal)}};	matches.node = Binary{BinaryOp::NotEqual, {std::move(read), std::move(*literal)}};	^(e2e_switch_statements|negative_switch_statements|e2e_safety_subset)$
+switch-default-entered	clang/src/switches.cpp	chain = std::move(entered[static_cast<std::size_t>(fallback - entries.begin())]);	chain = lower_statements(*header.exit, state, depth + 1);	^(e2e_switch_statements|negative_switch_statements)$
 switch-break-innermost	clang/src/loops.cpp	if (!switch_frames.empty() && switch_frames.back()->loops_outside == frames.size()) {	if (!switch_frames.empty()) {	^(e2e_switch_statements|negative_switch_statements)$
-switch-exit-closes-frame	clang/src/bridge.cpp	switch_frames.resize(std::min(switch_frames.size(), frame.switches_outside));	(void)frame.switches_outside;	^e2e_switch_statements$
+switch-exit-closes-frame	clang/src/switches.cpp	switch_frames.resize(std::min(switch_frames.size(), frame.switches_outside));	(void)frame.switches_outside;	^e2e_switch_statements$
 switch-continue-closes-frames	clang/src/loops.cpp	leave_switches_inside(frame);	(void)frame;	^e2e_switch_statements$
 switch-label-reachable	clang/src/control.cpp	const bool labelled = next.labels != nullptr && std::ranges::contains(*next.labels, next.index);	const bool labelled = false;	^(e2e_switch_statements|e2e_safety_subset)$
 switch-labels-propagate	clang/src/control.cpp	next.labels = from.labels;	(void)from.labels;	^e2e_switch_statements$
