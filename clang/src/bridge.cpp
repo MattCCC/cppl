@@ -6636,6 +6636,25 @@ struct BodyLowering {
         return group;
     }
 
+    // A leaf of a struct argument's type that is not among the places this body
+    // tracks for it, if there is one: a write to the struct that this body
+    // follows leaf by leaf would leave that leaf reading the value it held
+    // before. A type whose leaves cannot be listed is answered with the struct
+    // itself.
+    [[nodiscard]] static std::optional<std::vector<PlaceStep>> untracked_leaf(const ArgumentGroup& group,
+                                                                              const Locals& state) {
+        std::vector<std::vector<PlaceStep>> expected;
+        if (!structural_leaf_paths(group.type, group.prefix, expected)) {
+            return group.prefix;
+        }
+        for (std::vector<PlaceStep>& path : expected) {
+            if (std::ranges::none_of(group.leaves, [&](std::size_t leaf) { return state[leaf].path == path; })) {
+                return std::move(path);
+            }
+        }
+        return std::nullopt;
+    }
+
     // What a verified call owes for the container storage it hands its callee
     // as a span or a data pointer (RFC 0020 §7, SPEC.md STDMODEL-016,
     // STDMODEL-017).
@@ -7130,17 +7149,10 @@ struct BodyLowering {
             const std::string spelled = spelled_access(group.declaration, group.prefix);
             // Every leaf the call may write must be one this body follows: one it
             // does not track would keep reading the value it held before.
-            std::vector<std::vector<PlaceStep>> expected;
-            if (!structural_leaf_paths(group.type, group.prefix, expected)) {
-                return reject("'" + spelled + "' is handed to '" + qualified_name_of(callee) +
-                              "', which may write it, and it has a member this implementation does not track");
-            }
-            for (const std::vector<PlaceStep>& path : expected) {
-                if (std::ranges::none_of(group.leaves, [&](std::size_t leaf) { return state[leaf].path == path; })) {
-                    return reject("'" + spelled_access(group.declaration, path) + "' is not tracked here, so '" +
-                                  spelled + "', handed to '" + qualified_name_of(callee) +
-                                  "', which may write it, would keep reading the value it held before the call");
-                }
+            if (const std::optional<std::vector<PlaceStep>> missing = untracked_leaf(group, state)) {
+                return reject("'" + spelled_access(group.declaration, *missing) + "' is not tracked here, so '" +
+                              spelled + "', handed to '" + qualified_name_of(callee) +
+                              "', which may write it, would keep reading the value it held before the call");
             }
             for (const std::size_t leaf : group.leaves) {
                 if (std::ranges::find(targets, leaf) != targets.end() ||
@@ -7492,11 +7504,12 @@ struct BodyLowering {
             return reject("'" + spelled_access(group->declaration, group->prefix) +
                           "' is assigned while an element of it is selected at a term; assign it before forming one");
         }
-        // Every leaf is written, so every leaf must be one this body follows.
-        std::vector<std::vector<PlaceStep>> expected;
-        if (!structural_leaf_paths(group->type, group->prefix, expected) || expected.size() != group->leaves.size()) {
-            return reject("'" + spelled_access(group->declaration, group->prefix) +
-                          "' is assigned where this body does not track every one of its members");
+        // Every leaf is written, so every leaf must be one this body follows, as
+        // for a struct a call may write.
+        if (const std::optional<std::vector<PlaceStep>> missing = untracked_leaf(*group, state)) {
+            return reject("'" + spelled_access(group->declaration, *missing) + "' is not tracked where '" +
+                          spelled_access(group->declaration, group->prefix) +
+                          "' is assigned, so it would keep reading the value it held before");
         }
         std::optional<std::uint32_t> result;
         Expr whole = *evaluated;
