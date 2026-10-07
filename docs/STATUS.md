@@ -253,7 +253,9 @@ where it stands, and what follows a branch is verified once per arm under that
 arm's versions. A call bound to a local is proven where the body makes it, under
 the conditions in force there, on every path that reaches it. `+=`, `-=`, `*=`,
 `/=`, `%=`, increment and decrement are the assignments they abbreviate, for
-locals not promoted before arithmetic. Uninitialized, `static`, `thread_local`,
+locals, members and elements, of a container or of an array built in or
+`std::array`, whose type is not promoted before arithmetic; an array element
+was once asked about the array's type, and refused. Uninitialized, `static`, `thread_local`,
 reference, pointer and `volatile` declarations, other compound assignments,
 assignment to a parameter, self-initialization, and initializer conversions
 other than integral ones are rejected. Every value is modeled where it is written, read or not. Each read repeats its
@@ -3189,7 +3191,7 @@ Pass condition: `check_sound` with no hypothesis, audited closed by
 ## V1 closure: adversarial testing (G14)
 
 `IMPLEMENTED`. Every kernel rule, primitive and verifier check named in
-`TRUST.md` 36.3 has adversarial tests and a mutation entry; there are 471
+`TRUST.md` 36.3 has adversarial tests and a mutation entry; there are 473
 entries (`MUTATION_TESTING.md`). Persistent fuzz targets exist for kernel
 proofs, terms, certificates and arithmetic, and for the recognizer, the
 verification-interface decoder and the language server.

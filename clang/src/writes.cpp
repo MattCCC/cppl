@@ -332,12 +332,21 @@ std::optional<Expr> BodyLowering::lower_update(CXCursor statement, const Continu
     const Local target = state[*local];
     const std::string name = target.spelling;
     // The promotion question is about the storage being updated, which for a
-    // member is the member's own type, not its object's, and for a container
-    // element is the element's.
-    if (promoted_before_arithmetic(element ? clang_getCursorType(strip_parens(operands[0]))
-                                           : clang_getCursorType(target.path.empty()
-                                                                     ? target.declaration
-                                                                     : clang_getCursorReferenced(operands[0])))) {
+    // member is the member's own type, not its object's, and for an element of
+    // a container or of an array, built in or `std::array`, is the element's:
+    // the type of the subscript that designates it, never the array's.
+    const CXCursor updated = strip_parens(operands[0]);
+    const auto updated_access = resolve_access(updated);
+    const std::optional<SequenceCall> subscript = sequence_call(updated);
+    const bool array_element =
+        !(updated_access && updated_access->dereferenced) &&
+        (clang_getCursorKind(updated) == CXCursor_ArraySubscriptExpr ||
+         (subscript && subscript->family == source::RepresentationKind::StdArray && subscript->name == "operator[]"));
+    const CXType updated_type =
+        element || array_element
+            ? clang_getCursorType(updated)
+            : clang_getCursorType(target.path.empty() ? target.declaration : clang_getCursorReferenced(operands[0]));
+    if (promoted_before_arithmetic(updated_type)) {
         return reject("updating '" + name + "' of type '" + target.type.spelling +
                       "' is computed after promotion to a wider type and converted back, which is not modeled");
     }

@@ -488,6 +488,8 @@ value-init-designated	clang/src/value_initialization.cpp	if (designated(elements
 value-init-scalar-braces	clang/src/value_initialization.cpp	clang_getCursorKind(elements[member]) == CXCursor_InitListExpr) {	false) {	^negative_member_storage$
 std-array-element-not-through-pointer	clang/src/formed_places.cpp	if (access && access->dereferenced && !access->symbolic_indices.empty()) {	if (false) {	^negative_member_storage$
 std-array-write-rests-on-model	clang/src/writes.cpp	        library_models.insert(source::RepresentationKind::StdArray);	        (void)call;	^e2e_member_storage$
+array-element-update-type	clang/src/writes.cpp	        element || array_element	        element || (false && array_element)	^e2e_member_storage$
+array-element-update-promotion-checked	clang/src/writes.cpp	    if (promoted_before_arithmetic(updated_type)) {	    if (!array_element && promoted_before_arithmetic(updated_type)) {	^negative_member_storage$
 MUTATIONS
 )
 

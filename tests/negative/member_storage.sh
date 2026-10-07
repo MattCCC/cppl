@@ -527,4 +527,81 @@ verified unsigned first_of()
 int main() { return 0; }
 CPP
 
+# --- compound updates of array elements -------------------------------------
+
+# SPEC: ARITH-013 -- an element of a promoted type is updated after promotion
+# and converted back, which is not the assignment at its own type.
+refused promoted_update_of_an_element "updating 'a\\[\\?\\]' of type 'unsigned char' is computed after promotion" <<'CPP'
+#include <array>
+#include <cstddef>
+verified int narrow(std::size_t i)
+    expects (i < 4u)
+    ensures (true)
+{
+    std::array<unsigned char, 4> a{};
+    a[i] += 1u;
+    return a[0];
+}
+int main() { return 0; }
+CPP
+
+# Two updates of an element add three, not two.
+refused false_update_of_an_element "$false_claim" <<'CPP'
+#include <array>
+verified unsigned added_twice()
+    ensures (result == 2u)
+{
+    std::array<unsigned, 4> a{};
+    a[1] += 2u;
+    ++a[1];
+    return a[1];
+}
+int main() { return 0; }
+CPP
+
+# A signed element lowered by any amount may leave its type.
+refused overflowing_update_of_an_element "signed overflow: 's\\[\\?\\]#[0-9]+ - x' on the signed type 'int'" <<'CPP'
+#include <cstddef>
+verified int lowered(std::size_t i, int x)
+    expects (i < 2u)
+    ensures (true)
+{
+    int s[2] = {0, 0};
+    s[i] -= x;
+    return s[i];
+}
+int main() { return 0; }
+CPP
+
+# The element updated is read where the update stands: the one written at a
+# term may be it.
+refused aliased_update_of_an_element "$false_claim" <<'CPP'
+#include <array>
+#include <cstddef>
+verified unsigned after_alias(std::size_t i)
+    expects (i < 4u)
+    ensures (result == 1u)
+{
+    std::array<unsigned, 4> a{};
+    a[i] = 5u;
+    a[0] += 1u;
+    return a[0];
+}
+int main() { return 0; }
+CPP
+
+# An update owes its element's bound as a write does.
+refused unbounded_update_of_an_element "$unbounded" <<'CPP'
+#include <cstddef>
+verified unsigned past_the_end(std::size_t i)
+    expects (i <= 4u)
+    ensures (true)
+{
+    unsigned a[4] = {0u, 0u, 0u, 0u};
+    a[i] += 1u;
+    return a[0];
+}
+int main() { return 0; }
+CPP
+
 echo 'every false twin of the member storage fixture is refused, each with its reason'

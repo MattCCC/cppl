@@ -140,4 +140,82 @@ grep -Eq '^Assumption-free claims: +0$' "$run/writes.report" || {
     exit 1
 }
 
+# SPEC: ARITH-013 -- a compound assignment, an increment and a decrement of an
+# element of an array, built in or std::array, a local's, a member's of the
+# implicit object or what a reference designates, are the assignments they
+# abbreviate at the element's type, which C++ guarantees where that type is not
+# promoted. Each was once refused as if the array's type were promoted.
+# Refused twins: `*_update_*` in negative/member_storage.sh.
+cat > "$run/updates.cpp" <<'CPP'
+#include <array>
+#include <cstddef>
+#include <cstdio>
+
+struct Counts {
+    std::array<unsigned, 4> hits;
+    unsigned misses[2];
+
+    verified void hit(std::size_t i)
+        expects (i < 4u && misses[0] < 100u)
+        ensures (misses[0] <= 100u)
+    {
+        hits[i] += 1u;
+        ++misses[0];
+    }
+};
+
+verified unsigned added_twice()
+    ensures (result == 3u)
+{
+    std::array<unsigned, 4> a{};
+    a[1] += 2u;
+    ++a[1];
+    return a[1];
+}
+
+verified void bump_third(std::array<unsigned, 4>& a)
+    expects (a[2] < 100u)
+    ensures (a[2] <= 100u)
+{
+    ++a[2];
+}
+
+verified int lowered()
+    ensures (result == -5)
+{
+    int s[2] = {0, 0};
+    s[1] -= 5;
+    return s[1];
+}
+
+verified unsigned at_a_term(std::size_t i)
+    expects (i < 4u)
+    ensures (true)
+{
+    unsigned a[4] = {0u, 0u, 0u, 0u};
+    a[i] *= 3u;
+    a[i]--;
+    return a[0];
+}
+
+int main() {
+    Counts c{{}, {0u, 0u}};
+    c.hit(1u);
+    std::array<unsigned, 4> a{};
+    bump_third(a);
+    std::printf("%u %u %u %u %d %u\n", c.hits[1], c.misses[0], added_twice(), a[2], lowered(), at_a_term(0u));
+    return 0;
+}
+CPP
+"$CPPL" -std=c++20 "$run/updates.cpp" -o "$run/updates" --cppl-trust-report > "$run/updates.report"
+grep -Eq '^Function contracts proven: +5$' "$run/updates.report" && grep -Eq '^Unresolved obligations: +0$' "$run/updates.report" || {
+    cat "$run/updates.report" >&2
+    echo "the updates of array elements were not all proven" >&2
+    exit 1
+}
+[ "$("$run/updates")" = '1 1 3 1 -5 4294967295' ] || {
+    echo "the updates of array elements printed '$("$run/updates")'" >&2
+    exit 1
+}
+
 echo 'member arrays and objects a reference designates are followed member by member, and the erased program agrees'
