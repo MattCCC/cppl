@@ -2,7 +2,7 @@
 
 **Project status:** C++L 1.0.0, V1: gates G1 to G17 are met; G18 is met when the release workflow attests the archive of the signed tag (see [V1 closure](#v1-closure))  
 **Stability:** Stable within V1: the specification, the grammar and the kernel are frozen at 1.0.0  
-**Production ready:** For the V1 scope only -- the verified subset of RFC 0022 on Linux x86_64 -- from the attested 1.0.0 archive; nothing outside that scope is claimed  
+**Production ready:** No: the maintainer's review of the kernel and further testing of proofs come first (README, "Status"); V1 claims only the verified subset of RFC 0022 on Linux x86_64  
 **Language specification frozen:** Yes, at C++L 1.0.0  
 **Proof system frozen:** Yes, at C++L 1.0.0  
 **ABI guarantees:** No
@@ -2567,14 +2567,17 @@ used, in its declaration, its body and its callees, and every unit that
 imports it carries them on, so a claim proven through an imported contract
 names each of them with the record it arrived through (`TRUST.md`
 TCB-LIB-010). An interface of the earlier format, which could not say, is
-refused, and so is one naming a model this compiler does not have. Iterators, range-`for`, `at`, `front`, `insert`, `resize`,
+refused, and so is one naming a model this compiler does not have. A range-based `for` over a modeled container is verified (`e2e_range_for`); iterators named in the body, `at`, `front`, `insert`, `resize`,
 `emplace_back`, `subspan`, `std::string_view`, static-extent spans, custom
 allocators, `std::vector<bool>`, element types other than integers and `bool`,
 and refined element types anywhere but a `vector` local (parameters, results,
 spans and `std::array`) are refused. A `std::array` a reference designates, or
 one a member of the implicit object holds, is its `N` element places, each
-caller storage, read and written at a term within its extent; a clause reads
-its element as the parameter's at the state the clause describes. A contract
+caller storage, read and written at a term within its extent. A clause reads an
+element of one a reference parameter designates as the parameter's at the
+state the clause describes; an element of a `std::array` member of the
+implicit object is not read by a clause, even at a constant index, and such a
+clause is refused (a built-in member array's element is read). A contract
 reads no element of a `vector`, `string` or `span`, so `ensures (v[result] ==
 key)` is refused by name: the model keeps of one only its length, and stating
 its contents would take library summaries of what each operation does to them,
@@ -2729,8 +2732,9 @@ which has not been run here.
 
 Until implementation reaches the appropriate status, C++L does **not** claim:
 
-- production readiness outside the V1 scope (the verified subset of RFC 0022,
-  on Linux x86_64)
+- production readiness: not before the maintainer's review of the kernel
+  (README, "Status"), and never outside the V1 scope (the verified subset of
+  RFC 0022, on Linux x86_64)
 - verified C++ compatibility
 - a completed proof kernel
 - a completed dependent type checker

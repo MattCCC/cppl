@@ -11,6 +11,10 @@ gates", pass on the release commit, and G18 completes when `release.yml` builds,
 tests and attests the archive of the signed tag `v1.0.0` (`docs/STATUS.md`,
 "V1 closure").
 
+Stable means frozen: the language, the grammar and the kernel calculus change
+only by an RFC and a new version. It does not mean production-ready, which the
+README's status note withholds until the maintainer has reviewed the kernel.
+
 ### Release metadata
 
 | Field | Value |
@@ -64,8 +68,9 @@ recorded digest; such a change needs an RFC and a new version.
     a reference parameter designates, followed member by member;
   - `&&`, `||` and `?:` as values, conditions and returns, each operand
     checked only where C++ evaluates it;
-  - `if`/`switch` statements, including init-statements, and range-based
-    `for`;
+  - `if` statements, including init-statements and condition variables,
+    `switch` statements with condition variables and fallthrough, and
+    range-based `for` over arrays and the modeled containers;
   - default arguments, constant globals and enumerations.
 - **Unsafe and trusted boundaries.** An `unsafe` block, a trusted law or a
   library model never counts as assumption-free. A call to a function whose
@@ -100,6 +105,8 @@ verified by accident:
 - an element of a container read in a contract or an invariant other than an
   array element at a constant index: a sequence's specified value is its length
   (`SPEC.md` STDMODEL-012);
+- a `switch` init-statement, which libclang does not expose, and `if
+  consteval`;
 - the constructs RFC 0022 lists as refused;
 - a serialized proof-term format, and evidence identity in the trust report.
 
