@@ -3189,7 +3189,7 @@ Pass condition: `check_sound` with no hypothesis, audited closed by
 ## V1 closure: adversarial testing (G14)
 
 `IMPLEMENTED`. Every kernel rule, primitive and verifier check named in
-`TRUST.md` 36.3 has adversarial tests and a mutation entry; there are 470
+`TRUST.md` 36.3 has adversarial tests and a mutation entry; there are 471
 entries (`MUTATION_TESTING.md`). Persistent fuzz targets exist for kernel
 proofs, terms, certificates and arithmetic, and for the recognizer, the
 verification-interface decoder and the language server.
@@ -3285,7 +3285,7 @@ below, and a change to a digest needs an RFC and a new version.
 | `docs/GRAMMAR.md` | `bc105eef6bdcc010875c32dfa2da4b46bba8a8931013d299a247a7211bc131fd` |
 | `docs/KERNEL.md` | `159d4ba4d73dff8c26db28859ca553d40e7e0bea7047a5d77fde6ac2fa91f09e` |
 
-The verification semantics of 1.0.0 is `cppl-verification-8`, and the
+The verification semantics of 1.0.0 is `cppl-verification-9`, and the
 verification-interface format is version 3: an interface an earlier build
 wrote is refused rather than read (`SPEC.md` TUBOUND-005, TUBOUND-013).
 

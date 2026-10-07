@@ -487,6 +487,7 @@ value-init-constructor	clang/src/value_initialization.cpp	if (record && declares
 value-init-designated	clang/src/value_initialization.cpp	if (designated(elements[member])) {	if (false && designated(elements[member])) {	^negative_member_storage$
 value-init-scalar-braces	clang/src/value_initialization.cpp	clang_getCursorKind(elements[member]) == CXCursor_InitListExpr) {	false) {	^negative_member_storage$
 std-array-element-not-through-pointer	clang/src/formed_places.cpp	if (access && access->dereferenced && !access->symbolic_indices.empty()) {	if (false) {	^negative_member_storage$
+std-array-write-rests-on-model	clang/src/writes.cpp	        library_models.insert(source::RepresentationKind::StdArray);	        (void)call;	^e2e_member_storage$
 MUTATIONS
 )
 

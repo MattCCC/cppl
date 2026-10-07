@@ -45,7 +45,11 @@ namespace cppl::obligations {
 // Version 8 owes a signed subscript index that it is not negative as well as
 // below the extent, so a contract version 7 recorded may rest on an element
 // read or written at a negative index, which names no element (TRUST.md 36.4).
-inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-8";
+// Version 9 records the std::array model of a contract whose body, or a
+// callee's, writes an element of a `std::array` through `operator[]`, so a
+// contract version 8 recorded may rest on that model without naming it
+// (TRUST.md 36.4, TCB-LIB-010).
+inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-9";
 
 // A contract another translation unit proved, offered to this one by the
 // verification interface that recorded it (SPEC.md TUBOUND-003).

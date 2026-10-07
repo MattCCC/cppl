@@ -18,7 +18,7 @@ tests and attests the archive of the signed tag `v1.0.0` (`docs/STATUS.md`,
 | C++L version | 1.0.0 |
 | Kernel version | `cppl-kernel-0.9.0` |
 | Formal-core version | `cppl-core-0.9.0` |
-| Verification semantics | `cppl-verification-8` |
+| Verification semantics | `cppl-verification-9` |
 | Verification-interface format | version 3 |
 | Supported C++ modes | `c++17`, `c++20`, `c++23` |
 | Supported platform | Linux x86_64 (Ubuntu 24.04), LLVM/Clang 22.1.8 from apt.llvm.org, the libstdc++ of GCC 13.3 |
@@ -110,4 +110,4 @@ the standard-library models are trusted, and none of them is verified
 ### Compatibility
 
 - A verification interface written by an earlier build is refused: the
-  verification semantics changed (`cppl-verification-8`).
+  verification semantics changed (`cppl-verification-9`).

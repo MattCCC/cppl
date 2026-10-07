@@ -37,6 +37,18 @@ for standard in c++17 c++20 c++23; do
             exit 1
         fi
     done
+    # TRUST.md TCB-LIB-007, TCB-LIB-010 -- `Stack::push` only writes its
+    # std::array member through `operator[]`, and `push_one` calls it: both
+    # rest on the std::array model, and neither is free of assumptions.
+    sed -n '/^Library-model-dependent claims:/,/^$/p' "$run/report" > "$run/models"
+    sed -n '/^Assumption-free claims:/,/^Unused trusted laws:/p' "$run/report" > "$run/free"
+    for function in 'Stack::push' push_one; do
+        if ! grep -q "^  contract of $function " "$run/models" || grep -q "^  contract of $function " "$run/free"; then
+            cat "$run/report" >&2
+            echo "member_storage ($standard): $function writes a std::array element and does not rest on its model" >&2
+            exit 1
+        fi
+    done
 
     output=$("$run/program")
     if [ "$output" != "$expected" ]; then
@@ -63,5 +75,69 @@ for standard in c++17 c++20 c++23; do
         exit 1
     fi
 done
+
+# TRUST.md 36.4, TCB-LIB-007, TCB-LIB-010 -- that `operator[]` of a std::array
+# designates element `i` is trusted of the library for a write as for a read.
+# Each body below writes an element and reads none, in every form a write
+# reaches one: a member of the implicit object, at a term and at a constant, a
+# member of an object a reference designates and a member of a struct local.
+# Each was once counted assumption-free.
+cat > "$run/writes.cpp" <<'CPP'
+#include <array>
+#include <cstddef>
+
+struct Stack {
+    std::array<unsigned, 4> items;
+    std::size_t size;
+
+    verified void push(unsigned value)
+        expects (size < 4u)
+        ensures (size > 0u)
+    {
+        items[size] = value;
+        size = size + 1u;
+    }
+
+    verified void clear_first()
+        ensures (true)
+    {
+        items[0] = 0u;
+    }
+};
+
+verified void push_onto(Stack& s, unsigned value)
+    expects (s.size < 4u)
+    ensures (s.size > 0u)
+{
+    s.items[s.size] = value;
+    s.size = s.size + 1u;
+}
+
+verified std::size_t local_write()
+    ensures (result == 0u)
+{
+    Stack s{};
+    s.items[1] = 5u;
+    return s.size;
+}
+
+int main() {
+    return 0;
+}
+CPP
+"$CPPL" -std=c++20 "$run/writes.cpp" -o "$run/writes" --cppl-trust-report > "$run/writes.report"
+sed -n '/^Library-model-dependent claims:/,/^$/p' "$run/writes.report" > "$run/writes.models"
+for function in Stack::push Stack::clear_first push_onto local_write; do
+    grep -q "^  contract of $function " "$run/writes.models" || {
+        cat "$run/writes.report" >&2
+        echo "$function writes a std::array element and was not listed as resting on its model" >&2
+        exit 1
+    }
+done
+grep -Eq '^Assumption-free claims: +0$' "$run/writes.report" || {
+    cat "$run/writes.report" >&2
+    echo "a write of a std::array element was counted free of assumptions" >&2
+    exit 1
+}
 
 echo 'member arrays and objects a reference designates are followed member by member, and the erased program agrees'

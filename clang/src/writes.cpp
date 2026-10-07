@@ -3,9 +3,11 @@
 #include "conversions.hpp"
 #include "cppl/clang/ast.hpp"
 #include "cppl/source/location.hpp"
+#include "cppl/source/representation.hpp"
 #include "expressions.hpp"
 #include "lowering.hpp"
 #include "places.hpp"
+#include "sequences.hpp"
 #include "signature.hpp"
 #include "types.hpp"
 
@@ -70,6 +72,16 @@ std::optional<std::optional<std::size_t>> BodyLowering::read_reference(CXCursor 
 
 std::optional<std::size_t> BodyLowering::written_local(CXCursor target, Locals& locals) {
     target = strip_parens(target);
+    // That `operator[]` of a `std::array` designates element `i` is what the
+    // std::array model trusts of the library (TRUST.md TCB-LIB-007), for the
+    // element a write reaches as for one a read forms, so a claim whose body
+    // writes one rests on that model wherever the array is held: a local, a
+    // member of the implicit object or of an object a reference designates
+    // (TCB-LIB-010).
+    if (const std::optional<SequenceCall> call = sequence_call(target);
+        call && call->family == source::RepresentationKind::StdArray && !call->constructor) {
+        library_models.insert(source::RepresentationKind::StdArray);
+    }
     // An element of a vector, a string or a span is written through its
     // element place at the current generation, owing its bound and the
     // element type's refinement (RFC 0020 §3, §6).
