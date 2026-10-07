@@ -4,7 +4,9 @@
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/frontend/projection.hpp"
 #include "cppl/frontend/syntax.hpp"
+#include "cppl/frontend/token.hpp"
 #include "cppl/source/location.hpp"
+#include "cppl/source/projection.hpp"
 #include "formal_projection.hpp"
 #include "projector.hpp"
 
