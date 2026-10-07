@@ -31,6 +31,8 @@ A C++L program can say not only **what to execute**, but also **what must be tru
 
 ## Status
 
+**🔴 Despite being 1.0.0 C++L is not yet production-ready and is potentially unsafe to use in production applications. I will remove this message once I finish reviewing kernel and do more tests of proofs. More calculations are necessary before I become confident that it can be used in production. 🔴**
+
 **C++L 1.0.0 — V1.** The language specification, the grammar and the kernel calculus are frozen at 1.0.0.
 
 V1 verifies an explicit subset of C++ inside `verified` functions ([RFC 0022](docs/rfcs/0022-v1-verified-subset.md)): every construct is either verified, with a refused twin that shows it is modeled, or refused by name. Everything else stays ordinary C++ that Clang compiles unchanged, and it never counts as verified. The tested platform is Linux x86_64 with LLVM/Clang 22 ([INSTALL.md](docs/INSTALL.md)).
