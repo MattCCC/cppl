@@ -5,6 +5,10 @@
 Formal core: `cppl-core-0.9.0` — Kernel: `cppl-kernel-0.9.0`
 (`kernel/include/cppl/kernel/version.hpp`)
 
+**Frozen:** C++L 1.0.0. A change to this text needs an RFC and a new version
+(`STATUS.md`, "V1 closure: stability"); the kernel and formal-core versions
+change only with the calculus (section 18).
+
 This document states exactly the calculus the kernel in `kernel/` decides: its
 types, terms, propositions and evidence, the typing and well-formedness
 judgments, substitution, normalization, the fifteen rules, the translation of

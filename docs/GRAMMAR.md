@@ -1,5 +1,8 @@
 # Grammar and declaration syntax
 
+**Frozen:** C++L 1.0.0. A change to this text needs an RFC and a new version
+(`STATUS.md`, "V1 closure: stability").
+
 This is the normative concrete grammar referenced by [SPEC.md](./SPEC.md).
 [RFC 0015](rfcs/0015-canonical-language-surface.md) reconciles earlier spellings.
 Ordinary C++ categories below retain the selected C++ grammar and Clang semantics.

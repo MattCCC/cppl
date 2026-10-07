@@ -1,10 +1,10 @@
 # C++L Status
 
-**Project status:** Early implementation; the V1 release gates are not all met (see [V1 closure](#v1-closure))  
-**Stability:** Experimental  
-**Production ready:** No  
-**Language specification frozen:** No  
-**Proof system frozen:** No  
+**Project status:** C++L 1.0.0, V1: gates G1 to G17 are met; G18 is met when the release workflow attests the archive of the signed tag (see [V1 closure](#v1-closure))  
+**Stability:** Stable within V1: the specification, the grammar and the kernel are frozen at 1.0.0  
+**Production ready:** For the V1 scope only -- the verified subset of RFC 0022 on Linux x86_64 -- from the attested 1.0.0 archive; nothing outside that scope is claimed  
+**Language specification frozen:** Yes, at C++L 1.0.0  
+**Proof system frozen:** Yes, at C++L 1.0.0  
 **ABI guarantees:** No
 
 C++L is currently being designed as a source-compatible C++ superset with first-class Laws, machine-checked proofs, dependent/refinement types, proof erasure, and ordinary native C++ output through Clang/LLVM.
@@ -2727,7 +2727,8 @@ which has not been run here.
 
 Until implementation reaches the appropriate status, C++L does **not** claim:
 
-- production readiness
+- production readiness outside the V1 scope (the verified subset of RFC 0022,
+  on Linux x86_64)
 - verified C++ compatibility
 - a completed proof kernel
 - a completed dependent type checker
@@ -2743,7 +2744,6 @@ Until implementation reaches the appropriate status, C++L does **not** claim:
 - completed proof erasure
 - completed Clang integration
 - completed SMT integration
-- a stable language specification
 - a stable ABI
 - a stable proof artifact format
 
@@ -2929,8 +2929,11 @@ row covers semantics V1 does not claim, such as induction over the `@` domains,
 or semantics not yet frozen. A gate is met only when its status is
 `IMPLEMENTED` or `VERIFIED` and its pass condition holds.
 
-**V1 is not met.** Gates G17 and G18 are open, and the project stays
-**Production ready: No**.
+**V1 is met at 1.0.0 except for one step only the signed tag performs.** G1 to
+G17 are met. G18 is met by the release candidate's build, test and install on
+the one platform the release claims, and its attestation is produced only by
+`release.yml` from the pushed, signed tag `v1.0.0`; until that run succeeds no
+1.0.0 archive is published, and nothing here claims one is.
 
 | Gate | What it covers | Status | Met |
 | --- | --- | --- | --- |
@@ -2950,8 +2953,8 @@ or semantics not yet frozen. A gate is met only when its status is
 | G14 | Kernel and verifier assurance: adversarial testing | `IMPLEMENTED` | yes |
 | G15 | Correspondence TCB | `IMPLEMENTED` | yes |
 | G16 | Artifact provenance | `IMPLEMENTED` | yes |
-| G17 | Stability of the specification and the proof system | `PARTIAL` | no |
-| G18 | Delivery: platforms, ABI and release | `PARTIAL` | no |
+| G17 | Stability of the specification and the proof system | `IMPLEMENTED` | yes |
+| G18 | Delivery: platforms, ABI and release | `IMPLEMENTED` | when `release.yml` attests the `v1.0.0` archive |
 
 Post-V1 by decision, each refused wherever it would be used, so none can
 silently count as verified:
@@ -3076,7 +3079,7 @@ and `negative_trusted_dependencies`, and the `unsafe-*` mutation entries.
 
 `IMPLEMENTED` for the explicit subset: RFC 0022 and
 [Verified C++ subset status](#verified-c-subset-status). All 151 constructs of
-Annex X are classified: 94 are verified, each with a refused twin, and 57 are
+Annex X are classified: 96 are verified, each with a refused twin, and 55 are
 refused, each with its diagnostic.
 
 Evidence:
@@ -3186,7 +3189,7 @@ Pass condition: `check_sound` with no hypothesis, audited closed by
 ## V1 closure: adversarial testing (G14)
 
 `IMPLEMENTED`. Every kernel rule, primitive and verifier check named in
-`TRUST.md` 36.3 has adversarial tests and a mutation entry; there are 349
+`TRUST.md` 36.3 has adversarial tests and a mutation entry; there are 470
 entries (`MUTATION_TESTING.md`). Persistent fuzz targets exist for kernel
 proofs, terms, certificates and arithmetic, and for the recognizer, the
 verification-interface decoder and the language server.
@@ -3267,13 +3270,24 @@ Interface provenance stays TCB: authentication is not implemented
 
 ## V1 closure: stability (G17)
 
-`PARTIAL`. The header of this file states that neither the language
-specification nor the proof system is frozen. V1 requires both frozen at a
-tagged version. That is the release decision: `CMakeLists.txt` names version
-1.0.0, `SPEC.md`, `GRAMMAR.md` and `KERNEL.md` each state that they are frozen
-at it, this file's header says so, and the commit is tagged. The kernel and
-formal-core versions change only with the calculus (`KERNEL.md` 18), so a
-freeze of the current one keeps `cppl-kernel-0.9.0` and `cppl-core-0.9.0`.
+`IMPLEMENTED`. `CMakeLists.txt` names version 1.0.0, and `SPEC.md`,
+`GRAMMAR.md` and `KERNEL.md` each state that they are frozen at it. This file's
+header says the language specification and the proof system are frozen at it.
+The kernel and formal-core versions change only with the calculus
+(`KERNEL.md` 18), so the freeze keeps `cppl-kernel-0.9.0` and
+`cppl-core-0.9.0`. `ci_frozendocuments` (`cmake/ci/CheckFrozenDocuments.cmake`)
+fails on any change to a frozen document that does not change its digest
+below, and a change to a digest needs an RFC and a new version.
+
+| Frozen document | SHA-256 of its text, line endings as LF |
+| --- | --- |
+| `docs/SPEC.md` | `f60bb085917f1b690efa187aa93ade05dd16635a7c2c1d0c576eab7949aa20a8` |
+| `docs/GRAMMAR.md` | `bc105eef6bdcc010875c32dfa2da4b46bba8a8931013d299a247a7211bc131fd` |
+| `docs/KERNEL.md` | `159d4ba4d73dff8c26db28859ca553d40e7e0bea7047a5d77fde6ac2fa91f09e` |
+
+The verification semantics of 1.0.0 is `cppl-verification-8`, and the
+verification-interface format is version 3: an interface an earlier build
+wrote is refused rather than read (`SPEC.md` TUBOUND-005, TUBOUND-013).
 
 ## V1 closure: delivery
 

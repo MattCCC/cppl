@@ -2,7 +2,7 @@
   "name": "cppl",
   "displayName": "C++L",
   "description": "The shared C++L TextMate grammar, for the IDE's TextMate support. The grammar itself is copied from editors/shared at build time.",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "contributes": {
     "languages": [
       {

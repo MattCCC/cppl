@@ -2426,8 +2426,8 @@ rests on, each kind apart:
   "version": 1,
   "string_encoding": "percent",
   "build": {
-    "compiler": "0.0.1",
-    "verification_semantics": "cppl-verification-3",
+    "compiler": "1.0.0",
+    "verification_semantics": "cppl-verification-8",
     "kernel": "cppl-kernel-0.9.0",
     "formal_core": "cppl-core-0.9.0",
     "target": "x86_64-unknown-linux-gnu",

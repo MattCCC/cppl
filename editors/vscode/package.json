@@ -2,7 +2,7 @@
   "name": "cppl",
   "displayName": "C++L",
   "description": "C++L language support: diagnostics, navigation, canonical formatting, and syntax highlighting via cppl-lsp.",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "publisher": "cppl",
   "license": "Apache-2.0",
   "repository": {

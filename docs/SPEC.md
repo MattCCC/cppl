@@ -4,6 +4,9 @@
 
 Status: Normative target specification
 
+**Frozen:** C++L 1.0.0. A change to this text needs an RFC and a new version
+(`STATUS.md`, "V1 closure: stability").
+
 This document is the primary normative definition of C++L language semantics.
 It specifies the language that a complete conforming implementation MUST provide.
 It is intentionally independent of repository progress, implementation staging

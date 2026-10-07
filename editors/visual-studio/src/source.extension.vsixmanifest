@@ -2,7 +2,7 @@
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011">
   <Metadata>
     <Identity Id="Cppl.VisualStudio.8f2c1a64-3d5e-4b7a-9c18-2e6f0a5d3b91"
-              Version="0.0.1"
+              Version="1.0.0"
               Language="en-US"
               Publisher="C++L" />
     <DisplayName>C++L</DisplayName>

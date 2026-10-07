@@ -170,10 +170,17 @@ compiler does what `STATUS.md` records as implemented, with the trust boundary
     sound (`KERNEL.md` 17), but the C++ kernel is not proven to implement it;
   - an ABI guarantee beyond Clang's own;
   - any platform other than Linux x86_64;
-  - that the language or proof system is frozen.
+  - that a verified function's guarantees hold in an execution where ordinary
+    or unverified code hands it a value that violates a parameter's refinement:
+    refinements erase at runtime, so such a caller can, and no guarantee that
+    rests on that parameter's validity then applies (`SPEC.md` REFINE-027).
+    An explicit `validate<R>(e)` at the boundary is how unverified input enters
+    a refinement checked.
 
-  A 0.x release is experimental (`STATUS.md`, "Current release policy"). Until
-  every gate of `ROADMAP.md`, "V1 release gates", passes, no release is V1.
+  1.0.0 is V1 (`STATUS.md`, "V1 closure"). Its language specification, grammar
+  and kernel calculus are frozen at it (`SPEC.md`, `GRAMMAR.md`, `KERNEL.md`),
+  and a later change to any of them needs an RFC and a new version. A
+  verification interface written by an earlier build is refused, not read.
 
 ## The release record
 

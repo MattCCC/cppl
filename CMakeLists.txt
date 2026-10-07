@@ -7,7 +7,7 @@ endif()
 
 project(
     cppl
-    VERSION 0.0.1
+    VERSION 1.0.0
     DESCRIPTION "C++L - C++ with Laws"
     LANGUAGES C CXX
 )
