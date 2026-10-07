@@ -3228,6 +3228,14 @@ claims reported PROVEN and false at runtime, and attacked each fix again with
 variants its regressions did not cover. Every defect it found is fixed with a
 regression and a mutation entry.
 
+The final cross-feature sweep (`e2e_v1_sweep`, `negative_v1_sweep`,
+`fixtures/v1_sweep/`) runs every mechanism of the release together in one
+three-unit program, verified, linked, run and erased in c++17, c++20 and c++23
+with each unit's trust closure pinned exactly, beside 40 refused twins, each
+one change from it that makes a claim false and each refused for the reason
+and at the line it states, and it found the `std::array` trust-report defect
+`TRUST.md` 36.4 lists last.
+
 On the release candidate the full mutation suite catches all 349 entries, none
 equivalent, and `ci-asan`, `ci-ubsan` and `ci-fuzz` are green ("Profiles on the
 release candidate" lists the runs).

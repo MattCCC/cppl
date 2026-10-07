@@ -120,6 +120,9 @@ covered	cross_tu/middle.cpp	negative/xtu_middle_only.cpp	negative/cross_tu.sh	-	
 covered	cross_tu/identity_client.cpp	negative/xtu_transitive_differs.cpp	negative/cross_tu.sh	-	-
 covered	integration/statement.cpp	negative/integration_false_room.cpp	negative/integration_ledger.sh	-	-
 covered	expected_cases.cpp	negative/expected_error_bound_as_value.cpp	negative/case_providers.sh	-	-
+covered	v1_sweep/stock.cpp	negative/v1_sweep_unchecked_transfer.cpp	negative/v1_sweep.sh	-	-
+covered	v1_sweep/intake.cpp	negative/v1_sweep_unvalidated_units.cpp	negative/v1_sweep.sh	-	-
+covered	v1_sweep/desk.cpp	negative/v1_sweep_unlimited_booking.cpp	negative/v1_sweep.sh	-	-
 refused	broken_identity.cpp	identity_law.cpp	negative/broken_implementation.sh	-	-
 refused	unmarked_law.cpp	identity_law.cpp	negative/unproven_dependencies.sh	-	-
 refused	false_law.cpp	true_arithmetic_law.cpp	e2e/invalid_law.sh	-	-

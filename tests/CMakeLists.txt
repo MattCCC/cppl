@@ -570,6 +570,11 @@ cppl_add_script_test(e2e_integration_ledger e2e/integration_ledger.sh)
 cppl_add_script_test(negative_integration_ledger negative/integration_ledger.sh)
 cppl_add_script_test(e2e_cross_feature e2e/cross_feature.sh)
 cppl_add_script_test(negative_cross_feature negative/cross_feature.sh)
+# The V1 cross-feature sweep: every mechanism of the release in one
+# three-unit program, verified, run and erased in each standard, with a
+# minimally mutated refused twin per mechanism (fixtures/v1_sweep/).
+cppl_add_script_test(e2e_v1_sweep e2e/v1_sweep.sh)
+cppl_add_script_test(negative_v1_sweep negative/v1_sweep.sh)
 
 # Erasure against programs written without C++L: runtime behaviour and code,
 # native ABI across a translation-unit boundary, and source positions.
