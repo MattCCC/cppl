@@ -235,9 +235,19 @@ std::expected<void, Failure> Conditions::walk(const vir::Expr& expression, Scope
         const source::SourceRange& subscript = bounded->operands[0].provenance.range.begin.is_valid()
                                                    ? bounded->operands[0].provenance.range
                                                    : expression.provenance.range;
-        emit(scope, Origin::ElementBounds, function_.qualified_name + " element index", subscript,
-             kernel::predicate(kernel::Term::primitive(kernel::PrimOp::Less, integer, {*index, std::move(*extent)}),
-                               true));
+        // A signed index names an element only where it is not negative as
+        // well: `a[-1]` is outside the array whatever its extent, so `i < n`
+        // alone is not the bound (C++ [expr.sub], SPEC.md STORAGE-005).
+        kernel::Proposition bound = kernel::predicate(
+            kernel::Term::primitive(kernel::PrimOp::Less, integer, {*index, std::move(*extent)}), true);
+        if (integer.signedness == kernel::Signedness::Signed) {
+            bound = kernel::Proposition::conjunction(
+                kernel::predicate(kernel::Term::primitive(kernel::PrimOp::LessEqual, integer,
+                                                          {kernel::Term::literal(integer, 0), *index}),
+                                  true),
+                std::move(bound));
+        }
+        emit(scope, Origin::ElementBounds, function_.qualified_name + " element index", subscript, std::move(bound));
         return walk(bounded->operands[1], std::move(scope), loops);
     }
 

@@ -338,6 +338,22 @@ verified int f(unsigned i, unsigned j) expects (i < 3u && j < 3u) ensures (resul
 }
 CPP
 
+# A signed index below the extent may still be negative, which names no
+# element: `a[-1]` is outside the array, read or written (C++ [expr.sub]).
+reject a_negative_index_is_outside_the_array "element index' is not proven" <<'CPP'
+verified int f(int i) expects (i < 4) ensures (true) {
+    int a[4] = {1, 2, 3, 4};
+    return a[i];
+}
+CPP
+reject a_negative_index_is_not_written "element index' is not proven" <<'CPP'
+verified int f(int i) expects (i < 4) ensures (true) {
+    int a[4] = {1, 2, 3, 4};
+    a[i] = 0;
+    return a[0];
+}
+CPP
+
 # The same holds at depth: an array that is a member is reached by a longer
 # path, and the symbolic step at its end identifies an element no differently.
 reject a_member_element_write_is_not_a_fact_at_another 'does not satisfy its contract' <<'CPP'

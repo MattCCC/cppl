@@ -2584,7 +2584,10 @@ evaluated, and owes its bound or capability only on the routes that evaluate
 it (`e2e/conditions.sh`). A container handed to a verified call by value is copied into the
 parameter, and the caller's is unchanged. A signed index is bounded as the
 size-type value C++ converts it to, and dividing by a length owes it non-zero,
-through the machine-arithmetic rules (`SPEC.md` ARITH-008, ARITH-009). The same
+through the machine-arithmetic rules (`SPEC.md` ARITH-008, ARITH-009). A signed
+index of a built-in subscript, which C++ does not convert, owes `0 <= i && i <
+n`: it was once owed `i < n` alone, which a negative index satisfies, and a
+contract false at run time was proven (`TRUST.md` 36.4, `negative_negative_indices`). The same
 claims verify against libc++ and libstdc++, and the erased program is the same
 code as its hand-erased twin (`tests/e2e/containers.sh`).
 

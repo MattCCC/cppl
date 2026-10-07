@@ -19,7 +19,7 @@ CLANG="$4"
 mkdir -p "$WORK"
 run=$(mktemp -d "$WORK/member-storage.XXXXXX")
 
-expected=$'9 9 2 11 0\n5 2\n2 3 0\n2 0\n0 4 0 3'
+expected=$'9 9 2 11 0\n5 2\n2 3 0\n2 0\n0 4 0 3\n9'
 
 for standard in c++17 c++20 c++23; do
     "$CPPL" "-std=$standard" "$FIXTURES/member_storage.cpp" -o "$run/program" \
@@ -29,7 +29,7 @@ for standard in c++17 c++20 c++23; do
         echo "verifying member_storage warned ($standard)" >&2
         exit 1
     fi
-    for line in 'Function contracts proven: +19' 'Unresolved obligations: +0' 'Trusted external axioms: +0' \
+    for line in 'Function contracts proven: +20' 'Unresolved obligations: +0' 'Trusted external axioms: +0' \
         'Trust-dependent claims: +0' 'Unsafe-dependent claims: +0'; do
         if ! grep -Eq "^$line\$" "$run/report"; then
             echo "member_storage ($standard) does not report '$line'" >&2

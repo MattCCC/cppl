@@ -141,6 +141,16 @@ verified void clear_first(std::array<unsigned, 10>& counts)
     counts[0] = 0u;
 }
 
+// A signed index names an element where it is neither negative nor past the
+// extent.
+verified int nth(int i)
+    expects (0 <= i && i < 4)
+    ensures (true)
+{
+    const int squares[4] = {0, 1, 4, 9};
+    return squares[i];
+}
+
 // Members an aggregate initializer leaves out are value-initialized: a scalar
 // is zero, and an aggregate is the same rule member by member.
 verified unsigned zero_counts()
@@ -221,5 +231,6 @@ int main() {
 
     const std::vector<unsigned> values{13u, 23u, 4u, 3u};
     std::printf("%u %u %zu %u\n", zero_counts(), first_given(), fresh_size(), tally(values, 3u));
+    std::printf("%d\n", nth(3));
     return 0;
 }

@@ -42,7 +42,10 @@ namespace cppl::obligations {
 // numbers differ from version 6's for such a class, and it follows an object a
 // reference designates member by member, handing back the value its members
 // assemble, which version 6 stated of no contract (TRUST.md TCB-AGGREGATE-003).
-inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-7";
+// Version 8 owes a signed subscript index that it is not negative as well as
+// below the extent, so a contract version 7 recorded may rest on an element
+// read or written at a negative index, which names no element (TRUST.md 36.4).
+inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-8";
 
 // A contract another translation unit proved, offered to this one by the
 // verification interface that recorded it (SPEC.md TUBOUND-003).

@@ -607,6 +607,8 @@ cppl_add_script_test(negative_conditions negative/conditions.sh)
 cppl_add_script_test(negative_verified_methods negative/verified_methods.sh)
 cppl_add_script_test(negative_struct_values negative/struct_values.sh)
 cppl_add_script_test(negative_member_storage negative/member_storage.sh)
+# A signed index proven only below the extent, in every subscript form (TRUST.md 36.4).
+cppl_add_script_test(negative_negative_indices negative/negative_indices.sh)
 
 cppl_add_script_test(integration_header_law integration/header_law.sh)
 cppl_add_script_test(integration_source_identity integration/source_identity.sh)
