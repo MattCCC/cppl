@@ -46,7 +46,6 @@ jobs:
             "clang-format-${CPPL_LLVM_MAJOR}" \
             "clang-tidy-${CPPL_LLVM_MAJOR}"
           echo "LLVM_ROOT=/usr/lib/llvm-${CPPL_LLVM_MAJOR}" >> "$GITHUB_ENV"
-          echo "CC=/usr/lib/llvm-${CPPL_LLVM_MAJOR}/bin/clang" >> "$GITHUB_ENV"
           echo "CXX=/usr/lib/llvm-${CPPL_LLVM_MAJOR}/bin/clang++" >> "$GITHUB_ENV"
 
       - name: Configure

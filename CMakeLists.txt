@@ -9,7 +9,7 @@ project(
     cppl
     VERSION 1.0.0
     DESCRIPTION "C++L - C++ with Laws"
-    LANGUAGES C CXX
+    LANGUAGES CXX
 )
 
 # -----------------------------------------------------------------------------
@@ -35,10 +35,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # translation unit is a cache hit. A launcher the configuration names already
 # is kept, and CPPL_USE_CCACHE=OFF compiles directly. ccache changes no output.
 option(CPPL_USE_CCACHE "Compile through ccache when it is installed" ON)
-if(CPPL_USE_CCACHE AND NOT CMAKE_CXX_COMPILER_LAUNCHER AND NOT CMAKE_C_COMPILER_LAUNCHER)
+if(CPPL_USE_CCACHE AND NOT CMAKE_CXX_COMPILER_LAUNCHER)
     find_program(CPPL_CCACHE_PROGRAM ccache)
     if(CPPL_CCACHE_PROGRAM)
-        set(CMAKE_C_COMPILER_LAUNCHER "${CPPL_CCACHE_PROGRAM}")
         set(CMAKE_CXX_COMPILER_LAUNCHER "${CPPL_CCACHE_PROGRAM}")
         message(STATUS "Compiling through ccache: ${CPPL_CCACHE_PROGRAM}")
     endif()

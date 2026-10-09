@@ -71,7 +71,7 @@ files (libclang and `clang-c/Index.h`). The configuration is chosen by presets
 
 ```sh
 export LLVM_ROOT=$(brew --prefix llvm@22)       # or /usr/lib/llvm-22
-CC=$LLVM_ROOT/bin/clang CXX=$LLVM_ROOT/bin/clang++ cmake --preset release
+CXX=$LLVM_ROOT/bin/clang++ cmake --preset release
 cmake --build --preset release
 ctest --preset release
 ```

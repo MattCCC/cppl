@@ -128,7 +128,6 @@
       "description": "Selects the LLVM installation named by the LLVM_ROOT environment variable. The environment supplies the path; the repository never commits one.",
       "cacheVariables": {
         "LibClang_ROOT": "$env{LLVM_ROOT}",
-        "CMAKE_C_COMPILER": "$env{LLVM_ROOT}/bin/clang",
         "CMAKE_CXX_COMPILER": "$env{LLVM_ROOT}/bin/clang++"
       }
     },
@@ -145,7 +144,6 @@
         "rhs": "Linux"
       },
       "cacheVariables": {
-        "CMAKE_C_COMPILER": "gcc",
         "CMAKE_CXX_COMPILER": "g++",
         "LibClang_ROOT": "$env{LLVM_ROOT}",
         "CPPL_WARNINGS_AS_ERRORS": "OFF"
@@ -190,7 +188,6 @@
         "rhs": "Windows"
       },
       "cacheVariables": {
-        "CMAKE_C_COMPILER": "$env{LLVM_ROOT}/bin/clang-cl.exe",
         "CMAKE_CXX_COMPILER": "$env{LLVM_ROOT}/bin/clang-cl.exe",
         "LibClang_ROOT": "$env{LLVM_ROOT}"
       }

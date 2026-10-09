@@ -840,7 +840,7 @@ export GIT_CEILING_DIRECTORIES="$run"
 # of the dozens of executables a one-file change relinks. Every entry rebuilds,
 # so that is most of what a run spends.
 cmake -S "$source_copy" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-      "-DCMAKE_C_FLAGS_RELWITHDEBINFO=-O2 -DNDEBUG" "-DCMAKE_CXX_FLAGS_RELWITHDEBINFO=-O2 -DNDEBUG" \
+      "-DCMAKE_CXX_FLAGS_RELWITHDEBINFO=-O2 -DNDEBUG" \
       -DCPPL_WARNINGS_AS_ERRORS=ON ${LLVM_ROOT:+"-DLibClang_ROOT=$LLVM_ROOT"} > "$run/configure.log" 2>&1 ||
     { echo "Control configure failed; see $run/configure.log" >&2; exit 1; }
 cmake --build "$build" -j "$jobs" > "$run/build.log" 2>&1 ||

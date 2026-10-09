@@ -29,8 +29,6 @@ function(cppl_ci_report_environment)
     message(STATUS "  build type      ${CMAKE_BUILD_TYPE}")
     message(STATUS "  binary dir      ${CMAKE_BINARY_DIR}")
 
-    message(STATUS "  C compiler      ${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION}")
-    message(STATUS "                  ${CMAKE_C_COMPILER}")
     message(STATUS "  C++ compiler    ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
     message(STATUS "                  ${CMAKE_CXX_COMPILER}")
     message(STATUS "  C++ standard    ${CMAKE_CXX_STANDARD}")

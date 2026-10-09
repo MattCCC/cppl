@@ -35,7 +35,7 @@
 #   1. Explicit LibClang_ROOT
 #   2. Environment hints
 #   3. Existing Clang_DIR / LLVM_DIR
-#   4. Official Clang CMake package
+#   4. libclang on the default library search path
 #   5. llvm-config
 #   6. Homebrew, when running on macOS
 #   7. Standard LLVM locations on Linux
@@ -576,37 +576,44 @@ if(NOT _LibClang_EXPLICIT_ROOT)
     endif()
 
     # -------------------------------------------------------------------------
-    # Official Clang CMake package
+    # libclang on the default search path
     # -------------------------------------------------------------------------
+    # find_package(Clang)'s prefixes without running LLVMConfig.cmake, whose checks need a C compiler.
 
-    find_package(
-        Clang
-        CONFIG
-        QUIET
+    find_library(
+        _LibClang_DEFAULT_LIBRARY
+
+        NAMES
+            clang
+            libclang
+
+        NO_CACHE
     )
 
-    if(Clang_FOUND)
-        if(LLVM_TOOLS_BINARY_DIR)
+    if(_LibClang_DEFAULT_LIBRARY)
+        foreach(_mode IN ITEMS REALPATH ABSOLUTE)
             get_filename_component(
-                _root_from_clang_package
-                "${LLVM_TOOLS_BINARY_DIR}"
+                _default_library
+                "${_LibClang_DEFAULT_LIBRARY}"
+                ${_mode}
+            )
+
+            get_filename_component(
+                _default_library_dir
+                "${_default_library}"
+                DIRECTORY
+            )
+
+            get_filename_component(
+                _default_root
+                "${_default_library_dir}"
                 DIRECTORY
             )
 
             _cppl_libclang_add_root(
-                "${_root_from_clang_package}"
+                "${_default_root}"
             )
-
-        elseif(Clang_DIR)
-            _cppl_libclang_root_from_config_dir(
-                "${Clang_DIR}"
-                _root_from_clang_package
-            )
-
-            _cppl_libclang_add_root(
-                "${_root_from_clang_package}"
-            )
-        endif()
+        endforeach()
     endif()
 
     # -------------------------------------------------------------------------

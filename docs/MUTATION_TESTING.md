@@ -165,7 +165,7 @@ scripts/test-mutations.sh --list                         # every entry's name
 ```
 
 - The control configure uses the host's default compilers with warnings as
-  errors, so `CC` and `CXX` name the LLVM Clang the project is built with, and
+  errors, so `CXX` names the LLVM Clang the project is built with, and
   that installation's `bin` is on `PATH` so libclang is found. GCC's warnings
   differ from Clang's, and the control build stops on them (the `ci-linux-gcc`
   preset turns warnings-as-errors off for that reason).
