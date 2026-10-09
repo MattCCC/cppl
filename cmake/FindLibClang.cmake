@@ -34,7 +34,7 @@
 #
 #   1. Explicit LibClang_ROOT
 #   2. Environment hints
-#   3. Existing Clang_DIR / LLVM_DIR
+#   3. Existing Clang_ROOT / CLANG_ROOT / Clang_DIR / LLVM_DIR
 #   4. libclang on the default library search path
 #   5. llvm-config
 #   6. Homebrew, when running on macOS
@@ -540,6 +540,16 @@ if(NOT _LibClang_EXPLICIT_ROOT)
     # -------------------------------------------------------------------------
     # Existing CMake package hints
     # -------------------------------------------------------------------------
+
+    foreach(_package_root IN ITEMS Clang_ROOT CLANG_ROOT)
+        _cppl_libclang_add_root(
+            "${${_package_root}}"
+        )
+
+        _cppl_libclang_add_root(
+            "$ENV{${_package_root}}"
+        )
+    endforeach()
 
     if(Clang_DIR)
         _cppl_libclang_root_from_config_dir(
